@@ -18,7 +18,7 @@ let serverProcess: Subprocess;
 // Start server as background process before tests
 beforeAll(async () => {
   // Start the server as a subprocess with custom PORT
-  serverProcess = Bun.spawn(["bun", "run", "examples/server.ts"], {
+  serverProcess = Bun.spawn(["bun", "run", "server.ts"], {
     env: { ...process.env, PORT: String(PORT) },
     stdout: "inherit",
     stderr: "inherit",

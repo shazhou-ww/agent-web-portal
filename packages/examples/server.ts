@@ -9,8 +9,8 @@
  * Test with: bun test examples/e2e.test.ts
  */
 
+import { createAgentWebPortal } from "@agent-web-portal/core";
 import { z } from "zod";
-import { createAgentWebPortal } from "../index.ts";
 
 // =============================================================================
 // 1. Basic Greeting Portal

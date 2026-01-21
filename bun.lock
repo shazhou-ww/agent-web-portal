@@ -12,7 +12,7 @@
       },
     },
     "packages/core": {
-      "name": "@anthropic-ai/agent-web-portal",
+      "name": "@agent-web-portal/core",
       "version": "0.1.0",
       "dependencies": {
         "zod": "^3.23.8",
@@ -24,9 +24,22 @@
         "typescript": "^5",
       },
     },
+    "packages/examples": {
+      "name": "@agent-web-portal/examples",
+      "version": "0.1.0",
+      "dependencies": {
+        "@agent-web-portal/core": "workspace:*",
+        "zod": "^3.23.8",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+      },
+    },
   },
   "packages": {
-    "@anthropic-ai/agent-web-portal": ["@anthropic-ai/agent-web-portal@workspace:packages/core"],
+    "@agent-web-portal/core": ["@agent-web-portal/core@workspace:packages/core"],
+
+    "@agent-web-portal/examples": ["@agent-web-portal/examples@workspace:packages/examples"],
 
     "@biomejs/biome": ["@biomejs/biome@2.3.11", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.3.11", "@biomejs/cli-darwin-x64": "2.3.11", "@biomejs/cli-linux-arm64": "2.3.11", "@biomejs/cli-linux-arm64-musl": "2.3.11", "@biomejs/cli-linux-x64": "2.3.11", "@biomejs/cli-linux-x64-musl": "2.3.11", "@biomejs/cli-win32-arm64": "2.3.11", "@biomejs/cli-win32-x64": "2.3.11" }, "bin": { "biome": "bin/biome" } }, "sha512-/zt+6qazBWguPG6+eWmiELqO+9jRsMZ/DBU3lfuU2ngtIQYzymocHhKiZRyrbra4aCOoyTg/BmY+6WH5mv9xmQ=="],
 

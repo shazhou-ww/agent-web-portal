@@ -10,8 +10,8 @@
  * Run with: bun run examples/basic.ts
  */
 
+import { createAgentWebPortal } from "@agent-web-portal/core";
 import { z } from "zod";
-import { createAgentWebPortal } from "../index.ts";
 
 // =============================================================================
 // 1. Define Tool Schemas
