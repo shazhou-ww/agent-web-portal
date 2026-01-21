@@ -103,7 +103,7 @@ builder.registerTool("search", {
 
 ### `.registerSkill(name, options)`
 
-Register a skill with frontmatter and markdown.
+Register a skill with URL and frontmatter. The skill's markdown content should be served at the specified URL.
 
 ```typescript
 builder.registerSkill("search-assistant", {
@@ -114,12 +114,6 @@ builder.registerSkill("search-assistant", {
     version: "1.0.0",
     "allowed-tools": ["search", "external_mcp:analyze"],
   },
-  markdown: `
-# Search Assistant
-
-Use {{search}} to find items.
-Use {{external_mcp:analyze}} for analysis.
-  `,
 });
 ```
 

@@ -69,28 +69,6 @@ const portal = createAgentWebPortal({
       version: "1.0.0",
       "allowed-tools": ["greet"],
     },
-    markdown: `
-# Greeting Assistant
-
-This skill helps you greet users in their preferred language.
-
-## Usage
-
-Use the {{greet}} tool to generate personalized greetings.
-
-### Supported Languages
-- English (en)
-- Spanish (es)
-- French (fr)
-- German (de)
-- Japanese (ja)
-
-### Example
-To greet a user named "Alice" in French:
-\`\`\`
-{{greet}} with name="Alice" and language="fr"
-\`\`\`
-    `.trim(),
   })
   // Build the portal (validates skills against tools)
   .build();

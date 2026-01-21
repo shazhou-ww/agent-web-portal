@@ -62,22 +62,6 @@ const basicPortal = createAgentWebPortal({
       version: "1.0.0",
       "allowed-tools": ["greet"],
     },
-    markdown: `
-# Greeting Assistant
-
-This skill helps you greet users in their preferred language.
-
-## Usage
-
-Use the {{greet}} tool to generate personalized greetings.
-
-### Supported Languages
-- English (en)
-- Spanish (es)
-- French (fr)
-- German (de)
-- Japanese (ja)
-    `.trim(),
   })
   .build();
 
@@ -218,17 +202,6 @@ const ecommercePortal = createAgentWebPortal({
       version: "2.0.0",
       "allowed-tools": ["search_products", "manage_cart", "checkout"],
     },
-    markdown: `
-# Shopping Assistant
-
-Help users find and purchase products.
-
-## Available Actions
-
-1. **Search**: Use {{search_products}} to find products
-2. **Cart**: Use {{manage_cart}} to add/remove items
-3. **Checkout**: Use {{checkout}} to complete purchase
-    `.trim(),
   })
   .registerSkill("product-comparison", {
     url: "/skills/product-comparison.md",
@@ -241,14 +214,6 @@ Help users find and purchase products.
         "external_reviews:get_reviews", // Cross-MCP reference
       ],
     },
-    markdown: `
-# Product Comparison
-
-Compare products using local search and external reviews.
-
-- Use {{search_products}} to find products locally
-- Use {{external_reviews:get_reviews}} to fetch external reviews
-    `.trim(),
   })
   .build();
 

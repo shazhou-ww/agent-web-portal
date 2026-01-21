@@ -162,24 +162,6 @@ const portal = createAgentWebPortal({
       version: "2.0.0",
       "allowed-tools": ["search_products", "manage_cart", "checkout"],
     },
-    markdown: `
-# Shopping Assistant
-
-Help users find and purchase products.
-
-## Available Actions
-
-1. **Search**: Use {{search_products}} to find products
-2. **Cart**: Use {{manage_cart}} to add/remove items
-3. **Checkout**: Use {{checkout}} to complete purchase
-
-## Workflow
-
-1. Search for products based on user needs
-2. Add selected items to cart
-3. Review cart contents
-4. Complete checkout with shipping/payment info
-    `.trim(),
   })
   // Product Comparison Skill (with cross-MCP reference)
   .registerSkill("product-comparison", {
@@ -193,14 +175,6 @@ Help users find and purchase products.
         "external_reviews:get_reviews", // Cross-MCP reference
       ],
     },
-    markdown: `
-# Product Comparison
-
-Compare products using local search and external reviews.
-
-- Use {{search_products}} to find products locally
-- Use {{external_reviews:get_reviews}} to fetch external reviews
-    `.trim(),
   })
   .build();
 

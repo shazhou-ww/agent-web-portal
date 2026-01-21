@@ -1,0 +1,29 @@
+{
+  "name": "@anthropic-ai/agent-web-portal",
+  "version": "0.1.0",
+  "description": "MCP-compatible, skill-focused framework for AI Agents",
+  "module": "index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "dev": "bun run --watch examples/server.ts",
+    "start": "bun run examples/server.ts",
+    "test": "bun test",
+    "test:e2e": "bun test examples/e2e.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "check": "tsc --noEmit && biome check ."
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

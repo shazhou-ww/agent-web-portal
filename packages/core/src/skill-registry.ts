@@ -32,7 +32,7 @@ export class SkillRegistry {
   /**
    * Register a new skill
    * @param name - Unique skill name
-   * @param options - Skill definition including URL, frontmatter, and markdown
+   * @param options - Skill definition including URL and frontmatter
    */
   registerSkill(name: string, options: SkillRegistrationOptions): void {
     if (this.skills.has(name)) {
@@ -42,7 +42,6 @@ export class SkillRegistry {
     this.skills.set(name, {
       url: options.url,
       frontmatter: options.frontmatter,
-      markdown: options.markdown,
     });
   }
 

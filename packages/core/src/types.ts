@@ -29,8 +29,6 @@ export interface SkillDefinition {
   url: string;
   /** Frontmatter metadata including allowed-tools */
   frontmatter: SkillFrontmatter;
-  /** Raw markdown content of the skill */
-  markdown?: string;
 }
 
 /**
@@ -89,7 +87,6 @@ export interface ToolRegistrationOptions<
 export interface SkillRegistrationOptions {
   url: string;
   frontmatter: SkillFrontmatter;
-  markdown?: string;
 }
 
 // ============================================================================

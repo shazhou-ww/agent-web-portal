@@ -24,10 +24,12 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
+
+    // For project references
+    "composite": true,
+    "declarationMap": true
   },
-  // Root tsconfig for editor support - each package has its own
-  "references": [
-    { "path": "./packages/core" }
-  ]
+  "include": ["src", "examples", "index.ts"],
+  "exclude": ["node_modules"]
 }

@@ -40,7 +40,6 @@ export interface AgentWebPortalOptions {
  *   .registerSkill("greeting-skill", {
  *     url: "/skills/greeting.md",
  *     frontmatter: { "allowed-tools": ["greet"] },
- *     markdown: "Use {{greet}} to greet the user.",
  *   })
  *   .build();
  * ```
