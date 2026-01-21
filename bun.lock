@@ -40,6 +40,7 @@
         "@agent-web-portal/core": "workspace:*",
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/s3-request-presigner": "^3.700.0",
+        "jsonata": "^2.0.5",
         "yaml": "^2.7.0",
         "zod": "^3.24.1",
       },
@@ -75,6 +76,22 @@
         "@types/bun": "latest",
       },
     },
+    "packages/jsonata-portal": {
+      "name": "@agent-web-portal/jsonata-portal",
+      "version": "0.1.0",
+      "dependencies": {
+        "@agent-web-portal/aws-lambda": "workspace:*",
+        "jsonata": "^2.0.5",
+        "zod": "^3.24.1",
+      },
+      "devDependencies": {
+        "@types/aws-lambda": "^8.10.147",
+        "@types/node": "^22.10.5",
+      },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
+    },
   },
   "packages": {
     "@agent-web-portal/aws-cli": ["@agent-web-portal/aws-cli@workspace:packages/aws-cli"],
@@ -84,6 +101,8 @@
     "@agent-web-portal/core": ["@agent-web-portal/core@workspace:packages/core"],
 
     "@agent-web-portal/examples": ["@agent-web-portal/examples@workspace:packages/examples"],
+
+    "@agent-web-portal/jsonata-portal": ["@agent-web-portal/jsonata-portal@workspace:packages/jsonata-portal"],
 
     "@aws-crypto/crc32": ["@aws-crypto/crc32@5.2.0", "", { "dependencies": { "@aws-crypto/util": "^5.2.0", "@aws-sdk/types": "^3.222.0", "tslib": "^2.6.2" } }, "sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg=="],
 
@@ -436,6 +455,8 @@
     "jackspeak": ["jackspeak@3.4.3", "", { "dependencies": { "@isaacs/cliui": "^8.0.2" }, "optionalDependencies": { "@pkgjs/parseargs": "^0.11.0" } }, "sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw=="],
 
     "js-yaml": ["js-yaml@4.1.1", "", { "dependencies": { "argparse": "^2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA=="],
+
+    "jsonata": ["jsonata@2.1.0", "", {}, "sha512-OCzaRMK8HobtX8fp37uIVmL8CY1IGc/a6gLsDqz3quExFR09/U78HUzWYr7T31UEB6+Eu0/8dkVD5fFDOl9a8w=="],
 
     "jsonc-parser": ["jsonc-parser@3.3.1", "", {}, "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ=="],
 

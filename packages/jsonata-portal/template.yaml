@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: JSONata Portal - Lambda-based AWP for JSONata expression evaluation
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: nodejs20.x
+    Architectures:
+      - x86_64
+
+Parameters:
+  SkillsBucket:
+    Type: String
+    Description: S3 bucket name for skills storage
+    Default: ""
+
+Resources:
+  # S3 Bucket for Skills (optional, created if SkillsBucket is empty)
+  SkillsS3Bucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateSkillsBucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-skills-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Lambda Function
+  JsonataPortalFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-handler"
+      CodeUri: dist/
+      Handler: handler.handler
+      Runtime: nodejs20.x
+      Description: JSONata Portal MCP endpoint
+      Environment:
+        Variables:
+          SKILLS_BUCKET: !If
+            - CreateSkillsBucket
+            - !Ref SkillsS3Bucket
+            - !Ref SkillsBucket
+          NODE_OPTIONS: "--enable-source-maps"
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !If
+              - CreateSkillsBucket
+              - !Ref SkillsS3Bucket
+              - !Ref SkillsBucket
+      Events:
+        McpEndpoint:
+          Type: Api
+          Properties:
+            Path: /mcp
+            Method: POST
+            RestApiId: !Ref JsonataPortalApi
+        RootEndpoint:
+          Type: Api
+          Properties:
+            Path: /
+            Method: POST
+            RestApiId: !Ref JsonataPortalApi
+        SkillDownload:
+          Type: Api
+          Properties:
+            Path: /skills/{skillName}
+            Method: GET
+            RestApiId: !Ref JsonataPortalApi
+
+  # API Gateway
+  JsonataPortalApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+Conditions:
+  CreateSkillsBucket: !Equals [!Ref SkillsBucket, ""]
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${JsonataPortalApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  
+  McpEndpoint:
+    Description: MCP endpoint URL
+    Value: !Sub "https://${JsonataPortalApi}.execute-api.${AWS::Region}.amazonaws.com/prod/mcp"
+  
+  FunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt JsonataPortalFunction.Arn
+  
+  SkillsBucketName:
+    Description: Skills S3 Bucket Name
+    Value: !If
+      - CreateSkillsBucket
+      - !Ref SkillsS3Bucket
+      - !Ref SkillsBucket
