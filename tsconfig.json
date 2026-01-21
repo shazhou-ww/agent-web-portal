@@ -25,9 +25,5 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  },
-  // Root tsconfig for editor support - each package has its own
-  "references": [
-    { "path": "./packages/core" }
-  ]
+  }
 }
