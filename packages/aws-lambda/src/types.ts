@@ -4,6 +4,61 @@
 
 import type { SkillFrontmatter } from "@agent-web-portal/core";
 
+// ============================================================================
+// Auth Middleware Types
+// ============================================================================
+
+/**
+ * Auth context from successful authentication
+ */
+export interface LambdaAuthContext {
+  /** The scheme that was used for authentication */
+  scheme: string;
+  /** Decoded token claims (for OAuth) */
+  claims?: Record<string, unknown>;
+  /** Key metadata (for API Key) */
+  metadata?: Record<string, unknown>;
+  /** Key ID (for HMAC) */
+  keyId?: string;
+}
+
+/**
+ * Auth middleware result
+ */
+export interface LambdaAuthResult {
+  /** Whether the request is authorized */
+  authorized: boolean;
+  /** Auth context if authorized */
+  context?: LambdaAuthContext;
+  /** Challenge response to return if not authorized (401) */
+  challengeResponse?: Response;
+}
+
+/**
+ * Auth middleware function type for Lambda
+ *
+ * Takes a Request-like object and returns auth result.
+ */
+export type LambdaAuthMiddleware = (request: LambdaAuthRequest) => Promise<LambdaAuthResult>;
+
+/**
+ * Request object passed to auth middleware
+ */
+export interface LambdaAuthRequest {
+  method: string;
+  url: string;
+  headers: Headers | Record<string, string>;
+  text(): Promise<string>;
+  clone(): LambdaAuthRequest;
+}
+
+/**
+ * Route handler function type
+ *
+ * Returns a Response if handled, null if not handled.
+ */
+export type LambdaRouteHandler = (request: LambdaAuthRequest) => Response | null;
+
 /**
  * Skill configuration from skills.yaml
  */
@@ -40,6 +95,10 @@ export interface LambdaAdapterOptions {
   region?: string;
   /** Presigned URL expiration in seconds (default: 3600) */
   presignedUrlExpiration?: number;
+  /** Auth middleware from @agent-web-portal/auth */
+  authMiddleware?: LambdaAuthMiddleware;
+  /** Custom route handlers (e.g., well-known endpoints) */
+  customRoutes?: LambdaRouteHandler[];
 }
 
 /**

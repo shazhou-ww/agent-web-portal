@@ -11,6 +11,17 @@
         "typescript": "^5.8.3",
       },
     },
+    "packages/auth": {
+      "name": "@agent-web-portal/auth",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "bun-types": "^1.3.6",
+      },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
+    },
     "packages/aws-cli": {
       "name": "@agent-web-portal/aws-cli",
       "version": "0.1.0",
@@ -94,6 +105,8 @@
     },
   },
   "packages": {
+    "@agent-web-portal/auth": ["@agent-web-portal/auth@workspace:packages/auth"],
+
     "@agent-web-portal/aws-cli": ["@agent-web-portal/aws-cli@workspace:packages/aws-cli"],
 
     "@agent-web-portal/aws-lambda": ["@agent-web-portal/aws-lambda@workspace:packages/aws-lambda"],

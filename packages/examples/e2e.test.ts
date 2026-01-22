@@ -18,7 +18,10 @@ let serverProcess: Subprocess;
 // Start server as background process before tests
 beforeAll(async () => {
   // Start the server as a subprocess with custom PORT
+  // Use import.meta.dir to get the correct directory for server.ts
+  const serverDir = import.meta.dir;
   serverProcess = Bun.spawn(["bun", "run", "server.ts"], {
+    cwd: serverDir,
     env: { ...process.env, PORT: String(PORT) },
     stdout: "inherit",
     stderr: "inherit",
@@ -141,7 +144,7 @@ describe("Basic Portal (/basic)", () => {
 
     expect(result.result).toBeDefined();
     expect(result.result["greeting-assistant"]).toBeDefined();
-    expect(result.result["greeting-assistant"].url).toBe("/skills/greeting-assistant.md");
+    expect(result.result["greeting-assistant"].url).toBe("/skills/greeting-assistant");
     expect(result.result["greeting-assistant"].frontmatter["allowed-tools"]).toContain("greet");
   });
 

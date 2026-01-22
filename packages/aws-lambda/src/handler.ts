@@ -15,6 +15,7 @@ import type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
   LambdaAdapterOptions,
+  LambdaAuthRequest,
   LambdaContext,
   SkillsConfig,
 } from "./types.ts";
@@ -67,6 +68,8 @@ export function createLambdaHandler(
   };
 
   const presignedUrlExpiration = options.presignedUrlExpiration ?? 3600;
+  const authMiddleware = options.authMiddleware;
+  const customRoutes = options.customRoutes ?? [];
 
   return async (
     event: APIGatewayProxyEvent,
@@ -82,19 +85,44 @@ export function createLambdaHandler(
           headers: {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, Mcp-Session-Id",
+            "Access-Control-Allow-Headers":
+              "Content-Type, Authorization, Mcp-Session-Id, X-API-Key, X-AWP-Signature, X-AWP-Key-Id, X-AWP-Timestamp",
           },
           body: "",
         };
       }
 
-      // OAuth metadata discovery - return 404 to indicate no auth required
-      if (path === "/.well-known/oauth-authorization-server") {
-        return {
-          statusCode: 404,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ error: "OAuth not supported" }),
-        };
+      // Build base URL from event
+      const protocol = event.headers["x-forwarded-proto"] ?? "https";
+      const host = event.headers.host ?? event.headers.Host ?? "localhost";
+      const baseUrl = `${protocol}://${host}`;
+
+      // Create a Request-like object for auth middleware and custom routes
+      const authRequest = createAuthRequest(event, baseUrl);
+
+      // Try custom routes first (e.g., well-known endpoints)
+      for (const routeHandler of customRoutes) {
+        const response = routeHandler(authRequest);
+        if (response) {
+          return await responseToApiGateway(response);
+        }
+      }
+
+      // Run auth middleware if configured
+      if (authMiddleware) {
+        const authResult = await authMiddleware(authRequest);
+        if (!authResult.authorized) {
+          // Return the 401 challenge response
+          if (authResult.challengeResponse) {
+            return await responseToApiGateway(authResult.challengeResponse);
+          }
+          // Fallback 401
+          return {
+            statusCode: 401,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Unauthorized" }),
+          };
+        }
       }
 
       // Route: /mcp - MCP endpoint
@@ -131,6 +159,46 @@ export function createLambdaHandler(
         }),
       };
     }
+  };
+}
+
+/**
+ * Create a Request-like object from API Gateway event for auth middleware
+ */
+function createAuthRequest(event: APIGatewayProxyEvent, baseUrl: string): LambdaAuthRequest {
+  const body = event.body
+    ? event.isBase64Encoded
+      ? Buffer.from(event.body, "base64").toString("utf-8")
+      : event.body
+    : "";
+
+  const request: LambdaAuthRequest = {
+    method: event.httpMethod,
+    url: `${baseUrl}${event.path}`,
+    headers: new Headers(event.headers as Record<string, string>),
+    text: async () => body,
+    clone: () => createAuthRequest(event, baseUrl),
+  };
+
+  return request;
+}
+
+/**
+ * Convert a Response object to API Gateway result
+ */
+async function responseToApiGateway(response: Response): Promise<APIGatewayProxyResult> {
+  const body = await response.text();
+  const headers: Record<string, string> = {};
+
+  // Copy headers
+  response.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+
+  return {
+    statusCode: response.status,
+    headers,
+    body,
   };
 }
 

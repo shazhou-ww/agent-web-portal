@@ -30,8 +30,8 @@
 // Primary API - fluent builder
 export {
   createAgentWebPortalHandler,
-  LambdaHandlerBuilder,
   type LambdaHandler,
+  LambdaHandlerBuilder,
   type LambdaHandlerBuilderOptions,
 } from "./builder.ts";
 
@@ -43,7 +43,12 @@ export type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
   LambdaAdapterOptions,
+  LambdaAuthContext,
+  LambdaAuthMiddleware,
+  LambdaAuthRequest,
+  LambdaAuthResult,
   LambdaContext,
+  LambdaRouteHandler,
   SkillConfig,
   SkillsConfig,
 } from "./types.ts";

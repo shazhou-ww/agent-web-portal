@@ -5,19 +5,21 @@
  * tool and skill registration.
  */
 
-import type { ZodSchema } from "zod";
 import {
-  createAgentWebPortal,
   type AgentWebPortalOptions,
+  createAgentWebPortal,
   type SkillRegistrationOptions,
   type ToolRegistrationOptions,
 } from "@agent-web-portal/core";
+import type { ZodSchema } from "zod";
 import { createLambdaHandler } from "./handler.ts";
 import type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
   LambdaAdapterOptions,
+  LambdaAuthMiddleware,
   LambdaContext,
+  LambdaRouteHandler,
   SkillsConfig,
 } from "./types.ts";
 
@@ -94,6 +96,8 @@ export class LambdaHandlerBuilder {
   }> = [];
   private skills: Record<string, SkillRegistrationOptions> = {};
   private skillsConfig?: SkillsConfig;
+  private authMiddleware?: LambdaAuthMiddleware;
+  private customRoutes: LambdaRouteHandler[] = [];
 
   constructor(options: LambdaHandlerBuilderOptions = {}) {
     this.portalOptions = {
@@ -120,8 +124,7 @@ export class LambdaHandlerBuilder {
   ): this {
     this.tools.push({
       name,
-      // biome-ignore lint/suspicious/noExplicitAny: Required for type erasure in builder pattern
-      options: options as any,
+      options: options as unknown as ToolRegistrationOptions<ZodSchema, ZodSchema>,
     });
     return this;
   }
@@ -163,6 +166,61 @@ export class LambdaHandlerBuilder {
   }
 
   /**
+   * Add authentication middleware
+   *
+   * The middleware will be called for each request before processing.
+   * If the middleware returns `authorized: false`, the challenge response
+   * will be returned to the client.
+   *
+   * @param middleware - Auth middleware function from @agent-web-portal/auth
+   * @returns this - for method chaining
+   *
+   * @example
+   * ```typescript
+   * import { createAuthMiddleware } from "@agent-web-portal/auth";
+   *
+   * const authMiddleware = createAuthMiddleware({
+   *   schemes: [{ type: "api_key", validateKey: async (key) => ({ valid: key === "secret" }) }],
+   * });
+   *
+   * export const handler = createAgentWebPortalHandler({ name: "my-portal" })
+   *   .withMiddleware(authMiddleware)
+   *   .registerTool("greet", { ... })
+   *   .build();
+   * ```
+   */
+  withMiddleware(middleware: LambdaAuthMiddleware): this {
+    this.authMiddleware = middleware;
+    return this;
+  }
+
+  /**
+   * Add custom route handlers
+   *
+   * Route handlers are called before the default routes. If a handler
+   * returns a Response, it will be used. If it returns null, the next
+   * handler (or default routes) will be tried.
+   *
+   * @param handler - Route handler function
+   * @returns this - for method chaining
+   *
+   * @example
+   * ```typescript
+   * import { createWellKnownHandler } from "@agent-web-portal/auth";
+   *
+   * const wellKnownHandler = createWellKnownHandler(authConfig);
+   *
+   * export const handler = createAgentWebPortalHandler({ name: "my-portal" })
+   *   .withRoutes(wellKnownHandler)
+   *   .build();
+   * ```
+   */
+  withRoutes(handler: LambdaRouteHandler): this {
+    this.customRoutes.push(handler);
+    return this;
+  }
+
+  /**
    * Build the Lambda handler
    *
    * Creates the Agent Web Portal instance and wraps it in a Lambda handler.
@@ -193,6 +251,8 @@ export class LambdaHandlerBuilder {
     return createLambdaHandler(portal, {
       ...this.lambdaOptions,
       skillsConfig: this.skillsConfig,
+      authMiddleware: this.authMiddleware,
+      customRoutes: this.customRoutes.length > 0 ? this.customRoutes : undefined,
     });
   }
 }

@@ -105,7 +105,8 @@ builder.registerTool("search", {
 
 ### `.registerSkills(skills)`
 
-Register multiple skills at once with URLs and frontmatter. Each skill's markdown content should be served at its specified URL.
+Register multiple skills at once with URLs and frontmatter.
+Each skill's markdown content should be served at its specified URL.
 
 ```typescript
 builder.registerSkills({
