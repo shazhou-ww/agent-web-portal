@@ -2,11 +2,43 @@
   "name": "@agent-web-portal/core",
   "version": "0.1.0",
   "description": "MCP-compatible, skill-focused framework for AI Agents",
-  "module": "index.ts",
-  "type": "module",
-  "exports": {
-    ".": "./index.ts"
+  "license": "MIT",
+  "author": "Agent Web Portal Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anthropics/agent-web-portal.git",
+    "directory": "packages/core"
   },
+  "homepage": "https://github.com/anthropics/agent-web-portal#readme",
+  "bugs": {
+    "url": "https://github.com/anthropics/agent-web-portal/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "ai-agent",
+    "agent-web-portal",
+    "awp",
+    "tools",
+    "skills"
+  ],
+  "type": "module",
+  "module": "index.ts",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": {
+      "import": "./index.ts",
+      "types": "./index.ts"
+    }
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

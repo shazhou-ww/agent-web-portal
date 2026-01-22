@@ -1,6 +1,7 @@
 {
   "name": "@agent-web-portal/jsonata-portal",
   "version": "0.1.0",
+  "private": true,
   "description": "JSONata Portal - Lambda-based AWP for JSONata expression evaluation",
   "type": "module",
   "exports": {
