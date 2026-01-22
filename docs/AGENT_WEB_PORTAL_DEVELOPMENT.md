@@ -804,7 +804,9 @@ bun run format
 
 ### Q: AWP 和 MCP 的关系是什么？
 
-A: AWP 是 MCP 的超集。AWP 实现了 MCP 协议的所有 Tool 相关端点 (`initialize`, `tools/list`, `tools/call`)，同时新增了 Skills 层 (`skills/list`)。任何 MCP Client 都可以与 AWP Server 通信。
+A: AWP 是 MCP 的超集。AWP 实现了 MCP 协议的所有 Tool 相关端点
+(`initialize`, `tools/list`, `tools/call`)，同时新增了 Skills 层 (`skills/list`)。
+任何 MCP Client 都可以与 AWP Server 通信。
 
 ### Q: 为什么需要 Skills？
 
@@ -812,7 +814,8 @@ A: Tools 是原子操作，而 Skills 提供场景上下文。Agent 可以先读
 
 ### Q: Blob 字段在 Handler 中如何访问？
 
-A: Blob 字段不会出现在 `args` 中，而是通过 `context.blobs.input[fieldName]` (预签名 GET URL) 访问。输出 blob 通过 `context.blobs.output[fieldName]` (预签名 PUT URL) 写入。
+A: Blob 字段不会出现在 `args` 中，而是通过 `context.blobs.input[fieldName]` (预签名 GET URL) 访问。
+输出 blob 通过 `context.blobs.output[fieldName]` (预签名 PUT URL) 写入。
 
 ### Q: 如何处理跨 MCP 的 Tool 引用？
 
