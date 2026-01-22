@@ -351,10 +351,14 @@ async function main() {
   console.log("Packages are ready in .publish/ folder.");
   console.log("Please publish them manually in this order:\n");
   
+  const isWindows = process.platform === "win32";
+  const pathSep = isWindows ? "\\" : "/";
+  
   for (let i = 0; i < toPublish.length; i++) {
     const pkg = toPublish[i]!;
     const folderName = basename(pkg.path);
-    console.log(`  ${i + 1}. cd .publish/${folderName} && npm publish --access public`);
+    const publishPath = `.publish${pathSep}${folderName}`;
+    console.log(`  ${i + 1}. cd ${publishPath} && npm publish --access public`);
   }
 
   console.log("\n");
@@ -362,7 +366,11 @@ async function main() {
   console.log("");
   
   log("After publishing all packages, clean up with:");
-  console.log("  rm -rf .publish\n");
+  if (isWindows) {
+    console.log("  rmdir /s /q .publish\n");
+  } else {
+    console.log("  rm -rf .publish\n");
+  }
 }
 
 main().catch((e) => {
