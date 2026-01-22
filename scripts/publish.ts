@@ -184,8 +184,8 @@ function topologicalSort(packages: PackageInfo[]): PackageInfo[] {
 
 async function getNpmVersion(packageName: string): Promise<string | null> {
   try {
-    const result = exec(`npm view ${packageName} version 2>/dev/null`, { silent: true });
-    return result || null;
+    const result = exec(`npm view ${packageName} version`, { silent: true });
+    return result?.trim() || null;
   } catch {
     return null;
   }
