@@ -346,6 +346,10 @@ portal.registerSkills({
         "checkout",
         "external_reviews:get_reviews", // 跨 MCP 引用
       ],
+      // 定义跨 MCP 服务器的 URL
+      "mcp-servers": {
+        external_reviews: "https://reviews-api.example.com/mcp",
+      },
     },
   },
 });
@@ -405,6 +409,7 @@ Calculate sum, average, min, max, and count for a list of numbers:
 | `description` | `string` | ❌ | Skill 的描述 |
 | `version` | `string` | ❌ | Skill 版本号 |
 | `allowed-tools` | `string[]` | ❌ | 允许使用的 Tool 列表 |
+| `mcp-servers` | `Record<string, string>` | ❌ | 跨 MCP 服务器的别名到 URL 映射 |
 
 ---
 
@@ -423,12 +428,18 @@ allowed-tools:
   # 跨 MCP 引用 (其他 MCP 服务器)
   - external_reviews:get_reviews
   - payment_service:process_payment
+
+# 定义跨 MCP 服务器的 URL
+mcp-servers:
+  external_reviews: https://reviews-api.example.com/mcp
+  payment_service: https://payment.example.com/mcp
 ```
 
 **格式规则**：
 
 - **本地 Tool**: `tool_name`
 - **跨 MCP Tool**: `mcp_alias:tool_name`
+- **MCP Server URL**: 在 `mcp-servers` 中定义 `mcp_alias` 到 URL 的映射
 
 ### 6.2 构建时验证
 
@@ -819,7 +830,9 @@ A: Blob 字段不会出现在 `args` 中，而是通过 `context.blobs.input[fie
 
 ### Q: 如何处理跨 MCP 的 Tool 引用？
 
-A: 使用 `mcp_alias:tool_name` 格式。AWP 不会验证这些引用 — 它们由 Agent 在运行时解析和调度。
+A: 使用 `mcp_alias:tool_name` 格式引用工具，并在 `mcp-servers` 中定义对应的 URL。
+例如：`external_reviews:get_reviews` 需要配合 `mcp-servers: { external_reviews: "https://..." }`。
+AWP 不验证这些引用，它们由 Agent 在运行时根据 URL 调度。
 
 ---
 
