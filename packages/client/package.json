@@ -40,6 +40,7 @@
     "README.md"
   ],
   "scripts": {
+    "clean": "rimraf .turbo dist",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

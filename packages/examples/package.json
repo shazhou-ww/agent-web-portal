@@ -5,6 +5,7 @@
   "description": "Example servers and E2E tests for Agent Web Portal",
   "type": "module",
   "scripts": {
+    "clean": "rimraf .turbo dist",
     "dev": "bun run --watch server.ts",
     "start": "bun run server.ts",
     "test": "bun test",
