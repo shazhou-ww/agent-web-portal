@@ -142,7 +142,7 @@ export class AwpClient {
         .json()
         .catch(() => null)) as AuthChallengeResponse | null;
 
-      if (responseBody?.auth_endpoint) {
+      if (responseBody?.auth_init_endpoint) {
         // Start authorization flow
         const shouldRetry = await this.auth.handleUnauthorized(this.endpoint, responseBody);
 

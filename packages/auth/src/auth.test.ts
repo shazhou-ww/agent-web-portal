@@ -1,24 +1,28 @@
 /**
- * Auth Package Test Suite
+ * AWP Auth Package Test Suite
+ *
+ * Tests for ECDSA P-256 signature verification and auth flow.
  *
  * Run tests with:
  *   bun test packages/auth/src/auth.test.ts
  */
 
 import { describe, expect, test } from "bun:test";
-import { buildChallengeResponse, getBaseUrl } from "./challenge.ts";
-import { createAuthMiddleware, hasAuthCredentials } from "./middleware.ts";
-import { validateAPIKey } from "./schemes/api-key.ts";
-import { validateHMAC } from "./schemes/hmac.ts";
-import { extractBearerToken, validateOAuth } from "./schemes/oauth.ts";
-import type {
-  APIKeyScheme,
-  AuthConfig,
-  AuthHttpRequest,
-  HMACScheme,
-  OAuthScheme,
-} from "./types.ts";
-import { createWellKnownHandler, handleWellKnown, WELL_KNOWN_PATHS } from "./well-known.ts";
+import { completeAuthorization, MemoryPubkeyStore } from "./auth-complete.ts";
+import {
+  generateVerificationCode,
+  handleAuthInit,
+  handleAuthStatus,
+  MemoryPendingAuthStore,
+} from "./auth-init.ts";
+import {
+  buildChallengeResponse,
+  validateTimestamp,
+  verifyAwpAuth,
+  verifySignature,
+} from "./awp-auth.ts";
+import { createAwpAuthMiddleware, hasAwpAuthCredentials, routeAuthRequest } from "./middleware.ts";
+import type { AuthHttpRequest } from "./types.ts";
 
 // =============================================================================
 // Helper Functions
@@ -41,337 +45,446 @@ function createMockRequest(options: {
   };
 }
 
-// Helper to compute HMAC signature
-async function computeHmacSignature(
-  secret: string,
-  method: string,
-  path: string,
-  timestamp: string,
-  body: string
-): Promise<string> {
-  const encoder = new TextEncoder();
-
-  // Compute body hash
-  const bodyBuffer = encoder.encode(body);
-  const bodyHashBuffer = await crypto.subtle.digest("SHA-256", bodyBuffer);
-  const bodyHash = Array.from(new Uint8Array(bodyHashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  // Build string to sign
-  const stringToSign = `${method}\n${path}\n${timestamp}\n${bodyHash}`;
-
-  // Compute HMAC
-  const keyData = encoder.encode(secret);
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
+// Generate ECDSA P-256 keypair for testing
+async function generateTestKeyPair(): Promise<{
+  publicKey: string;
+  privateKey: CryptoKey;
+  publicCryptoKey: CryptoKey;
+}> {
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"]
   );
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(stringToSign));
 
-  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const publicKey = `${publicJwk.x}.${publicJwk.y}`;
+
+  return {
+    publicKey,
+    privateKey: keyPair.privateKey,
+    publicCryptoKey: keyPair.publicKey,
+  };
+}
+
+// Sign a payload with the test private key
+async function signPayload(privateKey: CryptoKey, payload: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    encoder.encode(payload)
+  );
+
+  // Base64url encode
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// Hash body using SHA-256
+async function hashBody(body: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 // =============================================================================
-// OAuth Scheme Tests
+// Verification Code Tests
 // =============================================================================
 
-describe("OAuth Scheme", () => {
-  test("extractBearerToken extracts valid token", () => {
-    const request = createMockRequest({
-      headers: { Authorization: "Bearer my-secret-token" },
-    });
-    const token = extractBearerToken(request);
-    expect(token).toBe("my-secret-token");
+describe("Verification Code Generation", () => {
+  test("generates 7-character code with hyphen", () => {
+    const code = generateVerificationCode();
+    expect(code).toMatch(/^[A-Z0-9]{3}-[A-Z0-9]{3}$/);
   });
 
-  test("extractBearerToken returns null for missing header", () => {
-    const request = createMockRequest({});
-    const token = extractBearerToken(request);
-    expect(token).toBeNull();
-  });
-
-  test("extractBearerToken returns null for non-Bearer auth", () => {
-    const request = createMockRequest({
-      headers: { Authorization: "Basic dXNlcjpwYXNz" },
-    });
-    const token = extractBearerToken(request);
-    expect(token).toBeNull();
-  });
-
-  test("extractBearerToken is case-insensitive", () => {
-    const request = createMockRequest({
-      headers: { Authorization: "bearer my-token" },
-    });
-    const token = extractBearerToken(request);
-    expect(token).toBe("my-token");
-  });
-
-  test("validateOAuth succeeds with valid token", async () => {
-    const request = createMockRequest({
-      headers: { Authorization: "Bearer valid-token" },
-    });
-
-    const scheme: OAuthScheme = {
-      type: "oauth2",
-      resourceMetadata: {
-        resource: "https://example.com/mcp",
-        authorization_servers: ["https://auth.example.com"],
-      },
-      validateToken: async (token) => ({
-        valid: token === "valid-token",
-        claims: { sub: "user-123" },
-      }),
-    };
-
-    const result = await validateOAuth(request, scheme);
-    expect(result.valid).toBe(true);
-    if (result.valid) {
-      expect(result.context.scheme).toBe("oauth2");
-      expect(result.context.claims?.sub).toBe("user-123");
+  test("generates unique codes", () => {
+    const codes = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      codes.add(generateVerificationCode());
     }
-  });
-
-  test("validateOAuth fails with invalid token", async () => {
-    const request = createMockRequest({
-      headers: { Authorization: "Bearer invalid-token" },
-    });
-
-    const scheme: OAuthScheme = {
-      type: "oauth2",
-      resourceMetadata: {
-        resource: "https://example.com/mcp",
-        authorization_servers: ["https://auth.example.com"],
-      },
-      validateToken: async () => ({ valid: false, error: "Token expired" }),
-    };
-
-    const result = await validateOAuth(request, scheme);
-    expect(result.valid).toBe(false);
-  });
-
-  test("validateOAuth fails with missing token", async () => {
-    const request = createMockRequest({});
-
-    const scheme: OAuthScheme = {
-      type: "oauth2",
-      resourceMetadata: {
-        resource: "https://example.com/mcp",
-        authorization_servers: ["https://auth.example.com"],
-      },
-      validateToken: async () => ({ valid: true }),
-    };
-
-    const result = await validateOAuth(request, scheme);
-    expect(result.valid).toBe(false);
+    // Should be mostly unique (allowing for some collision in 100 tries)
+    expect(codes.size).toBeGreaterThan(90);
   });
 });
 
 // =============================================================================
-// HMAC Scheme Tests
+// Timestamp Validation Tests
 // =============================================================================
 
-describe("HMAC Scheme", () => {
-  const secret = "my-shared-secret";
-
-  test("validateHMAC succeeds with valid signature", async () => {
-    const timestamp = String(Math.floor(Date.now() / 1000));
-    const body = '{"jsonrpc":"2.0","method":"ping"}';
-    const signature = await computeHmacSignature(secret, "POST", "/mcp", timestamp, body);
-
-    const request = createMockRequest({
-      url: "https://example.com/mcp",
-      method: "POST",
-      headers: {
-        "X-AWP-Signature": signature,
-        "X-AWP-Timestamp": timestamp,
-      },
-      body,
-    });
-
-    const scheme: HMACScheme = {
-      type: "hmac",
-      secret,
-    };
-
-    const result = await validateHMAC(request, scheme);
-    expect(result.valid).toBe(true);
+describe("Timestamp Validation", () => {
+  test("accepts current timestamp", () => {
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    expect(validateTimestamp(timestamp, 300)).toBe(true);
   });
 
-  test("validateHMAC fails with invalid signature", async () => {
-    const timestamp = String(Math.floor(Date.now() / 1000));
-
-    const request = createMockRequest({
-      url: "https://example.com/mcp",
-      method: "POST",
-      headers: {
-        "X-AWP-Signature": "invalid-signature",
-        "X-AWP-Timestamp": timestamp,
-      },
-      body: "{}",
-    });
-
-    const scheme: HMACScheme = {
-      type: "hmac",
-      secret,
-    };
-
-    const result = await validateHMAC(request, scheme);
-    expect(result.valid).toBe(false);
+  test("accepts timestamp within skew", () => {
+    const timestamp = (Math.floor(Date.now() / 1000) - 100).toString();
+    expect(validateTimestamp(timestamp, 300)).toBe(true);
   });
 
-  test("validateHMAC fails with expired timestamp", async () => {
-    const expiredTimestamp = String(Math.floor(Date.now() / 1000) - 600); // 10 minutes ago
-    const body = "{}";
-    const signature = await computeHmacSignature(secret, "POST", "/mcp", expiredTimestamp, body);
-
-    const request = createMockRequest({
-      url: "https://example.com/mcp",
-      method: "POST",
-      headers: {
-        "X-AWP-Signature": signature,
-        "X-AWP-Timestamp": expiredTimestamp,
-      },
-      body,
-    });
-
-    const scheme: HMACScheme = {
-      type: "hmac",
-      secret,
-      maxClockSkew: 300, // 5 minutes
-    };
-
-    const result = await validateHMAC(request, scheme);
-    expect(result.valid).toBe(false);
-    if (!result.valid) {
-      expect(result.error).toContain("timestamp");
-    }
+  test("rejects expired timestamp", () => {
+    const timestamp = (Math.floor(Date.now() / 1000) - 600).toString();
+    expect(validateTimestamp(timestamp, 300)).toBe(false);
   });
 
-  test("validateHMAC fails with missing signature header", async () => {
-    const request = createMockRequest({
-      headers: {
-        "X-AWP-Timestamp": String(Math.floor(Date.now() / 1000)),
-      },
-    });
-
-    const scheme: HMACScheme = {
-      type: "hmac",
-      secret,
-    };
-
-    const result = await validateHMAC(request, scheme);
-    expect(result.valid).toBe(false);
+  test("rejects future timestamp beyond skew", () => {
+    const timestamp = (Math.floor(Date.now() / 1000) + 600).toString();
+    expect(validateTimestamp(timestamp, 300)).toBe(false);
   });
 
-  test("validateHMAC supports function-based secret lookup", async () => {
-    const secrets: Record<string, string> = {
-      "service-a": "secret-for-a",
-      "service-b": "secret-for-b",
-    };
-
-    const timestamp = String(Math.floor(Date.now() / 1000));
-    const body = "{}";
-    const signature = await computeHmacSignature(
-      secrets["service-a"]!,
-      "POST",
-      "/mcp",
-      timestamp,
-      body
-    );
-
-    const request = createMockRequest({
-      url: "https://example.com/mcp",
-      method: "POST",
-      headers: {
-        "X-AWP-Signature": signature,
-        "X-AWP-Timestamp": timestamp,
-        "X-AWP-Key-Id": "service-a",
-      },
-      body,
-    });
-
-    const scheme: HMACScheme = {
-      type: "hmac",
-      secret: async (keyId) => secrets[keyId] ?? null,
-    };
-
-    const result = await validateHMAC(request, scheme);
-    expect(result.valid).toBe(true);
-    if (result.valid) {
-      expect(result.context.keyId).toBe("service-a");
-    }
+  test("rejects invalid timestamp", () => {
+    expect(validateTimestamp("not-a-number", 300)).toBe(false);
   });
 });
 
 // =============================================================================
-// API Key Scheme Tests
+// Signature Verification Tests
 // =============================================================================
 
-describe("API Key Scheme", () => {
-  test("validateAPIKey succeeds with valid key", async () => {
-    const request = createMockRequest({
-      headers: { "X-API-Key": "valid-api-key" },
-    });
+describe("Signature Verification", () => {
+  test("verifies valid signature", async () => {
+    const { publicKey, privateKey } = await generateTestKeyPair();
+    const payload = "test-payload";
+    const signature = await signPayload(privateKey, payload);
 
-    const scheme: APIKeyScheme = {
-      type: "api_key",
-      validateKey: async (key) => ({
-        valid: key === "valid-api-key",
-        metadata: { tier: "premium" },
-      }),
-    };
-
-    const result = await validateAPIKey(request, scheme);
-    expect(result.valid).toBe(true);
-    if (result.valid) {
-      expect(result.context.scheme).toBe("api_key");
-      expect(result.context.metadata?.tier).toBe("premium");
-    }
+    const result = await verifySignature(publicKey, payload, signature);
+    expect(result).toBe(true);
   });
 
-  test("validateAPIKey fails with invalid key", async () => {
-    const request = createMockRequest({
-      headers: { "X-API-Key": "invalid-key" },
-    });
+  test("rejects invalid signature", async () => {
+    const { publicKey } = await generateTestKeyPair();
+    const payload = "test-payload";
+    const invalidSignature = "invalid-signature";
 
-    const scheme: APIKeyScheme = {
-      type: "api_key",
-      validateKey: async () => ({ valid: false, error: "Unknown API key" }),
-    };
-
-    const result = await validateAPIKey(request, scheme);
-    expect(result.valid).toBe(false);
+    const result = await verifySignature(publicKey, payload, invalidSignature);
+    expect(result).toBe(false);
   });
 
-  test("validateAPIKey fails with missing key", async () => {
+  test("rejects mismatched payload", async () => {
+    const { publicKey, privateKey } = await generateTestKeyPair();
+    const signature = await signPayload(privateKey, "original-payload");
+
+    const result = await verifySignature(publicKey, "different-payload", signature);
+    expect(result).toBe(false);
+  });
+});
+
+// =============================================================================
+// AWP Auth Verification Tests
+// =============================================================================
+
+describe("AWP Auth Verification", () => {
+  test("verifies valid request signature", async () => {
+    const { publicKey, privateKey } = await generateTestKeyPair();
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const body = '{"test": true}';
+    const bodyHash = await hashBody(body);
+    const payload = `${timestamp}.POST./mcp.${bodyHash}`;
+    const signature = await signPayload(privateKey, payload);
+
+    const pubkeyStore = new MemoryPubkeyStore();
+    await pubkeyStore.store({
+      pubkey: publicKey,
+      userId: "user-123",
+      clientName: "Test Client",
+      createdAt: Date.now(),
+    });
+
+    const request = createMockRequest({
+      url: "https://example.com/mcp",
+      method: "POST",
+      headers: {
+        "X-AWP-Pubkey": publicKey,
+        "X-AWP-Timestamp": timestamp,
+        "X-AWP-Signature": signature,
+      },
+      body,
+    });
+
+    const result = await verifyAwpAuth(request, pubkeyStore);
+    expect(result.authorized).toBe(true);
+    expect(result.context?.userId).toBe("user-123");
+  });
+
+  test("rejects request without credentials", async () => {
+    const pubkeyStore = new MemoryPubkeyStore();
     const request = createMockRequest({});
 
-    const scheme: APIKeyScheme = {
-      type: "api_key",
-      validateKey: async () => ({ valid: true }),
-    };
-
-    const result = await validateAPIKey(request, scheme);
-    expect(result.valid).toBe(false);
+    const result = await verifyAwpAuth(request, pubkeyStore);
+    expect(result.authorized).toBe(false);
   });
 
-  test("validateAPIKey uses custom header name", async () => {
+  test("rejects request with unknown pubkey", async () => {
+    const { publicKey, privateKey } = await generateTestKeyPair();
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const body = "{}";
+    const bodyHash = await hashBody(body);
+    const payload = `${timestamp}.POST./mcp.${bodyHash}`;
+    const signature = await signPayload(privateKey, payload);
+
+    const pubkeyStore = new MemoryPubkeyStore();
+    // Don't add the pubkey to store
+
     const request = createMockRequest({
-      headers: { "X-Custom-Key": "my-key" },
+      url: "https://example.com/mcp",
+      method: "POST",
+      headers: {
+        "X-AWP-Pubkey": publicKey,
+        "X-AWP-Timestamp": timestamp,
+        "X-AWP-Signature": signature,
+      },
+      body,
     });
 
-    const scheme: APIKeyScheme = {
-      type: "api_key",
-      header: "X-Custom-Key",
-      validateKey: async (key) => ({ valid: key === "my-key" }),
-    };
+    const result = await verifyAwpAuth(request, pubkeyStore);
+    expect(result.authorized).toBe(false);
+  });
 
-    const result = await validateAPIKey(request, scheme);
-    expect(result.valid).toBe(true);
+  test("rejects request with expired timestamp", async () => {
+    const { publicKey, privateKey } = await generateTestKeyPair();
+    const timestamp = (Math.floor(Date.now() / 1000) - 600).toString(); // 10 min ago
+    const body = "{}";
+    const bodyHash = await hashBody(body);
+    const payload = `${timestamp}.POST./mcp.${bodyHash}`;
+    const signature = await signPayload(privateKey, payload);
+
+    const pubkeyStore = new MemoryPubkeyStore();
+    await pubkeyStore.store({
+      pubkey: publicKey,
+      userId: "user-123",
+      clientName: "Test Client",
+      createdAt: Date.now(),
+    });
+
+    const request = createMockRequest({
+      url: "https://example.com/mcp",
+      method: "POST",
+      headers: {
+        "X-AWP-Pubkey": publicKey,
+        "X-AWP-Timestamp": timestamp,
+        "X-AWP-Signature": signature,
+      },
+      body,
+    });
+
+    const result = await verifyAwpAuth(request, pubkeyStore, 300);
+    expect(result.authorized).toBe(false);
+  });
+});
+
+// =============================================================================
+// Auth Init Handler Tests
+// =============================================================================
+
+describe("Auth Init Handler", () => {
+  test("creates pending auth and returns verification code", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+
+    const request = createMockRequest({
+      url: "https://example.com/auth/init",
+      method: "POST",
+      body: JSON.stringify({
+        pubkey: "abc123.def456",
+        client_name: "Test Client",
+      }),
+    });
+
+    const response = await handleAuthInit(request, {
+      baseUrl: "https://example.com",
+      pendingAuthStore,
+    });
+
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as {
+      auth_url: string;
+      verification_code: string;
+      expires_in: number;
+      poll_interval: number;
+    };
+    expect(body.auth_url).toContain("https://example.com/auth");
+    expect(body.verification_code).toMatch(/^[A-Z0-9]{3}-[A-Z0-9]{3}$/);
+    expect(body.expires_in).toBe(600);
+    expect(body.poll_interval).toBe(5);
+
+    // Check pending auth was stored
+    const pending = await pendingAuthStore.get("abc123.def456");
+    expect(pending).not.toBeNull();
+    expect(pending?.verificationCode).toBe(body.verification_code);
+  });
+
+  test("rejects invalid pubkey format", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+
+    const request = createMockRequest({
+      url: "https://example.com/auth/init",
+      method: "POST",
+      body: JSON.stringify({
+        pubkey: "invalid-format",
+        client_name: "Test Client",
+      }),
+    });
+
+    const response = await handleAuthInit(request, {
+      baseUrl: "https://example.com",
+      pendingAuthStore,
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects non-POST requests", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+
+    const request = createMockRequest({
+      url: "https://example.com/auth/init",
+      method: "GET",
+    });
+
+    const response = await handleAuthInit(request, {
+      baseUrl: "https://example.com",
+      pendingAuthStore,
+    });
+
+    expect(response.status).toBe(405);
+  });
+});
+
+// =============================================================================
+// Auth Status Handler Tests
+// =============================================================================
+
+describe("Auth Status Handler", () => {
+  test("returns authorized: false for pending auth", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
+
+    await pendingAuthStore.create({
+      pubkey: "abc123.def456",
+      clientName: "Test Client",
+      verificationCode: "ABC-123",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 600000,
+    });
+
+    const request = createMockRequest({
+      url: "https://example.com/auth/status?pubkey=abc123.def456",
+      method: "GET",
+    });
+
+    const response = await handleAuthStatus(request, {
+      pendingAuthStore,
+      pubkeyStore,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { authorized: boolean };
+    expect(body.authorized).toBe(false);
+  });
+
+  test("returns authorized: true for completed auth", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
+
+    await pubkeyStore.store({
+      pubkey: "abc123.def456",
+      userId: "user-123",
+      clientName: "Test Client",
+      createdAt: Date.now(),
+    });
+
+    const request = createMockRequest({
+      url: "https://example.com/auth/status?pubkey=abc123.def456",
+      method: "GET",
+    });
+
+    const response = await handleAuthStatus(request, {
+      pendingAuthStore,
+      pubkeyStore,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { authorized: boolean };
+    expect(body.authorized).toBe(true);
+  });
+});
+
+// =============================================================================
+// Auth Complete Tests
+// =============================================================================
+
+describe("Auth Completion", () => {
+  test("completes authorization with valid code", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
+
+    await pendingAuthStore.create({
+      pubkey: "abc123.def456",
+      clientName: "Test Client",
+      verificationCode: "ABC-123",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 600000,
+    });
+
+    const result = await completeAuthorization("abc123.def456", "ABC-123", "user-123", {
+      pendingAuthStore,
+      pubkeyStore,
+    });
+
+    expect(result.success).toBe(true);
+
+    // Check pubkey was stored
+    const auth = await pubkeyStore.lookup("abc123.def456");
+    expect(auth).not.toBeNull();
+    expect(auth?.userId).toBe("user-123");
+
+    // Check pending auth was deleted
+    const pending = await pendingAuthStore.get("abc123.def456");
+    expect(pending).toBeNull();
+  });
+
+  test("rejects invalid verification code", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
+
+    await pendingAuthStore.create({
+      pubkey: "abc123.def456",
+      clientName: "Test Client",
+      verificationCode: "ABC-123",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 600000,
+    });
+
+    const result = await completeAuthorization("abc123.def456", "WRONG-CODE", "user-123", {
+      pendingAuthStore,
+      pubkeyStore,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("invalid_code");
+  });
+
+  test("rejects expired pending auth", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
+
+    await pendingAuthStore.create({
+      pubkey: "abc123.def456",
+      clientName: "Test Client",
+      verificationCode: "ABC-123",
+      createdAt: Date.now() - 700000,
+      expiresAt: Date.now() - 100000, // Expired
+    });
+
+    const result = await completeAuthorization("abc123.def456", "ABC-123", "user-123", {
+      pendingAuthStore,
+      pubkeyStore,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("not_found");
   });
 });
 
@@ -379,110 +492,31 @@ describe("API Key Scheme", () => {
 // Middleware Tests
 // =============================================================================
 
-describe("Auth Middleware", () => {
-  test("middleware allows excluded paths without auth", async () => {
-    const middleware = createAuthMiddleware({
-      schemes: [
-        {
-          type: "api_key",
-          validateKey: async () => ({ valid: false }),
-        },
-      ],
+describe("AWP Auth Middleware", () => {
+  test("allows excluded paths without auth", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
+
+    const middleware = createAwpAuthMiddleware({
+      pendingAuthStore,
+      pubkeyStore,
     });
 
     const request = createMockRequest({
-      url: "https://example.com/.well-known/oauth-protected-resource",
+      url: "https://example.com/auth/init",
     });
 
     const result = await middleware(request);
     expect(result.authorized).toBe(true);
   });
 
-  test("middleware tries schemes in order until one succeeds", async () => {
-    const callOrder: string[] = [];
+  test("returns challenge for unauthenticated request", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
 
-    const middleware = createAuthMiddleware({
-      schemes: [
-        {
-          type: "oauth2",
-          resourceMetadata: {
-            resource: "https://example.com/mcp",
-            authorization_servers: ["https://auth.example.com"],
-          },
-          validateToken: async () => {
-            callOrder.push("oauth");
-            return { valid: false }; // OAuth fails
-          },
-        },
-        {
-          type: "api_key",
-          validateKey: async () => {
-            callOrder.push("api_key");
-            return { valid: true }; // API Key succeeds
-          },
-        },
-      ],
-    });
-
-    // Include Bearer token so OAuth validateToken gets called
-    const request = createMockRequest({
-      url: "https://example.com/mcp",
-      headers: {
-        Authorization: "Bearer some-token",
-        "X-API-Key": "test",
-      },
-    });
-
-    const result = await middleware(request);
-    expect(result.authorized).toBe(true);
-    expect(callOrder).toEqual(["oauth", "api_key"]);
-  });
-
-  test("middleware stops at first successful scheme", async () => {
-    const callOrder: string[] = [];
-
-    const middleware = createAuthMiddleware({
-      schemes: [
-        {
-          type: "oauth2",
-          resourceMetadata: {
-            resource: "https://example.com/mcp",
-            authorization_servers: ["https://auth.example.com"],
-          },
-          validateToken: async () => {
-            callOrder.push("oauth");
-            return { valid: true }; // OAuth succeeds
-          },
-        },
-        {
-          type: "api_key",
-          validateKey: async () => {
-            callOrder.push("api_key");
-            return { valid: true };
-          },
-        },
-      ],
-    });
-
-    const request = createMockRequest({
-      url: "https://example.com/mcp",
-      headers: { Authorization: "Bearer valid-token" },
-    });
-
-    const result = await middleware(request);
-    expect(result.authorized).toBe(true);
-    // Should stop at OAuth, not try API Key
-    expect(callOrder).toEqual(["oauth"]);
-  });
-
-  test("middleware returns challenge response when all schemes fail", async () => {
-    const middleware = createAuthMiddleware({
-      schemes: [
-        {
-          type: "api_key",
-          validateKey: async () => ({ valid: false }),
-        },
-      ],
+    const middleware = createAwpAuthMiddleware({
+      pendingAuthStore,
+      pubkeyStore,
     });
 
     const request = createMockRequest({
@@ -492,7 +526,7 @@ describe("Auth Middleware", () => {
     const result = await middleware(request);
     expect(result.authorized).toBe(false);
     expect(result.challengeResponse).toBeDefined();
-    expect(result.challengeResponse!.status).toBe(401);
+    expect(result.challengeResponse?.status).toBe(401);
   });
 });
 
@@ -501,196 +535,193 @@ describe("Auth Middleware", () => {
 // =============================================================================
 
 describe("Challenge Response", () => {
-  test("buildChallengeResponse includes all schemes", async () => {
-    const config: AuthConfig = {
-      schemes: [
-        {
-          type: "oauth2",
-          resourceMetadata: {
-            resource: "https://example.com/mcp",
-            authorization_servers: ["https://auth.example.com"],
-          },
-          validateToken: async () => ({ valid: false }),
-        },
-        {
-          type: "api_key",
-          validateKey: async () => ({ valid: false }),
-        },
-      ],
-    };
-
-    const response = buildChallengeResponse({
-      baseUrl: "https://example.com",
-      config,
-    });
+  test("builds proper 401 response", async () => {
+    const response = buildChallengeResponse("/auth/init");
 
     expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toBe('AWP realm="awp"');
 
-    // Check WWW-Authenticate headers
-    const wwwAuth = response.headers.get("WWW-Authenticate");
-    expect(wwwAuth).toContain("Bearer");
-    expect(wwwAuth).toContain("X-API-Key");
-
-    // Check body
     const body = (await response.json()) as {
       error: string;
-      supported_schemes: Array<{ scheme: string }>;
+      auth_init_endpoint: string;
     };
     expect(body.error).toBe("unauthorized");
-    expect(body.supported_schemes).toHaveLength(2);
-    expect(body.supported_schemes[0]!.scheme).toBe("oauth2");
-    expect(body.supported_schemes[1]!.scheme).toBe("api_key");
+    expect(body.auth_init_endpoint).toBe("/auth/init");
   });
+});
 
-  test("getBaseUrl extracts origin from URL", () => {
-    const request = createMockRequest({
-      url: "https://api.example.com/mcp",
-    });
-    const baseUrl = getBaseUrl(request);
-    expect(baseUrl).toBe("https://api.example.com");
-  });
+// =============================================================================
+// hasAwpAuthCredentials Tests
+// =============================================================================
 
-  test("getBaseUrl respects X-Forwarded headers", () => {
+describe("hasAwpAuthCredentials", () => {
+  test("detects AWP auth headers", () => {
     const request = createMockRequest({
-      url: "http://localhost:3000/mcp",
       headers: {
-        "X-Forwarded-Proto": "https",
-        "X-Forwarded-Host": "api.example.com",
+        "X-AWP-Pubkey": "abc123.def456",
+        "X-AWP-Signature": "sig",
       },
     });
-    const baseUrl = getBaseUrl(request);
-    expect(baseUrl).toBe("https://api.example.com");
-  });
-});
-
-// =============================================================================
-// Well-Known Endpoint Tests
-// =============================================================================
-
-describe("Well-Known Endpoints", () => {
-  const oauthConfig: AuthConfig = {
-    schemes: [
-      {
-        type: "oauth2",
-        resourceMetadata: {
-          resource: "https://example.com/mcp",
-          authorization_servers: ["https://auth.example.com"],
-          scopes_supported: ["read", "write"],
-        },
-        validateToken: async () => ({ valid: false }),
-      },
-    ],
-  };
-
-  test("handleWellKnown returns PRM for OAuth config", async () => {
-    const request = createMockRequest({
-      url: `https://example.com${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}`,
-    });
-
-    const response = handleWellKnown(request, oauthConfig);
-    expect(response).not.toBeNull();
-    expect(response!.status).toBe(200);
-
-    const body = (await response!.json()) as {
-      resource: string;
-      authorization_servers: string[];
-      scopes_supported: string[];
-    };
-    expect(body.resource).toBe("https://example.com/mcp");
-    expect(body.authorization_servers).toContain("https://auth.example.com");
-    expect(body.scopes_supported).toEqual(["read", "write"]);
-  });
-
-  test("handleWellKnown returns 404 without OAuth config", async () => {
-    const request = createMockRequest({
-      url: `https://example.com${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}`,
-    });
-
-    const config: AuthConfig = {
-      schemes: [
-        {
-          type: "api_key",
-          validateKey: async () => ({ valid: false }),
-        },
-      ],
-    };
-
-    const response = handleWellKnown(request, config);
-    expect(response).not.toBeNull();
-    expect(response!.status).toBe(404);
-  });
-
-  test("handleWellKnown returns null for non-well-known paths", () => {
-    const request = createMockRequest({
-      url: "https://example.com/mcp",
-    });
-
-    const response = handleWellKnown(request, oauthConfig);
-    expect(response).toBeNull();
-  });
-
-  test("createWellKnownHandler returns reusable handler", async () => {
-    const handler = createWellKnownHandler(oauthConfig);
-
-    const request = createMockRequest({
-      url: `https://example.com${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}`,
-    });
-
-    const response = handler(request);
-    expect(response).not.toBeNull();
-    expect(response!.status).toBe(200);
-  });
-});
-
-// =============================================================================
-// hasAuthCredentials Tests
-// =============================================================================
-
-describe("hasAuthCredentials", () => {
-  const config: AuthConfig = {
-    schemes: [
-      {
-        type: "oauth2",
-        resourceMetadata: {
-          resource: "https://example.com/mcp",
-          authorization_servers: ["https://auth.example.com"],
-        },
-        validateToken: async () => ({ valid: false }),
-      },
-      {
-        type: "hmac",
-        secret: "test",
-      },
-      {
-        type: "api_key",
-        validateKey: async () => ({ valid: false }),
-      },
-    ],
-  };
-
-  test("detects Bearer token", () => {
-    const request = createMockRequest({
-      headers: { Authorization: "Bearer token" },
-    });
-    expect(hasAuthCredentials(request, config)).toBe(true);
-  });
-
-  test("detects HMAC signature", () => {
-    const request = createMockRequest({
-      headers: { "X-AWP-Signature": "sig" },
-    });
-    expect(hasAuthCredentials(request, config)).toBe(true);
-  });
-
-  test("detects API key", () => {
-    const request = createMockRequest({
-      headers: { "X-API-Key": "key" },
-    });
-    expect(hasAuthCredentials(request, config)).toBe(true);
+    expect(hasAwpAuthCredentials(request)).toBe(true);
   });
 
   test("returns false without credentials", () => {
     const request = createMockRequest({});
-    expect(hasAuthCredentials(request, config)).toBe(false);
+    expect(hasAwpAuthCredentials(request)).toBe(false);
+  });
+
+  test("returns false with partial credentials", () => {
+    const request = createMockRequest({
+      headers: {
+        "X-AWP-Pubkey": "abc123.def456",
+      },
+    });
+    expect(hasAwpAuthCredentials(request)).toBe(false);
+  });
+});
+
+// =============================================================================
+// Auth Router Tests
+// =============================================================================
+
+describe("Auth Router", () => {
+  test("routes /auth/init to handler", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
+
+    const request = createMockRequest({
+      url: "https://example.com/auth/init",
+      method: "POST",
+      body: JSON.stringify({
+        pubkey: "abc123.def456",
+        client_name: "Test Client",
+      }),
+    });
+
+    const response = await routeAuthRequest(request, {
+      baseUrl: "https://example.com",
+      pendingAuthStore,
+      pubkeyStore,
+    });
+
+    expect(response).not.toBeNull();
+    expect(response?.status).toBe(200);
+  });
+
+  test("returns null for non-auth paths", async () => {
+    const pendingAuthStore = new MemoryPendingAuthStore();
+    const pubkeyStore = new MemoryPubkeyStore();
+
+    const request = createMockRequest({
+      url: "https://example.com/mcp",
+    });
+
+    const response = await routeAuthRequest(request, {
+      baseUrl: "https://example.com",
+      pendingAuthStore,
+      pubkeyStore,
+    });
+
+    expect(response).toBeNull();
+  });
+});
+
+// =============================================================================
+// Memory Store Tests
+// =============================================================================
+
+describe("Memory Stores", () => {
+  describe("MemoryPendingAuthStore", () => {
+    test("creates and retrieves pending auth", async () => {
+      const store = new MemoryPendingAuthStore();
+
+      await store.create({
+        pubkey: "abc123.def456",
+        clientName: "Test",
+        verificationCode: "ABC-123",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 600000,
+      });
+
+      const auth = await store.get("abc123.def456");
+      expect(auth).not.toBeNull();
+      expect(auth?.clientName).toBe("Test");
+    });
+
+    test("returns null for expired auth", async () => {
+      const store = new MemoryPendingAuthStore();
+
+      await store.create({
+        pubkey: "abc123.def456",
+        clientName: "Test",
+        verificationCode: "ABC-123",
+        createdAt: Date.now() - 700000,
+        expiresAt: Date.now() - 100000,
+      });
+
+      const auth = await store.get("abc123.def456");
+      expect(auth).toBeNull();
+    });
+  });
+
+  describe("MemoryPubkeyStore", () => {
+    test("stores and retrieves authorized pubkey", async () => {
+      const store = new MemoryPubkeyStore();
+
+      await store.store({
+        pubkey: "abc123.def456",
+        userId: "user-123",
+        clientName: "Test",
+        createdAt: Date.now(),
+      });
+
+      const auth = await store.lookup("abc123.def456");
+      expect(auth).not.toBeNull();
+      expect(auth?.userId).toBe("user-123");
+    });
+
+    test("revokes pubkey", async () => {
+      const store = new MemoryPubkeyStore();
+
+      await store.store({
+        pubkey: "abc123.def456",
+        userId: "user-123",
+        clientName: "Test",
+        createdAt: Date.now(),
+      });
+
+      await store.revoke("abc123.def456");
+
+      const auth = await store.lookup("abc123.def456");
+      expect(auth).toBeNull();
+    });
+
+    test("lists pubkeys by user", async () => {
+      const store = new MemoryPubkeyStore();
+
+      await store.store({
+        pubkey: "key1.pub",
+        userId: "user-123",
+        clientName: "Client 1",
+        createdAt: Date.now(),
+      });
+
+      await store.store({
+        pubkey: "key2.pub",
+        userId: "user-123",
+        clientName: "Client 2",
+        createdAt: Date.now(),
+      });
+
+      await store.store({
+        pubkey: "key3.pub",
+        userId: "user-456",
+        clientName: "Client 3",
+        createdAt: Date.now(),
+      });
+
+      const keys = await store.listByUser("user-123");
+      expect(keys).toHaveLength(2);
+    });
   });
 });

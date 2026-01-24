@@ -16,6 +16,7 @@ import { createLambdaHandler } from "./handler.ts";
 import type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
+  AwpAuthLambdaConfig,
   LambdaAdapterOptions,
   LambdaAuthMiddleware,
   LambdaContext,
@@ -97,6 +98,7 @@ export class LambdaHandlerBuilder {
   private skills: Record<string, SkillRegistrationOptions> = {};
   private skillsConfig?: SkillsConfig;
   private authMiddleware?: LambdaAuthMiddleware;
+  private awpAuthConfig?: AwpAuthLambdaConfig;
   private customRoutes: LambdaRouteHandler[] = [];
 
   constructor(options: LambdaHandlerBuilderOptions = {}) {
@@ -177,10 +179,11 @@ export class LambdaHandlerBuilder {
    *
    * @example
    * ```typescript
-   * import { createAuthMiddleware } from "@agent-web-portal/auth";
+   * import { createAwpAuthMiddleware } from "@agent-web-portal/auth";
    *
-   * const authMiddleware = createAuthMiddleware({
-   *   schemes: [{ type: "api_key", validateKey: async (key) => ({ valid: key === "secret" }) }],
+   * const authMiddleware = createAwpAuthMiddleware({
+   *   pendingAuthStore: new DynamoDBPendingAuthStore({ tableName: "auth" }),
+   *   pubkeyStore: new DynamoDBPubkeyStore({ tableName: "auth" }),
    * });
    *
    * export const handler = createAgentWebPortalHandler({ name: "my-portal" })
@@ -195,6 +198,45 @@ export class LambdaHandlerBuilder {
   }
 
   /**
+   * Configure AWP authentication with stores
+   *
+   * This sets up the complete AWP auth flow including:
+   * - Auth initiation endpoint (/auth/init)
+   * - Auth status polling endpoint (/auth/status)
+   * - Auth completion endpoint (/auth/complete)
+   * - Request signature verification
+   *
+   * @param config - AWP auth configuration with stores
+   * @returns this - for method chaining
+   *
+   * @example
+   * ```typescript
+   * import { DynamoDBPendingAuthStore, DynamoDBPubkeyStore } from "@agent-web-portal/aws-lambda";
+   * import { createAwpAuthMiddleware } from "@agent-web-portal/auth";
+   *
+   * const pendingAuthStore = new DynamoDBPendingAuthStore({ tableName: "awp-auth" });
+   * const pubkeyStore = new DynamoDBPubkeyStore({ tableName: "awp-auth" });
+   *
+   * export const handler = createAgentWebPortalHandler({ name: "my-portal" })
+   *   .withAwpAuth({
+   *     pendingAuthStore,
+   *     pubkeyStore,
+   *     getAuthenticatedUser: async (req) => {
+   *       // Get user from session/JWT cookie
+   *       const userId = await getUserFromSession(req);
+   *       return userId ? { userId } : null;
+   *     },
+   *   })
+   *   .registerTool("greet", { ... })
+   *   .build();
+   * ```
+   */
+  withAwpAuth(config: AwpAuthLambdaConfig): this {
+    this.awpAuthConfig = config;
+    return this;
+  }
+
+  /**
    * Add custom route handlers
    *
    * Route handlers are called before the default routes. If a handler
@@ -203,17 +245,6 @@ export class LambdaHandlerBuilder {
    *
    * @param handler - Route handler function
    * @returns this - for method chaining
-   *
-   * @example
-   * ```typescript
-   * import { createWellKnownHandler } from "@agent-web-portal/auth";
-   *
-   * const wellKnownHandler = createWellKnownHandler(authConfig);
-   *
-   * export const handler = createAgentWebPortalHandler({ name: "my-portal" })
-   *   .withRoutes(wellKnownHandler)
-   *   .build();
-   * ```
    */
   withRoutes(handler: LambdaRouteHandler): this {
     this.customRoutes.push(handler);
@@ -247,11 +278,40 @@ export class LambdaHandlerBuilder {
       coerceXmlClientArgs: buildOptions.coerceXmlClientArgs ?? false,
     });
 
+    // If awpAuth is configured, create the auth middleware
+    let authMiddleware = this.authMiddleware;
+    if (this.awpAuthConfig && !authMiddleware) {
+      // Lazy import to avoid circular dependencies
+      const createMiddleware = async () => {
+        const { createAwpAuthMiddleware } = await import("@agent-web-portal/auth");
+        return createAwpAuthMiddleware({
+          pendingAuthStore: this.awpAuthConfig!.pendingAuthStore,
+          pubkeyStore: this.awpAuthConfig!.pubkeyStore,
+          maxClockSkew: this.awpAuthConfig!.maxClockSkew,
+          excludePaths: this.awpAuthConfig!.excludePaths,
+          authInitPath: this.awpAuthConfig!.authInitPath,
+          authStatusPath: this.awpAuthConfig!.authStatusPath,
+          authPagePath: this.awpAuthConfig!.authPagePath,
+        });
+      };
+
+      // Create a wrapper that creates the middleware on first call
+      let middlewarePromise: Promise<LambdaAuthMiddleware> | null = null;
+      authMiddleware = async (request) => {
+        if (!middlewarePromise) {
+          middlewarePromise = createMiddleware();
+        }
+        const middleware = await middlewarePromise;
+        return middleware(request);
+      };
+    }
+
     // Create and return the Lambda handler
     return createLambdaHandler(portal, {
       ...this.lambdaOptions,
       skillsConfig: this.skillsConfig,
-      authMiddleware: this.authMiddleware,
+      authMiddleware,
+      awpAuth: this.awpAuthConfig,
       customRoutes: this.customRoutes.length > 0 ? this.customRoutes : undefined,
     });
   }

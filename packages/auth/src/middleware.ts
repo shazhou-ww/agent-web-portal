@@ -1,23 +1,17 @@
 /**
- * Auth Middleware Factory
+ * AWP Auth Middleware
  *
- * Creates authentication middleware that can be used with various transport layers.
+ * Single authentication scheme: ECDSA P-256 keypair-based auth.
  */
 
-import { buildChallengeResponse, getBaseUrl } from "./challenge.ts";
-import { validateAPIKey, validateHMAC, validateOAuth } from "./schemes/index.ts";
-import type { AuthConfig, AuthHttpRequest, AuthResult } from "./types.ts";
-import { WELL_KNOWN_PATHS } from "./well-known.ts";
+import { handleAuthInit, handleAuthStatus } from "./auth-init.ts";
+import { buildChallengeResponse, hasAwpAuthCredentials, verifyAwpAuth } from "./awp-auth.ts";
+import type { AuthHttpRequest, AuthResult, AwpAuthConfig } from "./types.ts";
+import { AWP_AUTH_DEFAULTS } from "./types.ts";
 
-/**
- * Default paths to exclude from authentication
- */
-const DEFAULT_EXCLUDE_PATHS = [
-  WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE,
-  "/health",
-  "/healthz",
-  "/ping",
-];
+// ============================================================================
+// Path Checking
+// ============================================================================
 
 /**
  * Check if a path should be excluded from authentication
@@ -28,7 +22,7 @@ function shouldExcludePath(path: string, excludePaths: string[]): boolean {
     if (path === excludePath) {
       return true;
     }
-    // Prefix match with trailing slash (e.g., "/.well-known/" matches "/.well-known/anything")
+    // Prefix match with trailing slash
     if (excludePath.endsWith("/") && path.startsWith(excludePath)) {
       return true;
     }
@@ -37,30 +31,36 @@ function shouldExcludePath(path: string, excludePaths: string[]): boolean {
 }
 
 /**
- * Auth middleware function type
+ * Check if a path is an auth endpoint
  */
-export type AuthMiddleware = (request: AuthHttpRequest) => Promise<AuthResult>;
+function isAuthPath(path: string, config: AwpAuthConfig): boolean {
+  const authInitPath = config.authInitPath ?? AWP_AUTH_DEFAULTS.authInitPath;
+  const authStatusPath = config.authStatusPath ?? AWP_AUTH_DEFAULTS.authStatusPath;
+  const authPagePath = config.authPagePath ?? AWP_AUTH_DEFAULTS.authPagePath;
+
+  return path === authInitPath || path === authStatusPath || path.startsWith(authPagePath);
+}
+
+// ============================================================================
+// Auth Middleware
+// ============================================================================
 
 /**
- * Create authentication middleware
+ * AWP Auth middleware function type
+ */
+export type AwpAuthMiddleware = (request: AuthHttpRequest) => Promise<AuthResult>;
+
+/**
+ * Create AWP authentication middleware
  *
- * @param config - Auth configuration with schemes and options
+ * @param config - Auth configuration with stores
  * @returns Middleware function that validates requests
  *
  * @example
  * ```typescript
- * const authMiddleware = createAuthMiddleware({
- *   schemes: [
- *     {
- *       type: "oauth2",
- *       resourceMetadata: { ... },
- *       validateToken: async (token) => ({ valid: true, claims: {} }),
- *     },
- *     {
- *       type: "api_key",
- *       validateKey: async (key) => ({ valid: key === "secret" }),
- *     },
- *   ],
+ * const authMiddleware = createAwpAuthMiddleware({
+ *   pendingAuthStore: new MemoryPendingAuthStore(),
+ *   pubkeyStore: new MemoryPubkeyStore(),
  * });
  *
  * // In your request handler:
@@ -68,15 +68,27 @@ export type AuthMiddleware = (request: AuthHttpRequest) => Promise<AuthResult>;
  * if (!result.authorized) {
  *   return result.challengeResponse;
  * }
- * // Proceed with authenticated request
+ * // Proceed with authenticated request using result.context
  * ```
  */
-export function createAuthMiddleware(config: AuthConfig): AuthMiddleware {
-  // Merge default and custom exclude paths
-  const excludePaths = [...DEFAULT_EXCLUDE_PATHS, ...(config.excludePaths ?? [])];
+export function createAwpAuthMiddleware(config: AwpAuthConfig): AwpAuthMiddleware {
+  // Build list of excluded paths
+  const authInitPath = config.authInitPath ?? AWP_AUTH_DEFAULTS.authInitPath;
+  const authStatusPath = config.authStatusPath ?? AWP_AUTH_DEFAULTS.authStatusPath;
+  const authPagePath = config.authPagePath ?? AWP_AUTH_DEFAULTS.authPagePath;
+  const maxClockSkew = config.maxClockSkew ?? AWP_AUTH_DEFAULTS.maxClockSkew;
+
+  const excludePaths = [
+    authInitPath,
+    authStatusPath,
+    `${authPagePath}/`,
+    "/health",
+    "/healthz",
+    "/ping",
+    ...(config.excludePaths ?? []),
+  ];
 
   return async (request: AuthHttpRequest): Promise<AuthResult> => {
-    // Extract path from URL
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -88,84 +100,90 @@ export function createAuthMiddleware(config: AuthConfig): AuthMiddleware {
       };
     }
 
-    // Try each scheme in order until one succeeds
-    for (const scheme of config.schemes) {
-      let result:
-        | { valid: true; context: import("./types.ts").AuthContext }
-        | { valid: false; error?: string };
-
-      switch (scheme.type) {
-        case "oauth2":
-          result = await validateOAuth(request, scheme);
-          break;
-        case "hmac":
-          result = await validateHMAC(request, scheme);
-          break;
-        case "api_key":
-          result = await validateAPIKey(request, scheme);
-          break;
-      }
-
-      if (result.valid) {
-        return {
-          authorized: true,
-          context: result.context,
-        };
-      }
+    // Check if this is the auth page path (exact match, not API)
+    if (path === authPagePath) {
+      return {
+        authorized: true,
+        context: undefined,
+      };
     }
 
-    // No scheme succeeded - return challenge response
-    const baseUrl = getBaseUrl(request);
-    const challengeResponse = buildChallengeResponse({
-      baseUrl,
-      config,
-    });
+    // Check for AWP auth credentials
+    if (!hasAwpAuthCredentials(request)) {
+      // No credentials - return challenge
+      const challengeResponse = buildChallengeResponse(authInitPath);
+      return {
+        authorized: false,
+        challengeResponse,
+      };
+    }
 
-    return {
-      authorized: false,
-      challengeResponse,
-    };
+    // Verify the request signature
+    return verifyAwpAuth(request, config.pubkeyStore, maxClockSkew);
   };
 }
 
-/**
- * Utility to check if any auth credentials are present in the request
- *
- * Useful for determining whether to return 401 (missing credentials)
- * vs 403 (invalid credentials).
- */
-export function hasAuthCredentials(request: AuthHttpRequest, config: AuthConfig): boolean {
-  const headers = request.headers;
+// ============================================================================
+// Auth Request Router
+// ============================================================================
 
-  for (const scheme of config.schemes) {
-    switch (scheme.type) {
-      case "oauth2": {
-        const authHeader =
-          headers instanceof Headers ? headers.get("authorization") : headers.authorization;
-        if (authHeader?.toLowerCase().startsWith("bearer ")) {
-          return true;
-        }
-        break;
-      }
-      case "hmac": {
-        const signatureHeader = scheme.signatureHeader ?? "X-AWP-Signature";
-        const sig =
-          headers instanceof Headers ? headers.get(signatureHeader) : headers[signatureHeader];
-        if (sig) {
-          return true;
-        }
-        break;
-      }
-      case "api_key": {
-        const keyHeader = scheme.header ?? "X-API-Key";
-        const key = headers instanceof Headers ? headers.get(keyHeader) : headers[keyHeader];
-        if (key) {
-          return true;
-        }
-        break;
-      }
-    }
+/**
+ * Options for the auth router
+ */
+export interface AuthRouterOptions extends AwpAuthConfig {
+  /** Base URL for building auth URLs */
+  baseUrl: string;
+}
+
+/**
+ * Route auth-related requests to appropriate handlers
+ *
+ * This handles /auth/init and /auth/status automatically.
+ * Returns null if the request is not an auth endpoint.
+ *
+ * @example
+ * ```typescript
+ * const authResponse = await routeAuthRequest(request, options);
+ * if (authResponse) {
+ *   return authResponse;
+ * }
+ * // Continue with normal request handling
+ * ```
+ */
+export async function routeAuthRequest(
+  request: AuthHttpRequest,
+  options: AuthRouterOptions
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  const authInitPath = options.authInitPath ?? AWP_AUTH_DEFAULTS.authInitPath;
+  const authStatusPath = options.authStatusPath ?? AWP_AUTH_DEFAULTS.authStatusPath;
+
+  // Handle /auth/init
+  if (path === authInitPath) {
+    return handleAuthInit(request, {
+      baseUrl: options.baseUrl,
+      pendingAuthStore: options.pendingAuthStore,
+      authPagePath: options.authPagePath,
+      verificationCodeTTL: options.verificationCodeTTL,
+    });
   }
 
-  return false;
+  // Handle /auth/status
+  if (path === authStatusPath) {
+    return handleAuthStatus(request, {
+      pubkeyStore: options.pubkeyStore,
+      pendingAuthStore: options.pendingAuthStore,
+    });
+  }
+
+  // Not an auth endpoint
+  return null;
 }
+
+// ============================================================================
+// Utility: Check for credentials
+// ============================================================================
+
+export { hasAwpAuthCredentials } from "./awp-auth.ts";

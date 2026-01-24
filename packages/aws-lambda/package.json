@@ -46,7 +46,9 @@
     "check": "tsc --noEmit && biome check ."
   },
   "dependencies": {
+    "@agent-web-portal/auth": "workspace:*",
     "@agent-web-portal/core": "workspace:*",
+    "@aws-sdk/client-dynamodb": "^3.700.0",
     "@aws-sdk/client-s3": "^3.700.0",
     "@aws-sdk/s3-request-presigner": "^3.700.0",
     "jsonata": "^2.0.5",

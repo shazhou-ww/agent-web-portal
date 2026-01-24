@@ -44,7 +44,7 @@ export function base64urlDecode(str: string): Uint8Array {
 }
 
 /**
- * Encode string to hex
+ * Encode bytes to hex string
  */
 export function hexEncode(data: Uint8Array): string {
   return Array.from(data)
@@ -66,7 +66,7 @@ export async function generateKeyPair(): Promise<AwpKeyPair> {
   const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
   const privateJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
 
-  // Encode as compact format: x || y for public, d for private
+  // Encode as compact format: x.y for public, d for private
   const publicKey = `${publicJwk.x}.${publicJwk.y}`;
   const privateKey = privateJwk.d!;
 
@@ -120,34 +120,6 @@ export async function sign(keyPair: AwpKeyPair, data: string): Promise<string> {
   const encoder = new TextEncoder();
   const signature = await crypto.subtle.sign(SIGN_ALGORITHM, privateKey, encoder.encode(data));
   return base64urlEncode(new Uint8Array(signature));
-}
-
-/**
- * Generate a cryptographically secure random nonce (32 bytes)
- */
-export function generateNonce(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return hexEncode(bytes);
-}
-
-// ============================================================================
-// Verification Code Generation
-// ============================================================================
-
-/**
- * Generate verification code from signature
- *
- * Signs (nonce || publicKey) and takes last 8 hex characters
- */
-export async function generateVerificationCode(
-  keyPair: AwpKeyPair,
-  nonce: string
-): Promise<string> {
-  const payload = `${nonce}||${keyPair.publicKey}`;
-  const signature = await sign(keyPair, payload);
-  // Take last 8 characters of the signature as verification code
-  return signature.slice(-8).toUpperCase();
 }
 
 // ============================================================================

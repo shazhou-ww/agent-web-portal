@@ -4,23 +4,20 @@
  * Handles keypair-based authentication for AWP Client.
  *
  * Flow:
- * 1. First request → 401 with auth_endpoint
- * 2. Generate keypair → Create authUrl with verification code
- * 3. User visits authUrl → Enters verification code → Server stores pubkey
- * 4. Subsequent requests → Sign with privkey
+ * 1. First request → 401 with auth_init_endpoint
+ * 2. Call /auth/init → Server returns verification code
+ * 3. Display verification code to user
+ * 4. User visits authUrl → Enters verification code → Server stores pubkey
+ * 5. Client polls /auth/status until authorized
+ * 6. Subsequent requests → Sign with privkey
  */
 
-import {
-  generateKeyPair,
-  generateNonce,
-  generateVerificationCode,
-  signKeyRotation,
-  signRequest,
-} from "./crypto.ts";
+import { generateKeyPair, signKeyRotation, signRequest } from "./crypto.ts";
 import type {
   AuthCallbacks,
   AuthChallenge,
   AuthChallengeResponse,
+  AuthInitResponse,
   AwpAuthOptions,
   AwpKeyPair,
   KeyStorage,
@@ -43,6 +40,7 @@ export class AwpAuthError extends Error {
       | "KEY_EXPIRED"
       | "AUTH_REQUIRED"
       | "AUTH_FAILED"
+      | "AUTH_TIMEOUT"
       | "ROTATION_FAILED"
   ) {
     super(message);
@@ -79,6 +77,7 @@ export class AwpAuth {
   private keyStorage: KeyStorage;
   private callbacks: AuthCallbacks;
   private autoRotateDays: number;
+  private fetchFn: typeof fetch;
 
   // Cached keypair for current session
   private cachedKeyPair: AwpKeyPair | null = null;
@@ -89,6 +88,7 @@ export class AwpAuth {
     this.keyStorage = options.keyStorage;
     this.callbacks = options.callbacks ?? {};
     this.autoRotateDays = options.autoRotateDays ?? 7;
+    this.fetchFn = options.fetch ?? fetch;
   }
 
   // ==========================================================================
@@ -129,27 +129,51 @@ export class AwpAuth {
   /**
    * Handle a 401 response from the server
    *
-   * @returns true if authorization was initiated and client should retry
+   * This initiates the authorization flow:
+   * 1. Calls /auth/init to get server-generated verification code
+   * 2. Notifies callback with auth challenge
+   * 3. Optionally polls for authorization completion
+   *
+   * @returns true if authorization completed and client should retry
    */
-  async handleUnauthorized(endpoint: string, response: AuthChallengeResponse): Promise<boolean> {
-    if (!response.auth_endpoint) {
-      throw new AwpAuthError("Server did not provide auth_endpoint", "AUTH_FAILED");
+  async handleUnauthorized(
+    endpoint: string,
+    response: AuthChallengeResponse,
+    options?: { poll?: boolean; pollTimeout?: number }
+  ): Promise<boolean> {
+    const { poll = false, pollTimeout = 600000 } = options ?? {}; // 10 min default timeout
+
+    if (!response.auth_init_endpoint) {
+      throw new AwpAuthError("Server did not provide auth_init_endpoint", "AUTH_FAILED");
     }
 
-    // Generate new keypair
+    // Generate new keypair locally
     const keyPair = await generateKeyPair();
-    const nonce = generateNonce();
-    const verificationCode = await generateVerificationCode(keyPair, nonce);
 
-    // Build auth URL
-    const authUrl = this.buildAuthUrl(response.auth_endpoint, keyPair.publicKey, nonce);
+    // Call /auth/init to get server-generated verification code
+    const initUrl = new URL(response.auth_init_endpoint, endpoint);
+    const initResponse = await this.fetchFn(initUrl.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pubkey: keyPair.publicKey,
+        client_name: this.clientName,
+      }),
+    });
 
-    // Create challenge info
+    if (!initResponse.ok) {
+      const error = await initResponse.text();
+      throw new AwpAuthError(`Auth init failed: ${error}`, "AUTH_FAILED");
+    }
+
+    const initData = (await initResponse.json()) as AuthInitResponse;
+
+    // Create challenge info with server-provided verification code
     const challenge: AuthChallenge = {
-      authUrl,
-      verificationCode,
+      authUrl: initData.auth_url,
+      verificationCode: initData.verification_code,
       publicKey: keyPair.publicKey,
-      nonce,
+      expiresIn: initData.expires_in,
     };
 
     // Notify callback
@@ -160,10 +184,65 @@ export class AwpAuth {
       }
     }
 
-    // Store the keypair (will be validated on next request)
+    // Store the keypair (will be validated when auth completes)
     await this.saveKeyPair(endpoint, keyPair);
 
+    // Optionally poll for authorization completion
+    if (poll) {
+      const statusUrl = new URL(
+        response.auth_status_endpoint ?? "/auth/status",
+        endpoint
+      );
+      statusUrl.searchParams.set("pubkey", keyPair.publicKey);
+
+      const authorized = await this.pollAuthStatus(
+        statusUrl.toString(),
+        initData.poll_interval * 1000,
+        pollTimeout
+      );
+
+      if (!authorized) {
+        // Clear the stored key if authorization failed/timed out
+        await this.clearKey(endpoint);
+        throw new AwpAuthError("Authorization timed out", "AUTH_TIMEOUT");
+      }
+
+      if (this.callbacks.onAuthSuccess) {
+        this.callbacks.onAuthSuccess();
+      }
+    }
+
     return true;
+  }
+
+  /**
+   * Poll the auth status endpoint until authorized or timeout
+   */
+  private async pollAuthStatus(
+    statusUrl: string,
+    pollInterval: number,
+    timeout: number
+  ): Promise<boolean> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      try {
+        const response = await this.fetchFn(statusUrl);
+        if (response.ok) {
+          const data = (await response.json()) as { authorized: boolean; expires_at?: number };
+          if (data.authorized) {
+            return true;
+          }
+        }
+      } catch {
+        // Ignore fetch errors, continue polling
+      }
+
+      // Wait before next poll
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+
+    return false;
   }
 
   /**
@@ -200,13 +279,8 @@ export class AwpAuth {
    *
    * @param endpoint - The server endpoint
    * @param rotateEndpoint - The rotation API endpoint (e.g., /auth/rotate)
-   * @param fetchFn - Fetch function to use
    */
-  async rotateKey(
-    endpoint: string,
-    rotateEndpoint: string,
-    fetchFn: typeof fetch = fetch
-  ): Promise<void> {
+  async rotateKey(endpoint: string, rotateEndpoint: string): Promise<void> {
     const oldKeyPair = await this.getKeyPair(endpoint);
     if (!oldKeyPair) {
       throw new AwpAuthError("No existing key to rotate", "NO_KEY");
@@ -219,7 +293,7 @@ export class AwpAuth {
     const { signature, timestamp } = await signKeyRotation(oldKeyPair, newKeyPair);
 
     // Send rotation request
-    const response = await fetchFn(rotateEndpoint, {
+    const response = await this.fetchFn(rotateEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -333,16 +407,5 @@ export class AwpAuth {
         this.callbacks.onKeyExpiring(Math.ceil(daysRemaining));
       }
     }
-  }
-
-  /**
-   * Build authorization URL
-   */
-  private buildAuthUrl(authEndpoint: string, publicKey: string, nonce: string): string {
-    const url = new URL(authEndpoint);
-    url.searchParams.set("pubkey", publicKey);
-    url.searchParams.set("nonce", nonce);
-    url.searchParams.set("client", this.clientName);
-    return url.toString();
   }
 }

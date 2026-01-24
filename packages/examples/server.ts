@@ -12,11 +12,12 @@
  */
 
 import {
-  type AuthConfig,
   type AuthHttpRequest,
-  createAuthMiddleware,
-  handleWellKnown,
-  WELL_KNOWN_PATHS,
+  completeAuthorization,
+  createAwpAuthMiddleware,
+  MemoryPendingAuthStore,
+  MemoryPubkeyStore,
+  routeAuthRequest,
 } from "@agent-web-portal/auth";
 import { blob, createAgentWebPortal } from "@agent-web-portal/core";
 import { z } from "zod";
@@ -236,34 +237,18 @@ const ecommercePortal = createAgentWebPortal({
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-// Auth configuration with OAuth and API Key schemes
-const authConfig: AuthConfig = {
-  schemes: [
-    {
-      type: "oauth2",
-      resourceMetadata: {
-        resource: `http://localhost:${PORT}/auth`,
-        authorization_servers: ["https://auth.example.com"],
-        scopes_supported: ["read", "write"],
-        resource_name: "Auth Test Portal",
-        resource_description: "A portal for testing auth discovery",
-      },
-      validateToken: async (token) => ({
-        valid: token === "valid-test-token",
-        claims: { sub: "test-user", scope: "read write" },
-      }),
-    },
-    {
-      type: "api_key",
-      validateKey: async (key) => ({
-        valid: key === "test-api-key-123",
-        metadata: { tier: "premium", userId: "api-user" },
-      }),
-    },
-  ],
-};
+// AWP Auth stores (in-memory for testing)
+const pendingAuthStore = new MemoryPendingAuthStore();
+const pubkeyStore = new MemoryPubkeyStore();
 
-const authMiddleware = createAuthMiddleware(authConfig);
+// AWP Auth middleware
+const authMiddleware = createAwpAuthMiddleware({
+  pendingAuthStore,
+  pubkeyStore,
+  authInitPath: "/auth/init",
+  authStatusPath: "/auth/status",
+  authPagePath: "/auth/page",
+});
 
 // Auth portal uses the same greeting tool
 const authPortal = createAgentWebPortal({
@@ -381,28 +366,57 @@ async function routeRequest(req: Request): Promise<Response> {
     return ecommercePortal.handleRequest(req);
   }
 
-  // Auth portal routes: /auth, /auth/mcp, or well-known endpoints
+  // Auth portal routes
   if (pathname.startsWith("/auth")) {
     // Cast Request to AuthHttpRequest (compatible at runtime)
-    const authReq = req as unknown as AuthHttpRequest;
+    const authReq: AuthHttpRequest = {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      text: () => req.clone().text(),
+      clone: () => ({
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        text: () => req.clone().text(),
+        clone: () => authReq.clone(),
+      }),
+    };
 
-    // Handle well-known endpoint for auth discovery
-    // The path is /auth/.well-known/oauth-protected-resource
-    if (pathname === `/auth${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}`) {
-      // Create a modified request with the standard well-known path for handleWellKnown
-      const modifiedUrl = new URL(req.url);
-      modifiedUrl.pathname = WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE;
-      const modifiedReq = {
-        ...authReq,
-        url: modifiedUrl.toString(),
-      };
-      const wellKnownResponse = handleWellKnown(modifiedReq, authConfig);
-      if (wellKnownResponse) {
-        return wellKnownResponse;
-      }
+    // Handle AWP auth endpoints (/auth/init, /auth/status)
+    const authRouteResponse = await routeAuthRequest(authReq, {
+      baseUrl: `http://localhost:${PORT}`,
+      pendingAuthStore,
+      pubkeyStore,
+      authInitPath: "/auth/init",
+      authStatusPath: "/auth/status",
+      authPagePath: "/auth/page",
+    });
+    if (authRouteResponse) {
+      return authRouteResponse;
     }
 
-    // Apply auth middleware for other auth portal routes
+    // Handle auth completion endpoint (simulated - in real app this would be behind user auth)
+    if (pathname === "/auth/complete" && req.method === "POST") {
+      const body = await req.clone().json() as { pubkey: string; verification_code: string; user_id?: string };
+      // In a real app, user_id would come from session/JWT
+      const userId = body.user_id ?? "test-user";
+      const result = await completeAuthorization(body.pubkey, body.verification_code, userId, {
+        pendingAuthStore,
+        pubkeyStore,
+      });
+      if (result.success) {
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({ error: result.error, error_description: result.errorDescription }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Apply auth middleware for MCP endpoint
     if (pathname === "/auth" || pathname === "/auth/mcp") {
       const authResult = await authMiddleware(authReq);
       if (!authResult.authorized) {
@@ -433,8 +447,9 @@ async function routeRequest(req: Request): Promise<Response> {
           },
           auth: {
             endpoint: "/auth",
-            description: "Auth-enabled portal (requires authentication)",
-            wellKnown: `/auth${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}`,
+            description: "Auth-enabled portal (requires AWP authentication)",
+            authInit: "/auth/init",
+            authStatus: "/auth/status",
           },
           blob: {
             endpoint: "/blob",
@@ -472,11 +487,12 @@ console.log(`
       Tools: search_products, manage_cart, checkout
       Skills: shopping-assistant, product-comparison
 
-   3. Auth-Enabled Portal (requires authentication)
+   3. Auth-Enabled Portal (requires AWP authentication)
       POST http://localhost:${PORT}/auth
-      Well-Known: http://localhost:${PORT}/auth${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}
+      Auth Init: POST http://localhost:${PORT}/auth/init
+      Auth Status: GET http://localhost:${PORT}/auth/status?pubkey=...
       Tools: secure_greet
-      Auth: Bearer token or X-API-Key
+      Auth: ECDSA P-256 keypair signature
 
    4. Blob-Enabled Portal
       POST http://localhost:${PORT}/blob
@@ -489,14 +505,10 @@ console.log(`
      -H "Content-Type: application/json" \\
      -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
 
-   # Get auth discovery metadata
-   curl http://localhost:${PORT}/auth${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}
-
-   # Call auth portal with API key
-   curl -X POST http://localhost:${PORT}/auth \\
+   # Initiate auth flow
+   curl -X POST http://localhost:${PORT}/auth/init \\
      -H "Content-Type: application/json" \\
-     -H "X-API-Key: test-api-key-123" \\
-     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+     -d '{"pubkey":"abc.def","client_name":"Test Client"}'
 
 🧪 Run E2E Tests:
    bun test examples/e2e.test.ts
@@ -504,4 +516,4 @@ console.log(`
 Press Ctrl+C to stop the server.
 `);
 
-export { server, basicPortal, ecommercePortal, authPortal, blobPortal, authConfig, PORT };
+export { server, basicPortal, ecommercePortal, authPortal, blobPortal, pendingAuthStore, pubkeyStore, PORT };

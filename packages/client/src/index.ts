@@ -54,7 +54,6 @@ export {
   FileKeyStorage,
   // Crypto utilities
   generateKeyPair,
-  generateNonce,
   type KeyStorage,
   LocalStorageKeyStorage,
   MemoryKeyStorage,

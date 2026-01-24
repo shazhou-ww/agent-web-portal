@@ -4,6 +4,9 @@
  * Creates a Lambda handler that routes requests to:
  * - /mcp - MCP endpoint (JSON-RPC)
  * - /skills/:skillName - Skill download endpoint (redirects to S3 presigned URL)
+ * - /auth/init - Auth initiation endpoint
+ * - /auth/status - Auth status polling endpoint
+ * - /auth/complete - Auth completion endpoint
  */
 
 import { readFileSync } from "node:fs";
@@ -14,11 +17,18 @@ import { parse as parseYaml } from "yaml";
 import type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
+  AwpAuthLambdaConfig,
   LambdaAdapterOptions,
   LambdaAuthRequest,
   LambdaContext,
   SkillsConfig,
 } from "./types.ts";
+
+// Default auth paths
+const DEFAULT_AUTH_INIT_PATH = "/auth/init";
+const DEFAULT_AUTH_STATUS_PATH = "/auth/status";
+const DEFAULT_AUTH_COMPLETE_PATH = "/auth/complete";
+const DEFAULT_AUTH_PAGE_PATH = "/auth";
 
 /**
  * Create a Lambda handler for Agent Web Portal
@@ -70,11 +80,17 @@ export function createLambdaHandler(
   const presignedUrlExpiration = options.presignedUrlExpiration ?? 3600;
   const authMiddleware = options.authMiddleware;
   const customRoutes = options.customRoutes ?? [];
+  const awpAuth = options.awpAuth;
+
+  // Get auth paths
+  const authInitPath = awpAuth?.authInitPath ?? DEFAULT_AUTH_INIT_PATH;
+  const authStatusPath = awpAuth?.authStatusPath ?? DEFAULT_AUTH_STATUS_PATH;
+  const authPagePath = awpAuth?.authPagePath ?? DEFAULT_AUTH_PAGE_PATH;
 
   return async (
     event: APIGatewayProxyEvent,
     _context: LambdaContext
-  ): Promise<APIGatewayProxyResult> => {
+  ) => {
     const { path, httpMethod } = event;
 
     try {
@@ -86,7 +102,7 @@ export function createLambdaHandler(
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Allow-Headers":
-              "Content-Type, Authorization, Mcp-Session-Id, X-API-Key, X-AWP-Signature, X-AWP-Key-Id, X-AWP-Timestamp",
+              "Content-Type, Authorization, Mcp-Session-Id, X-API-Key, X-AWP-Signature, X-AWP-Pubkey, X-AWP-Timestamp",
           },
           body: "",
         };
@@ -102,9 +118,17 @@ export function createLambdaHandler(
 
       // Try custom routes first (e.g., well-known endpoints)
       for (const routeHandler of customRoutes) {
-        const response = routeHandler(authRequest);
+        const response = await routeHandler(authRequest);
         if (response) {
           return await responseToApiGateway(response);
+        }
+      }
+
+      // Handle AWP auth endpoints (before auth middleware)
+      if (awpAuth) {
+        const authResponse = await handleAwpAuthRoutes(path, authRequest, awpAuth, baseUrl);
+        if (authResponse) {
+          return await responseToApiGateway(authResponse);
         }
       }
 
@@ -160,6 +184,87 @@ export function createLambdaHandler(
       };
     }
   };
+}
+
+/**
+ * Handle AWP auth-related routes
+ */
+async function handleAwpAuthRoutes(
+  path: string,
+  request: LambdaAuthRequest,
+  config: AwpAuthLambdaConfig,
+  baseUrl: string
+): Promise<Response | null> {
+  const authInitPath = config.authInitPath ?? DEFAULT_AUTH_INIT_PATH;
+  const authStatusPath = config.authStatusPath ?? DEFAULT_AUTH_STATUS_PATH;
+  const authCompletePath = DEFAULT_AUTH_COMPLETE_PATH;
+
+  // Import auth functions lazily to avoid circular dependencies
+  const { handleAuthInit, handleAuthStatus } = await import("@agent-web-portal/auth");
+
+  // Handle /auth/init
+  if (path === authInitPath) {
+    return handleAuthInit(request, {
+      baseUrl,
+      pendingAuthStore: config.pendingAuthStore,
+      authPagePath: config.authPagePath ?? DEFAULT_AUTH_PAGE_PATH,
+      verificationCodeTTL: config.verificationCodeTTL,
+    });
+  }
+
+  // Handle /auth/status
+  if (path === authStatusPath) {
+    return handleAuthStatus(request, {
+      pubkeyStore: config.pubkeyStore,
+      pendingAuthStore: config.pendingAuthStore,
+    });
+  }
+
+  // Handle /auth/complete
+  if (path === authCompletePath && request.method === "POST") {
+    return handleAuthComplete(request, config);
+  }
+
+  return null;
+}
+
+/**
+ * Handle auth completion endpoint
+ */
+async function handleAuthComplete(
+  request: LambdaAuthRequest,
+  config: AwpAuthLambdaConfig
+): Promise<Response> {
+  // Get authenticated user from session
+  if (!config.getAuthenticatedUser) {
+    return new Response(
+      JSON.stringify({
+        error: "server_error",
+        error_description: "Auth completion not configured",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const user = await config.getAuthenticatedUser(request);
+  if (!user) {
+    return new Response(
+      JSON.stringify({
+        error: "unauthorized",
+        error_description: "User not authenticated",
+      }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Import auth functions lazily
+  const { handleAuthComplete: authComplete } = await import("@agent-web-portal/auth");
+
+  return authComplete(request, user.userId, {
+    pendingAuthStore: config.pendingAuthStore,
+    pubkeyStore: config.pubkeyStore,
+    authorizationTTL: config.authorizationTTL,
+  });
 }
 
 /**

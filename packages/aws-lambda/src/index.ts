@@ -5,7 +5,7 @@
  *
  * @example
  * ```typescript
- * import { createAgentWebPortalHandler } from "@agent-web-portal/aws-lambda";
+ * import { createAgentWebPortalHandler, DynamoDBPendingAuthStore, DynamoDBPubkeyStore } from "@agent-web-portal/aws-lambda";
  * import { z } from "zod";
  *
  * const skillsConfig = {
@@ -16,12 +16,16 @@
  *   ],
  * };
  *
+ * const pendingAuthStore = new DynamoDBPendingAuthStore({ tableName: "awp-auth" });
+ * const pubkeyStore = new DynamoDBPubkeyStore({ tableName: "awp-auth" });
+ *
  * export const handler = createAgentWebPortalHandler({ name: "my-portal" })
  *   .registerTool("greet", {
  *     inputSchema: z.object({ name: z.string() }),
  *     outputSchema: z.object({ message: z.string() }),
  *     handler: async ({ name }) => ({ message: `Hello, ${name}!` }),
  *   })
+ *   .withAwpAuth({ pendingAuthStore, pubkeyStore })
  *   .withSkillsConfig(skillsConfig)
  *   .build();
  * ```
@@ -33,15 +37,25 @@ export {
   type LambdaHandler,
   LambdaHandlerBuilder,
   type LambdaHandlerBuilderOptions,
+  type LambdaHandlerBuildOptions,
 } from "./builder.ts";
 
 // Low-level API - for advanced usage
 export { createLambdaHandler } from "./handler.ts";
 
+// DynamoDB store implementations
+export {
+  DynamoDBPendingAuthStore,
+  type DynamoDBPendingAuthStoreOptions,
+  DynamoDBPubkeyStore,
+  type DynamoDBPubkeyStoreOptions,
+} from "./stores/index.ts";
+
 // Types
 export type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
+  AwpAuthLambdaConfig,
   LambdaAdapterOptions,
   LambdaAuthContext,
   LambdaAuthMiddleware,

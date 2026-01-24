@@ -462,40 +462,159 @@ describe("Portal Isolation", () => {
 });
 
 // =============================================================================
-// Auth Discovery Tests (/auth)
+// AWP Auth Discovery Tests (/auth)
 // =============================================================================
 
-describe("Auth Discovery (/auth)", () => {
+describe("AWP Auth Discovery (/auth)", () => {
   const authPath = "/auth";
-  const wellKnownPath = "/auth/.well-known/oauth-protected-resource";
+  const authInitPath = "/auth/init";
+  const authStatusPath = "/auth/status";
+  const authCompletePath = "/auth/complete";
 
-  describe("Well-Known Endpoints", () => {
-    test("returns Protected Resource Metadata for OAuth", async () => {
-      const response = await fetch(`${BASE_URL}${wellKnownPath}`);
-      const result = (await response.json()) as any;
+  // Test keypair for signing requests
+  let testPublicKey: string;
+  let testPrivateKey: CryptoKey;
+
+  // Generate test keypair before tests
+  beforeAll(async () => {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"]
+    );
+    const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+    testPublicKey = `${publicJwk.x}.${publicJwk.y}`;
+    testPrivateKey = keyPair.privateKey;
+  });
+
+  // Helper to sign a payload
+  async function signPayload(payload: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const signature = await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      testPrivateKey,
+      encoder.encode(payload)
+    );
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
+    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  // Helper to hash body
+  async function hashBody(body: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
+    return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  describe("Auth Init Endpoint", () => {
+    test("returns verification code for valid pubkey", async () => {
+      const response = await fetch(`${BASE_URL}${authInitPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: testPublicKey,
+          client_name: "E2E Test Client",
+        }),
+      });
 
       expect(response.status).toBe(200);
-      expect(result.resource).toBeDefined();
-      expect(result.authorization_servers).toBeArray();
-      expect(result.authorization_servers).toContain("https://auth.example.com");
-    });
 
-    test("includes all OAuth metadata fields", async () => {
-      const response = await fetch(`${BASE_URL}${wellKnownPath}`);
       const result = (await response.json()) as any;
-
-      expect(result.resource).toContain("/auth");
-      expect(result.authorization_servers).toHaveLength(1);
-      expect(result.scopes_supported).toEqual(["read", "write"]);
-      expect(result.resource_name).toBe("Auth Test Portal");
-      expect(result.resource_description).toBe("A portal for testing auth discovery");
+      expect(result.auth_url).toBeDefined();
+      expect(result.verification_code).toMatch(/^[A-Z0-9]{3}-[A-Z0-9]{3}$/);
+      expect(result.expires_in).toBe(600);
+      expect(result.poll_interval).toBe(5);
     });
 
-    test("returns proper Cache-Control header", async () => {
-      const response = await fetch(`${BASE_URL}${wellKnownPath}`);
+    test("rejects invalid pubkey format", async () => {
+      const response = await fetch(`${BASE_URL}${authInitPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: "invalid-format",
+          client_name: "Test Client",
+        }),
+      });
 
-      expect(response.headers.get("Content-Type")).toBe("application/json");
-      expect(response.headers.get("Cache-Control")).toContain("public");
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe("Auth Status Endpoint", () => {
+    test("returns authorized: false for pending auth", async () => {
+      // First init
+      await fetch(`${BASE_URL}${authInitPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: "pending.key",
+          client_name: "Test",
+        }),
+      });
+
+      // Check status
+      const response = await fetch(`${BASE_URL}${authStatusPath}?pubkey=pending.key`);
+      expect(response.status).toBe(200);
+
+      const result = (await response.json()) as any;
+      expect(result.authorized).toBe(false);
+    });
+  });
+
+  describe("Auth Complete Flow", () => {
+    test("completes auth with valid verification code", async () => {
+      // Step 1: Init auth
+      const initResponse = await fetch(`${BASE_URL}${authInitPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: testPublicKey,
+          client_name: "E2E Test Client",
+        }),
+      });
+      const initResult = (await initResponse.json()) as any;
+      const verificationCode = initResult.verification_code;
+
+      // Step 2: Complete auth (simulating user entering code)
+      const completeResponse = await fetch(`${BASE_URL}${authCompletePath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: testPublicKey,
+          verification_code: verificationCode,
+          user_id: "e2e-test-user",
+        }),
+      });
+      expect(completeResponse.status).toBe(200);
+
+      // Step 3: Check status
+      const statusResponse = await fetch(`${BASE_URL}${authStatusPath}?pubkey=${encodeURIComponent(testPublicKey)}`);
+      const statusResult = (await statusResponse.json()) as any;
+      expect(statusResult.authorized).toBe(true);
+    });
+
+    test("rejects invalid verification code", async () => {
+      // Init auth
+      await fetch(`${BASE_URL}${authInitPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: "wrong.code.key",
+          client_name: "Test",
+        }),
+      });
+
+      // Complete with wrong code
+      const response = await fetch(`${BASE_URL}${authCompletePath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: "wrong.code.key",
+          verification_code: "WRONG-CODE",
+        }),
+      });
+      expect(response.status).toBe(400);
     });
   });
 
@@ -514,7 +633,7 @@ describe("Auth Discovery (/auth)", () => {
       expect(response.status).toBe(401);
     });
 
-    test("includes WWW-Authenticate headers", async () => {
+    test("includes WWW-Authenticate header", async () => {
       const response = await fetch(`${BASE_URL}${authPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -527,13 +646,10 @@ describe("Auth Discovery (/auth)", () => {
 
       const wwwAuth = response.headers.get("WWW-Authenticate");
       expect(wwwAuth).not.toBeNull();
-      // Should include Bearer for OAuth
-      expect(wwwAuth).toContain("Bearer");
-      // Should include X-API-Key for API key auth
-      expect(wwwAuth).toContain("X-API-Key");
+      expect(wwwAuth).toContain("AWP");
     });
 
-    test("includes supported_schemes in body", async () => {
+    test("includes auth_init_endpoint in body", async () => {
       const response = await fetch(`${BASE_URL}${authPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -545,152 +661,123 @@ describe("Auth Discovery (/auth)", () => {
       });
 
       const result = (await response.json()) as any;
-
       expect(result.error).toBe("unauthorized");
-      expect(result.error_description).toBeDefined();
-      expect(result.supported_schemes).toBeArray();
-      expect(result.supported_schemes).toHaveLength(2);
-
-      // Check OAuth scheme info
-      const oauthScheme = result.supported_schemes.find((s: any) => s.scheme === "oauth2");
-      expect(oauthScheme).toBeDefined();
-      expect(oauthScheme.resource_metadata_url).toContain("/.well-known/oauth-protected-resource");
-
-      // Check API Key scheme info
-      const apiKeyScheme = result.supported_schemes.find((s: any) => s.scheme === "api_key");
-      expect(apiKeyScheme).toBeDefined();
-      expect(apiKeyScheme.header).toBe("X-API-Key");
+      expect(result.auth_init_endpoint).toBe("/auth/init");
     });
   });
 
-  describe("Authentication", () => {
-    test("succeeds with valid Bearer token", async () => {
+  describe("Authenticated Requests", () => {
+    test("succeeds with valid signature", async () => {
+      // First complete auth flow
+      const initResponse = await fetch(`${BASE_URL}${authInitPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: testPublicKey,
+          client_name: "Signed Request Test",
+        }),
+      });
+      const { verification_code } = (await initResponse.json()) as any;
+
+      await fetch(`${BASE_URL}${authCompletePath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: testPublicKey,
+          verification_code,
+          user_id: "signed-request-user",
+        }),
+      });
+
+      // Now make signed request
+      const body = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+      });
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const bodyHash = await hashBody(body);
+      const payload = `${timestamp}.POST./auth.${bodyHash}`;
+      const signature = await signPayload(payload);
+
       const response = await fetch(`${BASE_URL}${authPath}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer valid-test-token",
+          "X-AWP-Pubkey": testPublicKey,
+          "X-AWP-Timestamp": timestamp,
+          "X-AWP-Signature": signature,
         },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/list",
-        }),
+        body,
       });
 
       expect(response.status).toBe(200);
-
       const result = (await response.json()) as JsonRpcResult;
       expect(result.result).toBeDefined();
       expect(result.result.tools).toBeArray();
     });
 
-    test("succeeds with valid API key", async () => {
+    test("can call tools with valid signature", async () => {
+      const body = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "secure_greet",
+          arguments: { name: "SignedUser", language: "en" },
+        },
+      });
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const bodyHash = await hashBody(body);
+      const payload = `${timestamp}.POST./auth.${bodyHash}`;
+      const signature = await signPayload(payload);
+
       const response = await fetch(`${BASE_URL}${authPath}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": "test-api-key-123",
+          "X-AWP-Pubkey": testPublicKey,
+          "X-AWP-Timestamp": timestamp,
+          "X-AWP-Signature": signature,
         },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/list",
-        }),
+        body,
       });
 
       expect(response.status).toBe(200);
-
       const result = (await response.json()) as JsonRpcResult;
-      expect(result.result).toBeDefined();
-      expect(result.result.tools).toBeArray();
-    });
-
-    test("fails with invalid Bearer token", async () => {
-      const response = await fetch(`${BASE_URL}${authPath}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer invalid-token",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/list",
-        }),
-      });
-
-      expect(response.status).toBe(401);
-    });
-
-    test("fails with invalid API key", async () => {
-      const response = await fetch(`${BASE_URL}${authPath}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": "wrong-key",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/list",
-        }),
-      });
-
-      expect(response.status).toBe(401);
-    });
-
-    test("can call tools with valid authentication", async () => {
-      const result = await jsonRpcWithAuth(authPath, "tools/call", {
-        name: "secure_greet",
-        arguments: { name: "AuthUser", language: "en" },
-      });
-
       expect(result.result.content).toBeArray();
       const content = JSON.parse(result.result.content[0].text);
-      expect(content.message).toContain("AuthUser");
+      expect(content.message).toContain("SignedUser");
       expect(content.message).toContain("authenticated");
     });
   });
 
   describe("Path Exclusions", () => {
-    test("allows well-known endpoints without auth", async () => {
-      // Well-known endpoint should be accessible without auth
-      const response = await fetch(`${BASE_URL}${wellKnownPath}`);
+    test("auth/init does not require auth", async () => {
+      const response = await fetch(`${BASE_URL}${authInitPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pubkey: "test.pubkey",
+          client_name: "Test",
+        }),
+      });
+      // Should return 200, not 401
+      expect(response.status).toBe(200);
+    });
+
+    test("auth/status does not require auth", async () => {
+      const response = await fetch(`${BASE_URL}${authStatusPath}?pubkey=test`);
+      // Should return 200, not 401
       expect(response.status).toBe(200);
     });
 
     test("health check does not require auth (root level)", async () => {
-      // Health check at root level should always be accessible
       const response = await fetch(`${BASE_URL}/health`);
       expect(response.status).toBe(200);
     });
   });
 });
-
-// Helper to make authenticated JSON-RPC requests
-async function jsonRpcWithAuth(
-  path: string,
-  method: string,
-  params?: Record<string, unknown>,
-  id = 1
-): Promise<JsonRpcResult> {
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": "test-api-key-123",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id,
-      method,
-      params,
-    }),
-  });
-
-  return response.json() as Promise<JsonRpcResult>;
-}
 
 // =============================================================================
 // Blob Handling Tests (/blob)

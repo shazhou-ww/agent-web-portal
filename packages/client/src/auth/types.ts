@@ -13,7 +13,7 @@
  * Keypair for AWP authentication
  */
 export interface AwpKeyPair {
-  /** Public key in base64url format */
+  /** Public key in base64url format (x.y) */
   publicKey: string;
   /** Private key in base64url format (JWK 'd' parameter) */
   privateKey: string;
@@ -78,8 +78,24 @@ export interface KeyStorage {
 export interface AuthChallengeResponse {
   error: "unauthorized";
   error_description?: string;
-  /** Authorization endpoint URL */
-  auth_endpoint?: string;
+  /** Endpoint for initiating authorization (/auth/init) */
+  auth_init_endpoint?: string;
+  /** Endpoint for polling authorization status (optional, defaults to /auth/status) */
+  auth_status_endpoint?: string;
+}
+
+/**
+ * Response from POST /auth/init
+ */
+export interface AuthInitResponse {
+  /** URL for user to visit to complete authorization */
+  auth_url: string;
+  /** Server-generated verification code to display to user */
+  verification_code: string;
+  /** Seconds until this authorization request expires */
+  expires_in: number;
+  /** Recommended polling interval in seconds */
+  poll_interval: number;
 }
 
 /**
@@ -88,12 +104,12 @@ export interface AuthChallengeResponse {
 export interface AuthChallenge {
   /** Full authorization URL for user to visit */
   authUrl: string;
-  /** 8-character verification code user needs to enter */
+  /** Server-generated verification code (format: XXX-XXX) */
   verificationCode: string;
   /** Public key being authorized */
   publicKey: string;
-  /** Nonce used for this authorization */
-  nonce: string;
+  /** Seconds until this authorization expires */
+  expiresIn: number;
 }
 
 // ============================================================================
@@ -164,4 +180,8 @@ export interface AwpAuthOptions {
    * Default: 7
    */
   autoRotateDays?: number;
+  /**
+   * Custom fetch function (for testing or custom environments)
+   */
+  fetch?: typeof fetch;
 }

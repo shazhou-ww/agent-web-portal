@@ -5,21 +5,19 @@
 import type { SkillFrontmatter } from "@agent-web-portal/core";
 
 // ============================================================================
-// Auth Middleware Types
+// Auth Types
 // ============================================================================
 
 /**
- * Auth context from successful authentication
+ * Auth context from successful AWP authentication
  */
 export interface LambdaAuthContext {
-  /** The scheme that was used for authentication */
-  scheme: string;
-  /** Decoded token claims (for OAuth) */
-  claims?: Record<string, unknown>;
-  /** Key metadata (for API Key) */
-  metadata?: Record<string, unknown>;
-  /** Key ID (for HMAC) */
-  keyId?: string;
+  /** The authenticated user's ID */
+  userId: string;
+  /** The client's public key */
+  pubkey: string;
+  /** The client name */
+  clientName: string;
 }
 
 /**
@@ -57,7 +55,77 @@ export interface LambdaAuthRequest {
  *
  * Returns a Response if handled, null if not handled.
  */
-export type LambdaRouteHandler = (request: LambdaAuthRequest) => Response | null;
+export type LambdaRouteHandler = (request: LambdaAuthRequest) => Response | null | Promise<Response | null>;
+
+// ============================================================================
+// AWP Auth Configuration
+// ============================================================================
+
+/**
+ * AWP Auth configuration for Lambda
+ */
+export interface AwpAuthLambdaConfig {
+  /**
+   * Path for auth initiation endpoint
+   * @default "/auth/init"
+   */
+  authInitPath?: string;
+
+  /**
+   * Path for auth status polling endpoint
+   * @default "/auth/status"
+   */
+  authStatusPath?: string;
+
+  /**
+   * Path for auth page (where user enters verification code)
+   * @default "/auth"
+   */
+  authPagePath?: string;
+
+  /**
+   * Store for pending authorizations
+   */
+  pendingAuthStore: import("@agent-web-portal/auth").PendingAuthStore;
+
+  /**
+   * Store for authorized pubkeys
+   */
+  pubkeyStore: import("@agent-web-portal/auth").PubkeyStore;
+
+  /**
+   * TTL for verification codes in seconds
+   * @default 600 (10 minutes)
+   */
+  verificationCodeTTL?: number;
+
+  /**
+   * Maximum allowed clock skew for request signatures in seconds
+   * @default 300 (5 minutes)
+   */
+  maxClockSkew?: number;
+
+  /**
+   * Paths to exclude from authentication
+   */
+  excludePaths?: string[];
+
+  /**
+   * Function to get authenticated user ID from a session/cookie
+   * Required for auth completion endpoint
+   */
+  getAuthenticatedUser?: (request: LambdaAuthRequest) => Promise<{ userId: string } | null>;
+
+  /**
+   * TTL for authorized pubkeys in seconds
+   * @default 2592000 (30 days)
+   */
+  authorizationTTL?: number;
+}
+
+// ============================================================================
+// Skill Configuration
+// ============================================================================
 
 /**
  * Skill configuration from skills.yaml
@@ -83,6 +151,10 @@ export interface SkillsConfig {
   skills: SkillConfig[];
 }
 
+// ============================================================================
+// Lambda Adapter Options
+// ============================================================================
+
 /**
  * Lambda adapter options
  */
@@ -99,7 +171,13 @@ export interface LambdaAdapterOptions {
   authMiddleware?: LambdaAuthMiddleware;
   /** Custom route handlers (e.g., well-known endpoints) */
   customRoutes?: LambdaRouteHandler[];
+  /** AWP Auth configuration (if using built-in AWP auth) */
+  awpAuth?: AwpAuthLambdaConfig;
 }
+
+// ============================================================================
+// API Gateway Types
+// ============================================================================
 
 /**
  * API Gateway Proxy Event (simplified)

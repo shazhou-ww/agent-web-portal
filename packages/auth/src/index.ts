@@ -1,120 +1,125 @@
 /**
  * @agent-web-portal/auth
  *
- * Authentication middleware for Agent Web Portal.
- * Supports OAuth 2.1, HMAC signature, and API Key authentication.
+ * AWP Authentication package for server-side auth handling.
+ * Uses ECDSA P-256 keypair-based authentication with server-generated
+ * verification codes for anti-phishing protection.
  *
  * @example
  * ```typescript
  * import {
- *   createAuthMiddleware,
- *   createWellKnownHandler,
- *   handleWellKnown,
+ *   createAwpAuthMiddleware,
+ *   routeAuthRequest,
+ *   MemoryPendingAuthStore,
+ *   MemoryPubkeyStore,
  * } from "@agent-web-portal/auth";
  *
- * // Create auth middleware
- * const authMiddleware = createAuthMiddleware({
- *   schemes: [
- *     {
- *       type: "oauth2",
- *       resourceMetadata: {
- *         resource: "https://api.example.com/mcp",
- *         authorization_servers: ["https://auth.example.com"],
- *       },
- *       validateToken: async (token) => {
- *         // Validate JWT or call introspection endpoint
- *         return { valid: true, claims: { sub: "user-123" } };
- *       },
- *     },
- *     {
- *       type: "hmac",
- *       secret: process.env.HMAC_SECRET!,
- *     },
- *     {
- *       type: "api_key",
- *       validateKey: async (key) => ({ valid: key === "my-secret-key" }),
- *     },
- *   ],
+ * // Create stores (use DynamoDB/Redis in production)
+ * const pendingAuthStore = new MemoryPendingAuthStore();
+ * const pubkeyStore = new MemoryPubkeyStore();
+ *
+ * // Create middleware
+ * const authMiddleware = createAwpAuthMiddleware({
+ *   pendingAuthStore,
+ *   pubkeyStore,
  * });
  *
- * // Use in your request handler
- * const result = await authMiddleware(request);
- * if (!result.authorized) {
- *   return result.challengeResponse; // 401 with WWW-Authenticate headers
- * }
+ * // In your request handler:
+ * Bun.serve({
+ *   fetch: async (req) => {
+ *     // Handle auth endpoints
+ *     const authResponse = await routeAuthRequest(req, {
+ *       baseUrl: "https://example.com",
+ *       pendingAuthStore,
+ *       pubkeyStore,
+ *     });
+ *     if (authResponse) return authResponse;
  *
- * // Handle well-known endpoints
- * const wellKnownResponse = handleWellKnown(request, config);
- * if (wellKnownResponse) {
- *   return wellKnownResponse;
- * }
+ *     // Check authentication
+ *     const result = await authMiddleware(req);
+ *     if (!result.authorized) {
+ *       return result.challengeResponse!;
+ *     }
+ *
+ *     // Proceed with authenticated request
+ *     // result.context contains { userId, pubkey, clientName }
+ *   },
+ * });
  * ```
  */
 
 // ============================================================================
-// Challenge Builder
-// ============================================================================
-export { buildChallengeResponse, type ChallengeOptions, getBaseUrl } from "./challenge.ts";
-
-// ============================================================================
 // Middleware
 // ============================================================================
-export { type AuthMiddleware, createAuthMiddleware, hasAuthCredentials } from "./middleware.ts";
-// ============================================================================
-// Individual Scheme Utilities (for advanced use cases)
-// ============================================================================
+
 export {
-  API_KEY_DEFAULTS,
-  buildAPIKeySchemeInfo,
-  buildAPIKeyWwwAuthenticate,
-  buildHMACSchemeInfo,
-  buildHMACWwwAuthenticate,
-  buildOAuthSchemeInfo,
-  buildOAuthWwwAuthenticate,
-  // OAuth
-  extractBearerToken,
-  HMAC_DEFAULTS,
-  OAUTH_DEFAULTS,
-  // API Key
-  validateAPIKey,
-  // HMAC
-  validateHMAC,
-  validateOAuth,
-} from "./schemes/index.ts";
+  createAwpAuthMiddleware,
+  hasAwpAuthCredentials,
+  routeAuthRequest,
+  type AuthRouterOptions,
+  type AwpAuthMiddleware,
+} from "./middleware.ts";
+
+// ============================================================================
+// Auth Init (for custom implementations)
+// ============================================================================
+
+export {
+  generateVerificationCode,
+  handleAuthInit,
+  handleAuthStatus,
+  MemoryPendingAuthStore,
+  type HandleAuthInitOptions,
+  type HandleAuthStatusOptions,
+} from "./auth-init.ts";
+
+// ============================================================================
+// Auth Complete (for custom implementations)
+// ============================================================================
+
+export {
+  completeAuthorization,
+  handleAuthComplete,
+  MemoryPubkeyStore,
+  type AuthCompleteResult,
+  type HandleAuthCompleteOptions,
+} from "./auth-complete.ts";
+
+// ============================================================================
+// AWP Auth (low-level utilities)
+// ============================================================================
+
+export {
+  buildChallengeResponse,
+  validateTimestamp,
+  verifyAwpAuth,
+  verifySignature,
+} from "./awp-auth.ts";
+
 // ============================================================================
 // Types
 // ============================================================================
+
 export type {
-  APIKeyScheme,
-  APIKeySchemeInfo,
-  // Config types
-  AuthConfig,
+  // Config
+  AwpAuthConfig,
+  // Stores
+  PendingAuth,
+  PendingAuthStore,
+  AuthorizedPubkey,
+  PubkeyStore,
+  // Auth context and result
   AuthContext,
-  // HTTP types
-  AuthHttpRequest,
-  // Result types
   AuthResult,
-  // Scheme types
-  AuthScheme,
-  AuthSchemeBase,
-  AuthSchemeType,
-  // Challenge types
+  // HTTP
+  AuthHttpRequest,
+  // Request/Response types
+  AuthInitRequest,
+  AuthInitResponse,
+  AuthCompleteRequest,
+  AuthStatusResponse,
   ChallengeBody,
-  HMACScheme,
-  HMACSchemeInfo,
-  KeyValidationResult,
-  OAuthScheme,
-  OAuthSchemeInfo,
-  ProtectedResourceMetadata,
-  SchemeInfo,
-  TokenValidationResult,
 } from "./types.ts";
-// ============================================================================
-// Well-Known Handlers
-// ============================================================================
-export {
-  createWellKnownHandler,
-  handleWellKnown,
-  isWellKnownPath,
-  WELL_KNOWN_PATHS,
-} from "./well-known.ts";
+
+// Constants
+export { AWP_AUTH_DEFAULTS, AWP_AUTH_HEADERS } from "./types.ts";
