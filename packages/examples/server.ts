@@ -2,14 +2,23 @@
  * Unified Example Server for Agent Web Portal
  *
  * Runs all example portals on a single server with different routes:
- * - /basic/*   -> Basic greeting portal
+ * - /basic/*     -> Basic greeting portal
  * - /ecommerce/* -> E-commerce portal
+ * - /auth/*      -> Auth-enabled portal (for auth discovery testing)
+ * - /blob/*      -> Blob-enabled portal (for blob handling testing)
  *
  * Run with: bun run examples/server.ts
  * Test with: bun test examples/e2e.test.ts
  */
 
-import { createAgentWebPortal } from "@agent-web-portal/core";
+import {
+  type AuthConfig,
+  type AuthHttpRequest,
+  createAuthMiddleware,
+  handleWellKnown,
+  WELL_KNOWN_PATHS,
+} from "@agent-web-portal/auth";
+import { blob, createAgentWebPortal } from "@agent-web-portal/core";
 import { z } from "zod";
 
 // =============================================================================
@@ -222,10 +231,131 @@ const ecommercePortal = createAgentWebPortal({
   .build();
 
 // =============================================================================
-// 3. Unified HTTP Server
+// 3. Auth-Enabled Portal (for testing auth discovery)
 // =============================================================================
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// Auth configuration with OAuth and API Key schemes
+const authConfig: AuthConfig = {
+  schemes: [
+    {
+      type: "oauth2",
+      resourceMetadata: {
+        resource: `http://localhost:${PORT}/auth`,
+        authorization_servers: ["https://auth.example.com"],
+        scopes_supported: ["read", "write"],
+        resource_name: "Auth Test Portal",
+        resource_description: "A portal for testing auth discovery",
+      },
+      validateToken: async (token) => ({
+        valid: token === "valid-test-token",
+        claims: { sub: "test-user", scope: "read write" },
+      }),
+    },
+    {
+      type: "api_key",
+      validateKey: async (key) => ({
+        valid: key === "test-api-key-123",
+        metadata: { tier: "premium", userId: "api-user" },
+      }),
+    },
+  ],
+};
+
+const authMiddleware = createAuthMiddleware(authConfig);
+
+// Auth portal uses the same greeting tool
+const authPortal = createAgentWebPortal({
+  name: "auth-portal",
+  version: "1.0.0",
+  description: "Auth-enabled portal for testing",
+})
+  .registerTool("secure_greet", {
+    inputSchema: GreetInputSchema,
+    outputSchema: GreetOutputSchema,
+    description: "A secure greeting that requires authentication",
+    handler: async ({ name, language }) => {
+      const greetings: Record<string, string> = {
+        en: `Hello, ${name}! (authenticated)`,
+        es: `¡Hola, ${name}! (autenticado)`,
+        fr: `Bonjour, ${name}! (authentifié)`,
+        de: `Hallo, ${name}! (authentifiziert)`,
+        ja: `こんにちは、${name}さん！(認証済み)`,
+      };
+
+      return {
+        message: greetings[language ?? "en"] ?? greetings.en!,
+        timestamp: new Date().toISOString(),
+      };
+    },
+  })
+  .build();
+
+// =============================================================================
+// 4. Blob-Enabled Portal (for testing blob handling)
+// =============================================================================
+
+// Input schema with blob field
+const ProcessDocumentInputSchema = z.object({
+  document: blob({ mimeType: "application/pdf", description: "PDF document to process" }),
+  quality: z.number().min(1).max(100).default(80).describe("Output quality (1-100)"),
+});
+
+// Output schema with blob field
+const ProcessDocumentOutputSchema = z.object({
+  thumbnail: blob({ mimeType: "image/png", description: "Generated thumbnail" }),
+  pageCount: z.number().describe("Number of pages in the document"),
+  processedAt: z.string().describe("Processing timestamp"),
+});
+
+// Import blob tracking from separate module
+import { recordBlobHandlerCall } from "./blob-tracker.ts";
+
+const blobPortal = createAgentWebPortal({
+  name: "blob-portal",
+  version: "1.0.0",
+  description: "Portal with blob-enabled tools for testing",
+})
+  .registerTool("process_document", {
+    inputSchema: ProcessDocumentInputSchema,
+    outputSchema: ProcessDocumentOutputSchema,
+    description: "Process a PDF document and generate a thumbnail",
+    handler: async ({ quality }, context) => {
+      // Record the blob URLs for testing
+      recordBlobHandlerCall({
+        toolName: "process_document",
+        inputBlobs: context?.blobs.input ?? {},
+        outputBlobs: context?.blobs.output ?? {},
+      });
+
+      // Simulate document processing
+      return {
+        pageCount: 10,
+        processedAt: new Date().toISOString(),
+        // thumbnail placeholder - will be overwritten by framework with permanent URI
+        thumbnail: "",
+      };
+    },
+  })
+  .registerTool("simple_tool", {
+    // A tool without blobs for comparison
+    inputSchema: z.object({
+      message: z.string().describe("A simple message"),
+    }),
+    outputSchema: z.object({
+      echo: z.string().describe("The echoed message"),
+    }),
+    description: "A simple tool without blobs",
+    handler: async ({ message }) => ({
+      echo: `Echo: ${message}`,
+    }),
+  })
+  .build();
+
+// =============================================================================
+// 5. Unified HTTP Server
+// =============================================================================
 
 /**
  * Route request to the appropriate portal based on path prefix
@@ -251,6 +381,42 @@ async function routeRequest(req: Request): Promise<Response> {
     return ecommercePortal.handleRequest(req);
   }
 
+  // Auth portal routes: /auth, /auth/mcp, or well-known endpoints
+  if (pathname.startsWith("/auth")) {
+    // Cast Request to AuthHttpRequest (compatible at runtime)
+    const authReq = req as unknown as AuthHttpRequest;
+
+    // Handle well-known endpoint for auth discovery
+    // The path is /auth/.well-known/oauth-protected-resource
+    if (pathname === `/auth${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}`) {
+      // Create a modified request with the standard well-known path for handleWellKnown
+      const modifiedUrl = new URL(req.url);
+      modifiedUrl.pathname = WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE;
+      const modifiedReq = {
+        ...authReq,
+        url: modifiedUrl.toString(),
+      };
+      const wellKnownResponse = handleWellKnown(modifiedReq, authConfig);
+      if (wellKnownResponse) {
+        return wellKnownResponse;
+      }
+    }
+
+    // Apply auth middleware for other auth portal routes
+    if (pathname === "/auth" || pathname === "/auth/mcp") {
+      const authResult = await authMiddleware(authReq);
+      if (!authResult.authorized) {
+        return authResult.challengeResponse!;
+      }
+      return authPortal.handleRequest(req);
+    }
+  }
+
+  // Blob portal routes: /blob or /blob/mcp
+  if (pathname === "/blob" || pathname === "/blob/mcp") {
+    return blobPortal.handleRequest(req);
+  }
+
   // Root route - show available portals
   if (pathname === "/") {
     return new Response(
@@ -264,6 +430,15 @@ async function routeRequest(req: Request): Promise<Response> {
           ecommerce: {
             endpoint: "/ecommerce",
             description: "E-commerce portal with shopping cart",
+          },
+          auth: {
+            endpoint: "/auth",
+            description: "Auth-enabled portal (requires authentication)",
+            wellKnown: `/auth${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}`,
+          },
+          blob: {
+            endpoint: "/blob",
+            description: "Blob-enabled portal (for testing blob handling)",
           },
         },
       }),
@@ -297,6 +472,16 @@ console.log(`
       Tools: search_products, manage_cart, checkout
       Skills: shopping-assistant, product-comparison
 
+   3. Auth-Enabled Portal (requires authentication)
+      POST http://localhost:${PORT}/auth
+      Well-Known: http://localhost:${PORT}/auth${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}
+      Tools: secure_greet
+      Auth: Bearer token or X-API-Key
+
+   4. Blob-Enabled Portal
+      POST http://localhost:${PORT}/blob
+      Tools: process_document (with blob I/O), simple_tool
+
 📋 Test Commands:
 
    # Initialize basic portal
@@ -304,25 +489,14 @@ console.log(`
      -H "Content-Type: application/json" \\
      -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
 
-   # List tools (basic)
-   curl -X POST http://localhost:${PORT}/basic \\
-     -H "Content-Type: application/json" \\
-     -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+   # Get auth discovery metadata
+   curl http://localhost:${PORT}/auth${WELL_KNOWN_PATHS.OAUTH_PROTECTED_RESOURCE}
 
-   # Call greet tool
-   curl -X POST http://localhost:${PORT}/basic \\
+   # Call auth portal with API key
+   curl -X POST http://localhost:${PORT}/auth \\
      -H "Content-Type: application/json" \\
-     -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"greet","arguments":{"name":"World","language":"es"}}}'
-
-   # Initialize ecommerce portal
-   curl -X POST http://localhost:${PORT}/ecommerce \\
-     -H "Content-Type: application/json" \\
-     -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
-
-   # Search products
-   curl -X POST http://localhost:${PORT}/ecommerce \\
-     -H "Content-Type: application/json" \\
-     -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_products","arguments":{"query":"laptop","limit":5}}}'
+     -H "X-API-Key: test-api-key-123" \\
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
 🧪 Run E2E Tests:
    bun test examples/e2e.test.ts
@@ -330,4 +504,4 @@ console.log(`
 Press Ctrl+C to stop the server.
 `);
 
-export { server, basicPortal, ecommercePortal, PORT };
+export { server, basicPortal, ecommercePortal, authPortal, blobPortal, authConfig, PORT };

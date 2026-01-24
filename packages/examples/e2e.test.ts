@@ -460,3 +460,471 @@ describe("Portal Isolation", () => {
     expect(ecommerceToolNames).not.toContain("greet");
   });
 });
+
+// =============================================================================
+// Auth Discovery Tests (/auth)
+// =============================================================================
+
+describe("Auth Discovery (/auth)", () => {
+  const authPath = "/auth";
+  const wellKnownPath = "/auth/.well-known/oauth-protected-resource";
+
+  describe("Well-Known Endpoints", () => {
+    test("returns Protected Resource Metadata for OAuth", async () => {
+      const response = await fetch(`${BASE_URL}${wellKnownPath}`);
+      const result = (await response.json()) as any;
+
+      expect(response.status).toBe(200);
+      expect(result.resource).toBeDefined();
+      expect(result.authorization_servers).toBeArray();
+      expect(result.authorization_servers).toContain("https://auth.example.com");
+    });
+
+    test("includes all OAuth metadata fields", async () => {
+      const response = await fetch(`${BASE_URL}${wellKnownPath}`);
+      const result = (await response.json()) as any;
+
+      expect(result.resource).toContain("/auth");
+      expect(result.authorization_servers).toHaveLength(1);
+      expect(result.scopes_supported).toEqual(["read", "write"]);
+      expect(result.resource_name).toBe("Auth Test Portal");
+      expect(result.resource_description).toBe("A portal for testing auth discovery");
+    });
+
+    test("returns proper Cache-Control header", async () => {
+      const response = await fetch(`${BASE_URL}${wellKnownPath}`);
+
+      expect(response.headers.get("Content-Type")).toBe("application/json");
+      expect(response.headers.get("Cache-Control")).toContain("public");
+    });
+  });
+
+  describe("401 Challenge Response", () => {
+    test("returns 401 without credentials", async () => {
+      const response = await fetch(`${BASE_URL}${authPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+        }),
+      });
+
+      expect(response.status).toBe(401);
+    });
+
+    test("includes WWW-Authenticate headers", async () => {
+      const response = await fetch(`${BASE_URL}${authPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+        }),
+      });
+
+      const wwwAuth = response.headers.get("WWW-Authenticate");
+      expect(wwwAuth).not.toBeNull();
+      // Should include Bearer for OAuth
+      expect(wwwAuth).toContain("Bearer");
+      // Should include X-API-Key for API key auth
+      expect(wwwAuth).toContain("X-API-Key");
+    });
+
+    test("includes supported_schemes in body", async () => {
+      const response = await fetch(`${BASE_URL}${authPath}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+        }),
+      });
+
+      const result = (await response.json()) as any;
+
+      expect(result.error).toBe("unauthorized");
+      expect(result.error_description).toBeDefined();
+      expect(result.supported_schemes).toBeArray();
+      expect(result.supported_schemes).toHaveLength(2);
+
+      // Check OAuth scheme info
+      const oauthScheme = result.supported_schemes.find((s: any) => s.scheme === "oauth2");
+      expect(oauthScheme).toBeDefined();
+      expect(oauthScheme.resource_metadata_url).toContain("/.well-known/oauth-protected-resource");
+
+      // Check API Key scheme info
+      const apiKeyScheme = result.supported_schemes.find((s: any) => s.scheme === "api_key");
+      expect(apiKeyScheme).toBeDefined();
+      expect(apiKeyScheme.header).toBe("X-API-Key");
+    });
+  });
+
+  describe("Authentication", () => {
+    test("succeeds with valid Bearer token", async () => {
+      const response = await fetch(`${BASE_URL}${authPath}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer valid-test-token",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const result = (await response.json()) as JsonRpcResult;
+      expect(result.result).toBeDefined();
+      expect(result.result.tools).toBeArray();
+    });
+
+    test("succeeds with valid API key", async () => {
+      const response = await fetch(`${BASE_URL}${authPath}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "test-api-key-123",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const result = (await response.json()) as JsonRpcResult;
+      expect(result.result).toBeDefined();
+      expect(result.result.tools).toBeArray();
+    });
+
+    test("fails with invalid Bearer token", async () => {
+      const response = await fetch(`${BASE_URL}${authPath}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer invalid-token",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+        }),
+      });
+
+      expect(response.status).toBe(401);
+    });
+
+    test("fails with invalid API key", async () => {
+      const response = await fetch(`${BASE_URL}${authPath}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": "wrong-key",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+        }),
+      });
+
+      expect(response.status).toBe(401);
+    });
+
+    test("can call tools with valid authentication", async () => {
+      const result = await jsonRpcWithAuth(authPath, "tools/call", {
+        name: "secure_greet",
+        arguments: { name: "AuthUser", language: "en" },
+      });
+
+      expect(result.result.content).toBeArray();
+      const content = JSON.parse(result.result.content[0].text);
+      expect(content.message).toContain("AuthUser");
+      expect(content.message).toContain("authenticated");
+    });
+  });
+
+  describe("Path Exclusions", () => {
+    test("allows well-known endpoints without auth", async () => {
+      // Well-known endpoint should be accessible without auth
+      const response = await fetch(`${BASE_URL}${wellKnownPath}`);
+      expect(response.status).toBe(200);
+    });
+
+    test("health check does not require auth (root level)", async () => {
+      // Health check at root level should always be accessible
+      const response = await fetch(`${BASE_URL}/health`);
+      expect(response.status).toBe(200);
+    });
+  });
+});
+
+// Helper to make authenticated JSON-RPC requests
+async function jsonRpcWithAuth(
+  path: string,
+  method: string,
+  params?: Record<string, unknown>,
+  id = 1
+): Promise<JsonRpcResult> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": "test-api-key-123",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id,
+      method,
+      params,
+    }),
+  });
+
+  return response.json() as Promise<JsonRpcResult>;
+}
+
+// =============================================================================
+// Blob Handling Tests (/blob)
+// =============================================================================
+
+describe("Blob Handling (/blob)", () => {
+  const blobPath = "/blob";
+
+  describe("Blob Schema in tools/list", () => {
+    test("marks blob fields with x-awp-blob", async () => {
+      const result = await jsonRpc(blobPath, "tools/list");
+
+      expect(result.result.tools).toBeArray();
+
+      // Find the process_document tool
+      const processDocTool = result.result.tools.find((t: any) => t.name === "process_document");
+      expect(processDocTool).toBeDefined();
+
+      // Check input schema has x-awp-blob marker for document field
+      const inputSchema = processDocTool.inputSchema;
+      expect(inputSchema.properties.document).toBeDefined();
+      expect(inputSchema.properties.document["x-awp-blob"]).toBeDefined();
+      expect(inputSchema.properties.document["x-awp-blob"].mimeType).toBe("application/pdf");
+    });
+
+    test("includes blob metadata in schema", async () => {
+      const result = await jsonRpc(blobPath, "tools/list");
+
+      const processDocTool = result.result.tools.find((t: any) => t.name === "process_document");
+      const blobMeta = processDocTool.inputSchema.properties.document["x-awp-blob"];
+
+      expect(blobMeta.mimeType).toBe("application/pdf");
+      expect(blobMeta.description).toBe("PDF document to process");
+    });
+
+    test("simple_tool has no blob markers", async () => {
+      const result = await jsonRpc(blobPath, "tools/list");
+
+      const simpleTool = result.result.tools.find((t: any) => t.name === "simple_tool");
+      expect(simpleTool).toBeDefined();
+
+      // Check that message field does not have x-awp-blob
+      expect(simpleTool.inputSchema.properties.message).toBeDefined();
+      expect(simpleTool.inputSchema.properties.message["x-awp-blob"]).toBeUndefined();
+    });
+  });
+
+  describe("Blob Context Validation", () => {
+    test("requires blob context for blob tools", async () => {
+      // Call process_document without _blobContext
+      const result = await jsonRpc(blobPath, "tools/call", {
+        name: "process_document",
+        arguments: {
+          document: "mock://input/test.pdf",
+          quality: 80,
+        },
+        // No _blobContext provided
+      });
+
+      // Should return an error about missing blob context
+      expect(result.result.isError).toBe(true);
+      expect(result.result.content[0].text).toContain("blob context");
+    });
+
+    test("validates input blob presigned URLs", async () => {
+      // Call with incomplete input blob context
+      const result = await jsonRpc(blobPath, "tools/call", {
+        name: "process_document",
+        arguments: {
+          document: "mock://input/test.pdf",
+          quality: 80,
+        },
+        _blobContext: {
+          input: {}, // Missing document presigned URL
+          output: {
+            thumbnail: "https://mock.storage/put/thumbnail",
+          },
+          outputUri: {
+            thumbnail: "mock://output/thumb.png",
+          },
+        },
+      });
+
+      expect(result.result.isError).toBe(true);
+      expect(result.result.content[0].text).toContain("document");
+    });
+
+    test("validates output blob presigned URLs", async () => {
+      // Call with incomplete output blob context
+      const result = await jsonRpc(blobPath, "tools/call", {
+        name: "process_document",
+        arguments: {
+          document: "mock://input/test.pdf",
+          quality: 80,
+        },
+        _blobContext: {
+          input: {
+            document: "https://mock.storage/get/test.pdf",
+          },
+          output: {}, // Missing thumbnail presigned URL
+          outputUri: {
+            thumbnail: "mock://output/thumb.png",
+          },
+        },
+      });
+
+      expect(result.result.isError).toBe(true);
+      expect(result.result.content[0].text).toContain("thumbnail");
+    });
+
+    test("validates output blob permanent URIs", async () => {
+      // Call with missing outputUri
+      const result = await jsonRpc(blobPath, "tools/call", {
+        name: "process_document",
+        arguments: {
+          document: "mock://input/test.pdf",
+          quality: 80,
+        },
+        _blobContext: {
+          input: {
+            document: "https://mock.storage/get/test.pdf",
+          },
+          output: {
+            thumbnail: "https://mock.storage/put/thumbnail",
+          },
+          outputUri: {}, // Missing thumbnail permanent URI
+        },
+      });
+
+      expect(result.result.isError).toBe(true);
+      expect(result.result.content[0].text).toContain("thumbnail");
+    });
+  });
+
+  describe("Blob Processing", () => {
+    test("processes blob tool with valid context", async () => {
+      const result = await jsonRpc(blobPath, "tools/call", {
+        name: "process_document",
+        arguments: {
+          document: "mock://input/test.pdf",
+          quality: 90,
+        },
+        _blobContext: {
+          input: {
+            document: "https://mock.storage/get/test.pdf?sig=abc",
+          },
+          output: {
+            thumbnail: "https://mock.storage/put/thumbnail?sig=xyz",
+          },
+          outputUri: {
+            thumbnail: "mock://output/generated-thumb.png",
+          },
+        },
+      });
+
+      expect(result.result.isError).toBeUndefined();
+      expect(result.result.content).toBeArray();
+      expect(result.result.content[0].type).toBe("text");
+    });
+
+    test("returns permanent URIs for output blobs", async () => {
+      const expectedUri = "mock://output/my-thumbnail-123.png";
+
+      const result = await jsonRpc(blobPath, "tools/call", {
+        name: "process_document",
+        arguments: {
+          document: "mock://input/doc.pdf",
+          quality: 85,
+        },
+        _blobContext: {
+          input: {
+            document: "https://mock.storage/get/doc.pdf",
+          },
+          output: {
+            thumbnail: "https://mock.storage/put/thumb",
+          },
+          outputUri: {
+            thumbnail: expectedUri,
+          },
+        },
+      });
+
+      const content = JSON.parse(result.result.content[0].text);
+
+      // The output should contain the permanent URI
+      expect(content.thumbnail).toBe(expectedUri);
+      expect(content.pageCount).toBe(10); // From the mock handler
+      expect(content.processedAt).toBeDefined();
+    });
+
+    test("simple tool works without blob context", async () => {
+      // simple_tool has no blob fields, should work without _blobContext
+      const result = await jsonRpc(blobPath, "tools/call", {
+        name: "simple_tool",
+        arguments: {
+          message: "Hello, World!",
+        },
+      });
+
+      expect(result.result.isError).toBeUndefined();
+
+      const content = JSON.parse(result.result.content[0].text);
+      expect(content.echo).toBe("Echo: Hello, World!");
+    });
+
+    test("blob tool processes with custom quality parameter", async () => {
+      // Test that the handler receives the non-blob arguments correctly
+      // by verifying the tool executes successfully with various quality values
+      const result = await jsonRpc(blobPath, "tools/call", {
+        name: "process_document",
+        arguments: {
+          document: "mock://input/quality-test.pdf",
+          quality: 95, // Custom quality value
+        },
+        _blobContext: {
+          input: {
+            document: "https://mock.storage/get/quality-test.pdf",
+          },
+          output: {
+            thumbnail: "https://mock.storage/put/quality-thumb",
+          },
+          outputUri: {
+            thumbnail: "mock://output/quality-thumb.png",
+          },
+        },
+      });
+
+      expect(result.result.isError).toBeUndefined();
+
+      const content = JSON.parse(result.result.content[0].text);
+      // Verify the tool executed successfully
+      expect(content.pageCount).toBe(10);
+      expect(content.processedAt).toBeDefined();
+      expect(content.thumbnail).toBe("mock://output/quality-thumb.png");
+    });
+  });
+});

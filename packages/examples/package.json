@@ -16,8 +16,10 @@
     "check": "tsc --noEmit && biome check ."
   },
   "dependencies": {
+    "@agent-web-portal/auth": "workspace:*",
+    "@agent-web-portal/client": "workspace:*",
     "@agent-web-portal/core": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "3"
   },
   "devDependencies": {
     "@types/bun": "latest"
