@@ -81,14 +81,11 @@ export function createLambdaHandler(
   const awpAuth = options.awpAuth;
 
   // Get auth paths
-  const authInitPath = awpAuth?.authInitPath ?? DEFAULT_AUTH_INIT_PATH;
-  const authStatusPath = awpAuth?.authStatusPath ?? DEFAULT_AUTH_STATUS_PATH;
-  const authPagePath = awpAuth?.authPagePath ?? DEFAULT_AUTH_PAGE_PATH;
+  const _authInitPath = awpAuth?.authInitPath ?? DEFAULT_AUTH_INIT_PATH;
+  const _authStatusPath = awpAuth?.authStatusPath ?? DEFAULT_AUTH_STATUS_PATH;
+  const _authPagePath = awpAuth?.authPagePath ?? DEFAULT_AUTH_PAGE_PATH;
 
-  return async (
-    event: APIGatewayProxyEvent,
-    _context: LambdaContext
-  ) => {
+  return async (event: APIGatewayProxyEvent, _context: LambdaContext) => {
     const { path, httpMethod } = event;
 
     try {

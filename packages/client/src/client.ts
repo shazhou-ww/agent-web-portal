@@ -5,7 +5,12 @@
  * with automatic blob handling through presigned URLs.
  */
 
-import type { BlobContext, McpToolSchema, McpToolsListResponse } from "@agent-web-portal/core";
+import type {
+  BlobContext,
+  McpToolAwpExtension,
+  McpToolSchema,
+  McpToolsListResponse,
+} from "@agent-web-portal/core";
 import type { AuthChallengeResponse, AwpAuth } from "./auth/index.ts";
 import { BlobInterceptor, type ToolBlobSchema } from "./blob-interceptor.ts";
 import type { StorageProvider } from "./storage/types.ts";
@@ -53,7 +58,7 @@ interface CachedToolSchema {
  * blob handling. The client:
  *
  * 1. Fetches tool schemas from the server
- * 2. Identifies blob fields from x-awp-blob markers
+ * 2. Identifies blob fields from the _awp.blobs extension
  * 3. Generates presigned URLs for input and output blobs
  * 4. Sends the request with blob context
  * 5. Returns results with permanent URIs
@@ -180,23 +185,18 @@ export class AwpClient {
   }
 
   /**
-   * Extract blob fields from a JSON Schema
+   * Extract blob fields from the _awp extension
+   * @param awp - The _awp extension object from the tool schema
+   * @param type - "input" or "output"
    */
-  private extractBlobFieldsFromSchema(schema: Record<string, unknown>): string[] {
-    const blobFields: string[] = [];
-
-    const properties = schema.properties as Record<string, Record<string, unknown>> | undefined;
-    if (!properties) {
-      return blobFields;
+  private extractBlobFieldsFromAwp(
+    awp: McpToolAwpExtension | undefined,
+    type: "input" | "output"
+  ): string[] {
+    if (!awp?.blobs?.[type]) {
+      return [];
     }
-
-    for (const [key, value] of Object.entries(properties)) {
-      if (value && typeof value === "object" && "x-awp-blob" in value) {
-        blobFields.push(key);
-      }
-    }
-
-    return blobFields;
+    return Object.keys(awp.blobs[type]!);
   }
 
   /**
@@ -210,23 +210,15 @@ export class AwpClient {
     const response = (await this.sendRequest("tools/list")) as McpToolsListResponse;
 
     for (const tool of response.tools) {
-      const inputBlobs = this.extractBlobFieldsFromSchema(
-        tool.inputSchema as Record<string, unknown>
-      );
-
-      // Note: We don't have output schema in the standard MCP tools/list response
-      // For now, we'll need to either:
-      // 1. Add an AWP extension to include output schema
-      // 2. Have the server return blob info separately
-      // 3. Let the caller provide blob info
-      // For this implementation, we'll use an empty array for output blobs
-      // and let the server handle output blob filling
+      // Extract blob fields from the _awp extension (not from JSON Schema)
+      const inputBlobs = this.extractBlobFieldsFromAwp(tool._awp, "input");
+      const outputBlobs = this.extractBlobFieldsFromAwp(tool._awp, "output");
 
       this.toolSchemaCache.set(tool.name, {
         schema: tool,
         blobSchema: {
           inputBlobs,
-          outputBlobs: [], // Will be filled by the server
+          outputBlobs,
         },
       });
     }

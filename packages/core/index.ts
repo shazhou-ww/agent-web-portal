@@ -82,6 +82,7 @@ export type {
   JsonRpcRequest,
   JsonRpcResponse,
   JsonRpcSuccessResponse,
+  McpToolAwpExtension,
   McpToolSchema,
   McpToolsCallParams,
   McpToolsCallParamsWithBlob,

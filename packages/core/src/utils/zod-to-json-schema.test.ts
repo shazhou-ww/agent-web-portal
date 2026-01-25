@@ -4,20 +4,19 @@ import { blob } from "../blob.ts";
 import { zodToJsonSchema } from "./zod-to-json-schema.ts";
 
 describe("zodToJsonSchema with blob support", () => {
-  test("converts blob schema to JSON Schema with x-awp-blob extension", () => {
+  test("converts blob schema to plain JSON Schema (no x-awp-blob extension)", () => {
     const schema = blob({ mimeType: "application/pdf" });
     const jsonSchema = zodToJsonSchema(schema);
 
+    // Blob fields are converted to plain URI strings
+    // Blob metadata is provided separately in _awp extension
     expect(jsonSchema).toEqual({
       type: "string",
       format: "uri",
-      "x-awp-blob": {
-        mimeType: "application/pdf",
-      },
     });
   });
 
-  test("includes all blob options in x-awp-blob", () => {
+  test("blob with all options still generates plain JSON Schema", () => {
     const schema = blob({
       mimeType: "image/png",
       maxSize: 10 * 1024 * 1024,
@@ -25,14 +24,10 @@ describe("zodToJsonSchema with blob support", () => {
     });
     const jsonSchema = zodToJsonSchema(schema);
 
+    // Options are not included in JSON Schema - they go to _awp.blobs
     expect(jsonSchema).toEqual({
       type: "string",
       format: "uri",
-      "x-awp-blob": {
-        mimeType: "image/png",
-        maxSize: 10 * 1024 * 1024,
-        description: "Thumbnail image",
-      },
     });
   });
 
@@ -51,9 +46,6 @@ describe("zodToJsonSchema with blob support", () => {
         document: {
           type: "string",
           format: "uri",
-          "x-awp-blob": {
-            mimeType: "application/pdf",
-          },
         },
         name: { type: "string" },
         count: { type: "number" },
@@ -76,9 +68,6 @@ describe("zodToJsonSchema with blob support", () => {
         document: {
           type: "string",
           format: "uri",
-          "x-awp-blob": {
-            mimeType: "application/pdf",
-          },
         },
         name: { type: "string" },
       },
@@ -101,9 +90,6 @@ describe("zodToJsonSchema with blob support", () => {
           items: {
             type: "string",
             format: "uri",
-            "x-awp-blob": {
-              mimeType: "image/*",
-            },
           },
         },
       },
@@ -111,14 +97,13 @@ describe("zodToJsonSchema with blob support", () => {
     });
   });
 
-  test("blob without options generates empty x-awp-blob object", () => {
+  test("blob without options generates plain JSON Schema", () => {
     const schema = blob();
     const jsonSchema = zodToJsonSchema(schema);
 
     expect(jsonSchema).toEqual({
       type: "string",
       format: "uri",
-      "x-awp-blob": {},
     });
   });
 });

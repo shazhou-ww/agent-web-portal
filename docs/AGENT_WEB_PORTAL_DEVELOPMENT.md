@@ -139,6 +139,7 @@ Payload = "${timestamp}.${METHOD}.${path}.${bodyHash}"
 ```
 
 请求头：
+
 - `X-AWP-Pubkey`: 公钥 (格式: `x.y`，base64url 编码)
 - `X-AWP-Timestamp`: Unix 时间戳（秒）
 - `X-AWP-Signature`: 签名 (base64url 编码)
@@ -892,32 +893,52 @@ console.log(result.data.thumbnail); // "s3://my-bucket/output/thumb.png"
 console.log(result.data.metadata);  // { pageCount: 10 }
 ```
 
-### 8.5 JSON Schema 中的 Blob 标记
+### 8.5 Blob 字段在 tools/list 中的表示
 
-AWP 使用 `x-awp-blob` 扩展标记 blob 字段：
+AWP 将 blob 信息与 JSON Schema 分离，放在 `_awp` 扩展字段中，以保持 JSON Schema 的标准兼容性：
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "document": {
-      "type": "string",
-      "x-awp-blob": {
-        "mimeType": "application/pdf",
-        "maxSize": 10485760
+  "name": "process_document",
+  "description": "Process a PDF document",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "document": {
+        "type": "string",
+        "format": "uri"
+      },
+      "options": {
+        "type": "object",
+        "properties": {
+          "quality": { "type": "number" }
+        }
       }
-    },
-    "options": {
-      "type": "object",
-      "properties": {
-        "quality": { "type": "number" }
+    }
+  },
+  "_awp": {
+    "blobs": {
+      "input": {
+        "document": {
+          "mimeType": "application/pdf",
+          "maxSize": 10485760
+        }
+      },
+      "output": {
+        "thumbnail": {
+          "mimeType": "image/png"
+        }
       }
     }
   }
 }
 ```
 
-Client SDK 通过识别 `x-awp-blob` 来自动生成预签名 URL。
+**设计优势**：
+
+- `inputSchema` 保持标准 JSON Schema 格式，兼容所有 MCP 客户端
+- Blob 元数据放在独立的 `_awp.blobs` 字段，不支持 AWP 的客户端可以忽略
+- Client SDK 通过识别 `_awp.blobs` 来自动生成预签名 URL
 
 ---
 

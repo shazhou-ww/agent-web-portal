@@ -189,10 +189,7 @@ export class AwpAuth {
 
     // Optionally poll for authorization completion
     if (poll) {
-      const statusUrl = new URL(
-        response.auth_status_endpoint ?? "/auth/status",
-        endpoint
-      );
+      const statusUrl = new URL(response.auth_status_endpoint ?? "/auth/status", endpoint);
       statusUrl.searchParams.set("pubkey", keyPair.publicKey);
 
       const authorized = await this.pollAuthStatus(

@@ -151,12 +151,28 @@ export interface JsonRpcErrorResponse {
 export type JsonRpcResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse;
 
 /**
+ * AWP extension data for a tool
+ * Kept separate from inputSchema to avoid polluting JSON Schema
+ */
+export interface McpToolAwpExtension {
+  /** Blob field metadata (separated from JSON Schema for compatibility) */
+  blobs?: {
+    /** Input blob fields with their metadata */
+    input?: Record<string, BlobFieldMetadata>;
+    /** Output blob fields with their metadata */
+    output?: Record<string, BlobFieldMetadata>;
+  };
+}
+
+/**
  * MCP Tool schema representation (JSON Schema format)
  */
 export interface McpToolSchema {
   name: string;
   description?: string;
   inputSchema: Record<string, unknown>;
+  /** AWP extension data (kept separate from inputSchema for JSON Schema compatibility) */
+  _awp?: McpToolAwpExtension;
 }
 
 /**

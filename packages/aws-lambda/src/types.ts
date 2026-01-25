@@ -55,7 +55,9 @@ export interface LambdaAuthRequest {
  *
  * Returns a Response if handled, null if not handled.
  */
-export type LambdaRouteHandler = (request: LambdaAuthRequest) => Response | null | Promise<Response | null>;
+export type LambdaRouteHandler = (
+  request: LambdaAuthRequest
+) => Response | null | Promise<Response | null>;
 
 // ============================================================================
 // AWP Auth Configuration

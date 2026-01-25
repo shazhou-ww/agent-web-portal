@@ -106,28 +106,16 @@
       "version": "0.1.0",
       "dependencies": {
         "@agent-web-portal/auth": "workspace:*",
+        "@agent-web-portal/aws-lambda": "workspace:*",
         "@agent-web-portal/client": "workspace:*",
         "@agent-web-portal/core": "workspace:*",
+        "jsonata": "^2.0.5",
         "zod": "3",
       },
       "devDependencies": {
-        "@types/bun": "latest",
-      },
-    },
-    "packages/jsonata-portal": {
-      "name": "@agent-web-portal/jsonata-portal",
-      "version": "0.1.0",
-      "dependencies": {
-        "@agent-web-portal/aws-lambda": "workspace:*",
-        "jsonata": "^2.0.5",
-        "zod": "^3.24.1",
-      },
-      "devDependencies": {
         "@types/aws-lambda": "^8.10.147",
+        "@types/bun": "latest",
         "@types/node": "^22.10.5",
-      },
-      "peerDependencies": {
-        "typescript": "^5",
       },
     },
   },
@@ -143,8 +131,6 @@
     "@agent-web-portal/core": ["@agent-web-portal/core@workspace:packages/core"],
 
     "@agent-web-portal/examples": ["@agent-web-portal/examples@workspace:packages/examples"],
-
-    "@agent-web-portal/jsonata-portal": ["@agent-web-portal/jsonata-portal@workspace:packages/jsonata-portal"],
 
     "@aws-crypto/crc32": ["@aws-crypto/crc32@5.2.0", "", { "dependencies": { "@aws-crypto/util": "^5.2.0", "@aws-sdk/types": "^3.222.0", "tslib": "^2.6.2" } }, "sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg=="],
 

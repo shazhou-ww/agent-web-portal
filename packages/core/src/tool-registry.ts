@@ -1,9 +1,11 @@
 import type { ZodSchema } from "zod";
-import { extractBlobFields } from "./blob.ts";
+import { extractBlobFields, getBlobMetadata, isBlob } from "./blob.ts";
 import type { ToolHandlerContext } from "./define-tool.ts";
 import type {
   AgentWebPortalConfig,
   BlobContext,
+  BlobFieldMetadata,
+  McpToolAwpExtension,
   McpToolSchema,
   McpToolsListResponse,
   ToolDefinition,
@@ -238,6 +240,55 @@ export class ToolRegistry {
   }
 
   /**
+   * Extract blob field metadata from a Zod schema
+   */
+  private extractBlobMetadata(schema: ZodSchema): Record<string, BlobFieldMetadata> {
+    const metadata: Record<string, BlobFieldMetadata> = {};
+    const def = (schema as any)._def;
+
+    if (def?.typeName !== "ZodObject") {
+      return metadata;
+    }
+
+    const shape = def.shape();
+    for (const [key, value] of Object.entries(shape)) {
+      // Check direct blob
+      if (isBlob(value)) {
+        const blobMeta = getBlobMetadata(value);
+        if (blobMeta) {
+          metadata[key] = {
+            ...(blobMeta.mimeType && { mimeType: blobMeta.mimeType }),
+            ...(blobMeta.maxSize && { maxSize: blobMeta.maxSize }),
+            ...(blobMeta.description && { description: blobMeta.description }),
+          };
+        } else {
+          metadata[key] = {};
+        }
+        continue;
+      }
+
+      // Check wrapped in ZodOptional or ZodDefault
+      const innerDef = (value as any)?._def;
+      if (innerDef?.typeName === "ZodOptional" || innerDef?.typeName === "ZodDefault") {
+        if (isBlob(innerDef.innerType)) {
+          const blobMeta = getBlobMetadata(innerDef.innerType);
+          if (blobMeta) {
+            metadata[key] = {
+              ...(blobMeta.mimeType && { mimeType: blobMeta.mimeType }),
+              ...(blobMeta.maxSize && { maxSize: blobMeta.maxSize }),
+              ...(blobMeta.description && { description: blobMeta.description }),
+            };
+          } else {
+            metadata[key] = {};
+          }
+        }
+      }
+    }
+
+    return metadata;
+  }
+
+  /**
    * Convert a tool to MCP schema format
    * @param name - Tool name
    */
@@ -247,11 +298,30 @@ export class ToolRegistry {
       return null;
     }
 
-    return {
+    // Build the base schema
+    const schema: McpToolSchema = {
       name,
       description: tool.description,
       inputSchema: zodToJsonSchema(tool.inputSchema),
     };
+
+    // Extract blob metadata and add to _awp if there are any blobs
+    const hasBlobs = tool.inputBlobs.length > 0 || tool.outputBlobs.length > 0;
+    if (hasBlobs) {
+      const awp: McpToolAwpExtension = { blobs: {} };
+
+      if (tool.inputBlobs.length > 0) {
+        awp.blobs!.input = this.extractBlobMetadata(tool.inputSchema);
+      }
+
+      if (tool.outputBlobs.length > 0) {
+        awp.blobs!.output = this.extractBlobMetadata(tool.outputSchema);
+      }
+
+      schema._awp = awp;
+    }
+
+    return schema;
   }
 
   /**

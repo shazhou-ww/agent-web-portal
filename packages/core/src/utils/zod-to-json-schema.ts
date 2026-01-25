@@ -1,9 +1,13 @@
 import type { ZodSchema } from "zod";
-import { AWP_BLOB_MARKER, type BlobMetadata } from "../blob.ts";
+import { isBlob } from "../blob.ts";
 
 /**
  * Convert a Zod schema to JSON Schema format
  * This is a simplified implementation for common Zod types
+ *
+ * Note: Blob fields are converted to plain { type: "string", format: "uri" }
+ * without any AWP-specific extensions. Blob metadata is provided separately
+ * in the _awp extension field of McpToolSchema to maintain JSON Schema compatibility.
  */
 export function zodToJsonSchema(schema: ZodSchema): Record<string, unknown> {
   const def = (schema as any)._def;
@@ -15,34 +19,17 @@ export function zodToJsonSchema(schema: ZodSchema): Record<string, unknown> {
   return parseZodDef(def, schema);
 }
 
-/**
- * Check if a schema has blob marker and return its metadata
- */
-function getBlobMetadataFromSchema(schema: any): BlobMetadata | undefined {
-  if (schema && typeof schema === "object" && AWP_BLOB_MARKER in schema) {
-    return schema[AWP_BLOB_MARKER] as BlobMetadata;
-  }
-  return undefined;
-}
-
 function parseZodDef(def: any, originalSchema?: any): Record<string, unknown> {
   const typeName = def.typeName;
 
   switch (typeName) {
     case "ZodString": {
-      // Check if this is a blob schema
-      const blobMetadata = originalSchema ? getBlobMetadataFromSchema(originalSchema) : undefined;
-
-      if (blobMetadata) {
-        // Return blob-specific JSON Schema with x-awp-blob extension
+      // Check if this is a blob schema - render as plain URI string
+      // (blob metadata is provided separately in _awp extension)
+      if (originalSchema && isBlob(originalSchema)) {
         return {
           type: "string",
           format: "uri",
-          "x-awp-blob": {
-            ...(blobMetadata.mimeType && { mimeType: blobMetadata.mimeType }),
-            ...(blobMetadata.maxSize && { maxSize: blobMetadata.maxSize }),
-            ...(blobMetadata.description && { description: blobMetadata.description }),
-          },
         };
       }
 
