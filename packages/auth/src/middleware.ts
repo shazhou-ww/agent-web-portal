@@ -119,7 +119,18 @@ export function createAwpAuthMiddleware(config: AwpAuthConfig): AwpAuthMiddlewar
     }
 
     // Verify the request signature
-    return verifyAwpAuth(request, config.pubkeyStore, maxClockSkew);
+    const result = await verifyAwpAuth(request, config.pubkeyStore, maxClockSkew);
+
+    // If verification failed, return challenge response
+    if (!result.authorized) {
+      const challengeResponse = buildChallengeResponse(authInitPath);
+      return {
+        authorized: false,
+        challengeResponse,
+      };
+    }
+
+    return result;
   };
 }
 

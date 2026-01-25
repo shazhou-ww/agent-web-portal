@@ -13,25 +13,25 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { Lock as LockIcon } from '@mui/icons-material';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user, login, loading: authLoading } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
 
-  const verificationCode = searchParams.get('code') || '';
-  const pubkey = searchParams.get('pubkey') || '';
+  const returnUrl = searchParams.get('returnUrl') || '/';
 
-  // If no verification code, redirect to dashboard
+  // If already logged in, redirect
   useEffect(() => {
-    if (!verificationCode && !pubkey) {
-      // Allow access without code for testing
+    if (!authLoading && user) {
+      navigate(decodeURIComponent(returnUrl), { replace: true });
     }
-  }, [verificationCode, pubkey]);
+  }, [user, authLoading, navigate, returnUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,78 +39,23 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
-      formData.append('verification_code', verificationCode);
-      formData.append('pubkey', pubkey);
-
-      const response = await fetch('/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-      });
-
-      if (response.ok) {
-        setSuccess(true);
-        // After 2 seconds, redirect to dashboard
-        setTimeout(() => {
-          navigate('/');
-        }, 2000);
+      const success = await login(username, password);
+      if (success) {
+        navigate(decodeURIComponent(returnUrl), { replace: true });
       } else {
-        const text = await response.text();
-        if (text.includes('Invalid username or password')) {
-          setError('Invalid username or password');
-        } else if (text.includes('Authorization failed')) {
-          setError('Authorization failed. Invalid or expired verification code.');
-        } else {
-          setError('Login failed. Please try again.');
-        }
+        setError('Invalid username or password');
       }
-    } catch (err) {
+    } catch {
       setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (success) {
+  if (authLoading) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-          p: 2,
-        }}
-      >
-        <Card sx={{ maxWidth: 400, width: '100%', textAlign: 'center', p: 4 }}>
-          <Box
-            sx={{
-              width: 80,
-              height: 80,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              mx: 'auto',
-              mb: 3,
-            }}
-          >
-            <LockIcon sx={{ fontSize: 40, color: 'white' }} />
-          </Box>
-          <Typography variant="h5" gutterBottom fontWeight={600}>
-            Authorization Complete!
-          </Typography>
-          <Typography color="text.secondary">
-            The MCP client has been authorized. Redirecting...
-          </Typography>
-        </Card>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
       </Box>
     );
   }
@@ -145,41 +90,12 @@ export default function Login() {
               <LockIcon sx={{ fontSize: 32, color: 'white' }} />
             </Box>
             <Typography variant="h5" fontWeight={600}>
-              Authorize Application
+              Sign In
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Enter your credentials to authorize the MCP client
+              Sign in to manage your AWP portal
             </Typography>
           </Box>
-
-          {verificationCode && (
-            <Box
-              sx={{
-                p: 2,
-                mb: 3,
-                borderRadius: 2,
-                border: '2px dashed',
-                borderColor: 'primary.main',
-                bgcolor: 'primary.light',
-                textAlign: 'center',
-              }}
-            >
-              <Typography variant="caption" color="text.secondary" display="block">
-                Verification Code
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{
-                  fontFamily: 'monospace',
-                  fontWeight: 700,
-                  letterSpacing: 4,
-                  color: 'primary.main',
-                }}
-              >
-                {verificationCode}
-              </Typography>
-            </Box>
-          )}
 
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -196,6 +112,7 @@ export default function Login() {
               margin="normal"
               required
               autoComplete="username"
+              autoFocus
             />
             <TextField
               fullWidth
@@ -218,7 +135,7 @@ export default function Login() {
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               }}
             >
-              {loading ? <CircularProgress size={24} color="inherit" /> : 'Authorize'}
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
             </Button>
           </Box>
 

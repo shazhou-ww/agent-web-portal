@@ -9,12 +9,20 @@
 
 import {
   type AuthHttpRequest,
+  type AuthorizedPubkey,
   completeAuthorization,
   createAwpAuthMiddleware,
   MemoryPendingAuthStore,
   MemoryPubkeyStore,
   routeAuthRequest,
 } from "@agent-web-portal/auth";
+import {
+  createClearSessionCookie,
+  createSession,
+  createSessionCookie,
+  getSessionFromRequest,
+  validateCredentials,
+} from "./src/auth/session.ts";
 import { getAuthPageHtml, getAuthSuccessHtml } from "./src/auth/ui.ts";
 import {
   authPortal,
@@ -29,13 +37,6 @@ import {
 // =============================================================================
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
-// Built-in test users
-const TEST_USERS: Record<string, { password: string; userId: string }> = {
-  test: { password: "test123", userId: "test-user-001" },
-  admin: { password: "admin123", userId: "admin-user-001" },
-  demo: { password: "demo", userId: "demo-user-001" },
-};
 
 // =============================================================================
 // Auth Stores (in-memory for local development)
@@ -100,7 +101,202 @@ async function handleRequest(req: Request): Promise<Response> {
     return blobPortal.handleRequest(req);
   }
 
+  // ==========================================================================
+  // Session API routes
+  // ==========================================================================
+
+  // Login API (JSON)
+  if (pathname === "/api/login" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const { username, password } = body as { username: string; password: string };
+
+      const user = validateCredentials(username, password);
+      if (!user) {
+        return new Response(JSON.stringify({ error: "Invalid username or password" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const { sessionId, session } = createSession(user);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          user: { userId: session.userId, username: session.username },
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Set-Cookie": createSessionCookie(sessionId),
+          },
+        }
+      );
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid request body" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // Logout API
+  if (pathname === "/api/logout" && req.method === "POST") {
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": createClearSessionCookie(),
+      },
+    });
+  }
+
+  // Get current user session
+  if (pathname === "/api/me" && req.method === "GET") {
+    const session = getSessionFromRequest(req);
+    if (!session) {
+      return new Response(JSON.stringify({ authenticated: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(
+      JSON.stringify({
+        authenticated: true,
+        user: { userId: session.userId, username: session.username },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // ==========================================================================
+  // Client Management API routes
+  // ==========================================================================
+
+  // List authorized clients for current user
+  if (pathname === "/api/clients" && req.method === "GET") {
+    const session = getSessionFromRequest(req);
+    if (!session) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const clients = await pubkeyStore.listByUser(session.userId);
+    return new Response(
+      JSON.stringify({
+        clients: clients.map((c: AuthorizedPubkey) => ({
+          pubkey: c.pubkey,
+          clientName: c.clientName,
+          createdAt: c.createdAt,
+          expiresAt: c.expiresAt,
+        })),
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // Revoke a client authorization
+  if (pathname.startsWith("/api/clients/") && req.method === "DELETE") {
+    const session = getSessionFromRequest(req);
+    if (!session) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Extract pubkey from URL (URL-encoded)
+    const pubkeyEncoded = pathname.slice("/api/clients/".length);
+    const pubkey = decodeURIComponent(pubkeyEncoded);
+
+    // Verify the pubkey belongs to this user
+    const authInfo = await pubkeyStore.lookup(pubkey);
+    if (!authInfo || authInfo.userId !== session.userId) {
+      return new Response(JSON.stringify({ error: "Client not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await pubkeyStore.revoke(pubkey);
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Renew a client authorization
+  if (pathname.startsWith("/api/clients/") && req.method === "PATCH") {
+    const session = getSessionFromRequest(req);
+    if (!session) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Extract pubkey from URL
+    const pubkeyEncoded = pathname.slice("/api/clients/".length);
+    const pubkey = decodeURIComponent(pubkeyEncoded);
+
+    // Verify the pubkey belongs to this user
+    const authInfo = await pubkeyStore.lookup(pubkey);
+    if (!authInfo || authInfo.userId !== session.userId) {
+      return new Response(JSON.stringify({ error: "Client not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const body = await req.json();
+      const { expiresIn } = body as { expiresIn?: number };
+
+      // Update expiration
+      const newExpiresAt = expiresIn ? Date.now() + expiresIn * 1000 : undefined;
+      const updatedAuth: AuthorizedPubkey = {
+        ...authInfo,
+        expiresAt: newExpiresAt,
+      };
+      await pubkeyStore.store(updatedAuth);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          client: {
+            pubkey: updatedAuth.pubkey,
+            clientName: updatedAuth.clientName,
+            createdAt: updatedAuth.createdAt,
+            expiresAt: updatedAuth.expiresAt,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid request body" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // ==========================================================================
   // Auth portal routes
+  // ==========================================================================
+
   if (pathname.startsWith("/auth")) {
     const authReq: AuthHttpRequest = {
       method: req.method,
@@ -116,7 +312,7 @@ async function handleRequest(req: Request): Promise<Response> {
       }),
     };
 
-    // Handle AWP auth endpoints
+    // Handle AWP auth endpoints (/auth/init, /auth/status)
     const authRouteResponse = await routeAuthRequest(authReq, {
       baseUrl: `http://localhost:${PORT}`,
       pendingAuthStore,
@@ -129,14 +325,81 @@ async function handleRequest(req: Request): Promise<Response> {
       return authRouteResponse;
     }
 
-    // Auth page
+    // Auth page - redirect to login if not authenticated
     if (pathname === "/auth/page") {
-      return new Response(getAuthPageHtml(), {
+      const session = getSessionFromRequest(req);
+      const pubkey = url.searchParams.get("pubkey") ?? "";
+
+      if (!session) {
+        // Redirect to login with return URL
+        const returnUrl = encodeURIComponent(`/auth/page?pubkey=${encodeURIComponent(pubkey)}`);
+        return new Response(null, {
+          status: 302,
+          headers: { Location: `/login?returnUrl=${returnUrl}` },
+        });
+      }
+
+      // Get pending auth info to show client name
+      const pendingAuth = await pendingAuthStore.get(pubkey);
+      return new Response(getAuthPageHtml(undefined, pendingAuth?.clientName, pendingAuth?.verificationCode), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
 
-    // Login form handler
+    // Auth success page
+    if (pathname === "/auth/success") {
+      return new Response(getAuthSuccessHtml(), {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // Auth complete - verify code and authorize (requires session)
+    if (pathname === "/auth/complete" && req.method === "POST") {
+      const session = getSessionFromRequest(req);
+      if (!session) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      try {
+        const body = await req.json();
+        const { pubkey, verification_code, expires_in } = body as {
+          pubkey: string;
+          verification_code: string;
+          expires_in?: number;
+        };
+
+        const result = await completeAuthorization(pubkey, verification_code, session.userId, {
+          pendingAuthStore,
+          pubkeyStore,
+          authorizationTTL: expires_in,
+        });
+
+        if (result.success) {
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(
+          JSON.stringify({ error: result.error, error_description: result.errorDescription }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      } catch {
+        return new Response(JSON.stringify({ error: "Invalid request body" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Legacy login form handler (for backward compatibility)
     if (pathname === "/auth/login" && req.method === "POST") {
       const contentType = req.headers.get("content-type") ?? "";
       const formData: Record<string, string> = {};
@@ -161,8 +424,8 @@ async function handleRequest(req: Request): Promise<Response> {
       const verificationCode = formData.verification_code ?? "";
       const pubkey = formData.pubkey ?? "";
 
-      const user = TEST_USERS[username];
-      if (!user || user.password !== password) {
+      const user = validateCredentials(username, password);
+      if (!user) {
         return new Response(getAuthPageHtml("Invalid username or password"), {
           status: 401,
           headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -175,8 +438,13 @@ async function handleRequest(req: Request): Promise<Response> {
       });
 
       if (result.success) {
+        // Create session and set cookie
+        const { sessionId } = createSession(user);
         return new Response(getAuthSuccessHtml(), {
-          headers: { "Content-Type": "text/html; charset=utf-8" },
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Set-Cookie": createSessionCookie(sessionId),
+          },
         });
       }
 

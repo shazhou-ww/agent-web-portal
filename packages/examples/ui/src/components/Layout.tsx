@@ -2,6 +2,8 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
   Box,
+  Button,
+  Divider,
   Drawer,
   IconButton,
   List,
@@ -21,13 +23,20 @@ import {
   Functions as FunctionsIcon,
   Lock as LockIcon,
   Storage as StorageIcon,
+  Devices as DevicesIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 const drawerWidth = 240;
 
 const menuItems = [
   { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
+  { path: '/clients', label: 'Authorized Clients', icon: <DevicesIcon /> },
+];
+
+const portalItems = [
   { path: '/portals/basic', label: 'Basic Portal', icon: <CodeIcon /> },
   { path: '/portals/ecommerce', label: 'E-commerce', icon: <ShoppingCartIcon /> },
   { path: '/portals/jsonata', label: 'JSONata', icon: <FunctionsIcon /> },
@@ -40,13 +49,19 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
+  const { user, logout } = useAuth();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
+
   const drawer = (
-    <Box>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar>
         <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 700 }}>
           AWP Examples
@@ -68,6 +83,42 @@ export default function Layout() {
           </ListItem>
         ))}
       </List>
+      <Divider />
+      <Typography variant="overline" sx={{ px: 2, pt: 2, color: 'text.secondary' }}>
+        Portals
+      </Typography>
+      <List>
+        {portalItems.map((item) => (
+          <ListItem key={item.path} disablePadding>
+            <ListItemButton
+              selected={location.pathname === item.path}
+              onClick={() => {
+                navigate(item.path);
+                setMobileOpen(false);
+              }}
+            >
+              <ListItemIcon>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.label} />
+            </ListItemButton>
+          </ListItem>
+        ))}
+      </List>
+      <Box sx={{ flexGrow: 1 }} />
+      <Divider />
+      <Box sx={{ p: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Signed in as <strong>{user?.username}</strong>
+        </Typography>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<LogoutIcon />}
+          onClick={handleLogout}
+          size="small"
+        >
+          Sign Out
+        </Button>
+      </Box>
     </Box>
   );
 

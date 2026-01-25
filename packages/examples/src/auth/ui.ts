@@ -6,15 +6,20 @@
  */
 
 /**
- * Generate the login page HTML
+ * Generate the authorization confirmation page HTML
+ *
+ * This page is shown to logged-in users to confirm authorization of a client.
  */
-export function getAuthPageHtml(error?: string): string {
+export function getAuthPageHtml(error?: string, clientName?: string, verificationCode?: string): string {
+  const displayClientName = clientName ?? "Unknown Client";
+  const displayCode = verificationCode ?? "---";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AWP Authorization</title>
+  <title>Authorize ${displayClientName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -32,7 +37,7 @@ export function getAuthPageHtml(error?: string): string {
       box-shadow: 0 20px 60px rgba(0,0,0,0.3);
       padding: 40px;
       width: 100%;
-      max-width: 400px;
+      max-width: 450px;
     }
     h1 {
       color: #333;
@@ -45,6 +50,26 @@ export function getAuthPageHtml(error?: string): string {
       font-size: 14px;
       text-align: center;
       margin-bottom: 30px;
+    }
+    .client-info {
+      background: #f8f9ff;
+      border: 1px solid #e0e4ff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .client-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+    }
+    .client-label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
     .verification-code {
       background: #f0f4ff;
@@ -67,6 +92,11 @@ export function getAuthPageHtml(error?: string): string {
       color: #667eea;
       letter-spacing: 4px;
     }
+    .verification-code .hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 8px;
+    }
     .form-group {
       margin-bottom: 20px;
     }
@@ -77,23 +107,26 @@ export function getAuthPageHtml(error?: string): string {
       font-weight: 500;
       margin-bottom: 6px;
     }
-    input[type="text"], input[type="password"] {
+    select {
       width: 100%;
       padding: 12px 16px;
       border: 2px solid #e0e0e0;
       border-radius: 8px;
       font-size: 16px;
-      transition: border-color 0.2s;
+      background: white;
+      cursor: pointer;
     }
-    input:focus {
+    select:focus {
       outline: none;
       border-color: #667eea;
     }
+    .buttons {
+      display: flex;
+      gap: 12px;
+    }
     button {
-      width: 100%;
+      flex: 1;
       padding: 14px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
       border: none;
       border-radius: 8px;
       font-size: 16px;
@@ -101,9 +134,20 @@ export function getAuthPageHtml(error?: string): string {
       cursor: pointer;
       transition: transform 0.2s, box-shadow 0.2s;
     }
-    button:hover {
+    button.primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    button.primary:hover {
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    button.secondary {
+      background: #f5f5f5;
+      color: #666;
+    }
+    button.secondary:hover {
+      background: #eee;
     }
     .error {
       background: #fff0f0;
@@ -114,73 +158,97 @@ export function getAuthPageHtml(error?: string): string {
       margin-bottom: 20px;
       font-size: 14px;
     }
-    .test-users {
-      margin-top: 24px;
-      padding-top: 20px;
-      border-top: 1px solid #eee;
-    }
-    .test-users h3 {
-      color: #666;
-      font-size: 12px;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-    .test-users code {
-      display: block;
-      background: #f5f5f5;
-      padding: 8px 12px;
-      border-radius: 4px;
+    .warning {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      color: #f57c00;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 20px;
       font-size: 13px;
-      margin-bottom: 4px;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Authorize Application</h1>
-    <p class="subtitle">Enter your credentials to authorize the MCP client</p>
+    <p class="subtitle">A client is requesting access to your account</p>
+    
+    <div class="client-info">
+      <div class="client-label">Client Name</div>
+      <div class="client-name">${displayClientName}</div>
+    </div>
     
     <div class="verification-code">
-      <label>Verification Code from Client</label>
-      <div class="code" id="display-code">---</div>
+      <label>Verification Code</label>
+      <div class="code">${displayCode}</div>
+      <div class="hint">Verify this code matches what your client is showing</div>
     </div>
     
     ${error ? `<div class="error">${error}</div>` : ""}
     
-    <form method="POST" action="/auth/login">
-      <input type="hidden" name="verification_code" id="verification_code" value="">
-      <input type="hidden" name="pubkey" id="pubkey" value="">
+    <form id="auth-form">
+      <input type="hidden" id="pubkey" value="">
+      <input type="hidden" id="verification_code" value="${displayCode}">
       
       <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" required autocomplete="username">
+        <label for="expires_in">Authorization Duration</label>
+        <select id="expires_in" name="expires_in">
+          <option value="86400">1 day</option>
+          <option value="604800">7 days</option>
+          <option value="2592000" selected>30 days</option>
+          <option value="7776000">90 days</option>
+          <option value="">Never expires</option>
+        </select>
       </div>
       
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required autocomplete="current-password">
+      <div class="buttons">
+        <button type="button" class="secondary" onclick="window.close()">Deny</button>
+        <button type="submit" class="primary">Authorize</button>
       </div>
-      
-      <button type="submit">Authorize</button>
     </form>
     
-    <div class="test-users">
-      <h3>Test Accounts</h3>
-      <code>test / test123</code>
-      <code>admin / admin123</code>
-      <code>demo / demo</code>
+    <div class="warning">
+      ⚠️ Only authorize applications you trust. This client will be able to access tools on your behalf.
     </div>
   </div>
   
   <script>
     // Parse URL parameters
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('code') || '';
     const pubkey = params.get('pubkey') || '';
-    
-    document.getElementById('display-code').textContent = code || '---';
-    document.getElementById('verification_code').value = code;
     document.getElementById('pubkey').value = pubkey;
+    
+    // Handle form submission
+    document.getElementById('auth-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const expiresInValue = document.getElementById('expires_in').value;
+      const body = {
+        pubkey: document.getElementById('pubkey').value,
+        verification_code: document.getElementById('verification_code').value,
+      };
+      if (expiresInValue) {
+        body.expires_in = parseInt(expiresInValue, 10);
+      }
+      
+      try {
+        const response = await fetch('/auth/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        
+        if (response.ok) {
+          window.location.href = '/auth/success';
+        } else {
+          const data = await response.json();
+          alert(data.error_description || 'Authorization failed');
+        }
+      } catch (err) {
+        alert('Network error. Please try again.');
+      }
+    });
   </script>
 </body>
 </html>`;
