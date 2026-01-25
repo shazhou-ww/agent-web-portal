@@ -1,7 +1,14 @@
 /**
- * Blob Portal
+ * Blob Portal - Image Storage Example
  *
- * Demonstrates blob handling with file upload/download functionality.
+ * Demonstrates AWP blob handling with image upload/download functionality.
+ * This example shows:
+ * - put_image: blob INPUT (tool reads from presigned GET URL)
+ * - get_image: blob OUTPUT (tool writes to presigned PUT URL)
+ * - list_images: no blobs
+ *
+ * Images are stored in memory with a 1 day TTL.
+ * Temporary upload URLs have a 5 minute TTL.
  */
 
 import { blob, createAgentWebPortal } from "@agent-web-portal/core";
@@ -32,18 +39,309 @@ export function clearBlobHandlerCalls(): void {
 }
 
 // =============================================================================
+// In-Memory Image Store
+// =============================================================================
+
+interface StoredImage {
+  key: string;
+  contentType: string;
+  data: ArrayBuffer;
+  uploadedAt: string;
+  expiresAt: string;
+}
+
+const imageStore = new Map<string, StoredImage>();
+
+// Default TTL: 1 day in milliseconds
+const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Generate a unique key for an image
+ * Format: images/{date}/{timestamp}-{random}
+ */
+function generateImageKey(): string {
+  const date = new Date();
+  const dateStr = date.toISOString().split("T")[0]; // YYYY-MM-DD
+  const timestamp = date.getTime();
+  const random = Math.random().toString(36).substring(2, 10);
+  return `images/${dateStr}/${timestamp}-${random}`;
+}
+
+/**
+ * Clean up expired images
+ */
+function cleanupExpiredImages(): void {
+  const now = new Date();
+  for (const [key, image] of imageStore.entries()) {
+    if (new Date(image.expiresAt) < now) {
+      imageStore.delete(key);
+    }
+  }
+}
+
+/**
+ * Store an image in memory
+ */
+export function storeImage(
+  data: ArrayBuffer,
+  contentType: string,
+  key?: string
+): { key: string; uploadedAt: string; expiresAt: string } {
+  cleanupExpiredImages();
+
+  const imageKey = key ?? generateImageKey();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + DEFAULT_TTL_MS);
+
+  const storedImage: StoredImage = {
+    key: imageKey,
+    contentType,
+    data,
+    uploadedAt: now.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  };
+
+  imageStore.set(imageKey, storedImage);
+
+  return {
+    key: imageKey,
+    uploadedAt: storedImage.uploadedAt,
+    expiresAt: storedImage.expiresAt,
+  };
+}
+
+/**
+ * Get an image from memory
+ */
+export function getStoredImage(
+  key: string
+): { data: ArrayBuffer; contentType: string; uploadedAt: string; expiresAt: string } | null {
+  cleanupExpiredImages();
+
+  const image = imageStore.get(key);
+  if (!image) {
+    return null;
+  }
+
+  if (new Date(image.expiresAt) < new Date()) {
+    imageStore.delete(key);
+    return null;
+  }
+
+  return {
+    data: image.data,
+    contentType: image.contentType,
+    uploadedAt: image.uploadedAt,
+    expiresAt: image.expiresAt,
+  };
+}
+
+/**
+ * List all stored images (metadata only)
+ */
+export function listStoredImages(): Array<{
+  key: string;
+  contentType: string;
+  uploadedAt: string;
+  expiresAt: string;
+}> {
+  cleanupExpiredImages();
+
+  return Array.from(imageStore.values()).map((img) => ({
+    key: img.key,
+    contentType: img.contentType,
+    uploadedAt: img.uploadedAt,
+    expiresAt: img.expiresAt,
+  }));
+}
+
+// =============================================================================
+// Temporary Upload Store (5 minute TTL)
+// =============================================================================
+
+interface TempUpload {
+  id: string;
+  data: ArrayBuffer;
+  contentType: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+const tempUploadStore = new Map<string, TempUpload>();
+const TEMP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Store a temporary upload (for prepare-upload API)
+ */
+export function storeTempUpload(
+  data: ArrayBuffer,
+  contentType: string
+): { id: string; readUrl: string; expiresAt: string } {
+  // Clean up expired temp uploads
+  const now = Date.now();
+  for (const [id, upload] of tempUploadStore.entries()) {
+    if (upload.expiresAt < now) {
+      tempUploadStore.delete(id);
+    }
+  }
+
+  const id = `temp-${now}-${Math.random().toString(36).substring(2, 10)}`;
+  const expiresAt = now + TEMP_TTL_MS;
+
+  tempUploadStore.set(id, {
+    id,
+    data,
+    contentType,
+    createdAt: now,
+    expiresAt,
+  });
+
+  return {
+    id,
+    // This URL can be used as a presigned GET URL equivalent
+    readUrl: `/blob/temp/${id}`,
+    expiresAt: new Date(expiresAt).toISOString(),
+  };
+}
+
+/**
+ * Get a temporary upload
+ */
+export function getTempUpload(id: string): { data: ArrayBuffer; contentType: string } | null {
+  const upload = tempUploadStore.get(id);
+  if (!upload) {
+    return null;
+  }
+
+  if (upload.expiresAt < Date.now()) {
+    tempUploadStore.delete(id);
+    return null;
+  }
+
+  return {
+    data: upload.data,
+    contentType: upload.contentType,
+  };
+}
+
+// =============================================================================
+// Output Blob Store (for get_image to write to)
+// =============================================================================
+
+interface OutputBlob {
+  id: string;
+  data?: ArrayBuffer;
+  contentType?: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+const outputBlobStore = new Map<string, OutputBlob>();
+const OUTPUT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Create a placeholder for output blob (for prepare-download API)
+ */
+export function createOutputBlobSlot(): {
+  id: string;
+  writeUrl: string;
+  readUrl: string;
+  expiresAt: string;
+} {
+  // Clean up expired output blobs
+  const now = Date.now();
+  for (const [id, blob] of outputBlobStore.entries()) {
+    if (blob.expiresAt < now) {
+      outputBlobStore.delete(id);
+    }
+  }
+
+  const id = `output-${now}-${Math.random().toString(36).substring(2, 10)}`;
+  const expiresAt = now + OUTPUT_TTL_MS;
+
+  outputBlobStore.set(id, {
+    id,
+    createdAt: now,
+    expiresAt,
+  });
+
+  return {
+    id,
+    writeUrl: `/blob/output/${id}`,
+    readUrl: `/blob/output/${id}`,
+    expiresAt: new Date(expiresAt).toISOString(),
+  };
+}
+
+/**
+ * Write data to output blob slot
+ */
+export function writeOutputBlob(id: string, data: ArrayBuffer, contentType: string): boolean {
+  const blob = outputBlobStore.get(id);
+  if (!blob || blob.expiresAt < Date.now()) {
+    return false;
+  }
+
+  blob.data = data;
+  blob.contentType = contentType;
+  return true;
+}
+
+/**
+ * Read data from output blob
+ */
+export function readOutputBlob(id: string): { data: ArrayBuffer; contentType: string } | null {
+  const blob = outputBlobStore.get(id);
+  if (!blob || blob.expiresAt < Date.now() || !blob.data) {
+    return null;
+  }
+
+  return {
+    data: blob.data,
+    contentType: blob.contentType ?? "application/octet-stream",
+  };
+}
+
+// =============================================================================
 // Schemas
 // =============================================================================
 
-const ProcessDocumentInputSchema = z.object({
-  document: blob({ mimeType: "application/pdf", description: "PDF document to process" }),
-  quality: z.number().min(1).max(100).default(80).describe("Output quality (1-100)"),
+const PutImageInputSchema = z.object({
+  image: blob({
+    mimeType: "image/*",
+    description: "Image file to upload (passed as presigned GET URL)",
+  }),
+  contentType: z
+    .string()
+    .optional()
+    .describe("MIME type of the image (e.g., image/png, image/jpeg)"),
 });
 
-const ProcessDocumentOutputSchema = z.object({
-  thumbnail: blob({ mimeType: "image/png", description: "Generated thumbnail" }),
-  pageCount: z.number().describe("Number of pages in the document"),
-  processedAt: z.string().describe("Processing timestamp"),
+const PutImageOutputSchema = z.object({
+  key: z.string().describe("Unique key to retrieve the image"),
+  uploadedAt: z.string().describe("Upload timestamp (ISO 8601)"),
+  expiresAt: z.string().describe("Expiration timestamp (ISO 8601)"),
+});
+
+const GetImageInputSchema = z.object({
+  key: z.string().describe("The image key (from put_image or list_images)"),
+});
+
+const GetImageOutputSchema = z.object({
+  image: blob({
+    mimeType: "image/*",
+    description: "The retrieved image file (written to presigned PUT URL)",
+  }),
+  contentType: z.string().describe("MIME type of the image"),
+  uploadedAt: z.string().describe("Original upload timestamp"),
+  expiresAt: z.string().describe("Expiration timestamp"),
+});
+
+const ImageInfoSchema = z.object({
+  key: z.string(),
+  contentType: z.string(),
+  uploadedAt: z.string(),
+  expiresAt: z.string(),
 });
 
 // =============================================================================
@@ -53,39 +351,107 @@ const ProcessDocumentOutputSchema = z.object({
 export const blobPortal = createAgentWebPortal({
   name: "blob-portal",
   version: "1.0.0",
-  description: "Portal with blob-enabled tools for testing",
+  description: "Image storage portal demonstrating AWP blob input/output capabilities",
 })
-  .registerTool("process_document", {
-    inputSchema: ProcessDocumentInputSchema,
-    outputSchema: ProcessDocumentOutputSchema,
-    description: "Process a PDF document and generate a thumbnail",
-    handler: async ({ quality }, context) => {
+  .registerTool("put_image", {
+    inputSchema: PutImageInputSchema,
+    outputSchema: PutImageOutputSchema,
+    description: "Upload an image to storage. The image is read from the provided presigned URL.",
+    handler: async ({ contentType }, context) => {
       // Record the blob URLs for testing
       recordBlobHandlerCall({
-        toolName: "process_document",
+        toolName: "put_image",
         inputBlobs: context?.blobs.input ?? {},
         outputBlobs: context?.blobs.output ?? {},
       });
 
-      // Simulate document processing
+      // Get the presigned GET URL for the input image
+      const inputUrl = context?.blobs.input.image;
+      if (!inputUrl) {
+        throw new Error("No input image URL provided");
+      }
+
+      // Fetch the image data from the presigned URL
+      const response = await fetch(inputUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.arrayBuffer();
+      const detectedContentType =
+        response.headers.get("content-type") ?? contentType ?? "image/png";
+
+      // Store the image
+      const result = storeImage(data, detectedContentType);
+
+      return result;
+    },
+  })
+  .registerTool("get_image", {
+    inputSchema: GetImageInputSchema,
+    outputSchema: GetImageOutputSchema,
+    description: "Retrieve a previously uploaded image by its key",
+    handler: async ({ key }, context) => {
+      // Record the blob URLs for testing
+      recordBlobHandlerCall({
+        toolName: "get_image",
+        inputBlobs: context?.blobs.input ?? {},
+        outputBlobs: context?.blobs.output ?? {},
+      });
+
+      // Clean up expired images
+      cleanupExpiredImages();
+
+      // Look up the image
+      const storedImage = getStoredImage(key);
+
+      if (!storedImage) {
+        throw new Error(`Image not found or expired: ${key}`);
+      }
+
+      // Get the presigned PUT URL for the output image
+      const outputUrl = context?.blobs.output.image;
+      if (outputUrl) {
+        // Write the image data to the presigned PUT URL
+        const putResponse = await fetch(outputUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": storedImage.contentType,
+          },
+          body: storedImage.data,
+        });
+
+        if (!putResponse.ok) {
+          throw new Error(`Failed to write image: ${putResponse.status} ${putResponse.statusText}`);
+        }
+      }
+
       return {
-        pageCount: 10,
-        processedAt: new Date().toISOString(),
-        // thumbnail placeholder - will be overwritten by framework with permanent URI
-        thumbnail: "",
+        // Return the key as the image identifier
+        image: key,
+        contentType: storedImage.contentType,
+        uploadedAt: storedImage.uploadedAt,
+        expiresAt: storedImage.expiresAt,
       };
     },
   })
-  .registerTool("simple_tool", {
-    inputSchema: z.object({
-      message: z.string().describe("A simple message"),
-    }),
+  .registerTool("list_images", {
+    inputSchema: z.object({}),
     outputSchema: z.object({
-      echo: z.string().describe("The echoed message"),
+      images: z.array(ImageInfoSchema).describe("List of stored images"),
+      count: z.number().describe("Total number of images"),
     }),
-    description: "A simple tool without blobs",
-    handler: async ({ message }) => ({
-      echo: `Echo: ${message}`,
-    }),
+    description: "List all stored images (not expired)",
+    handler: async () => {
+      // Clean up expired images
+      cleanupExpiredImages();
+
+      const images = listStoredImages();
+
+      return {
+        images,
+        count: images.length,
+      };
+    },
   })
   .build();

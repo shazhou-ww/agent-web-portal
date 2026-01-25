@@ -10,7 +10,11 @@
  *
  * This page is shown to logged-in users to confirm authorization of a client.
  */
-export function getAuthPageHtml(error?: string, clientName?: string, verificationCode?: string): string {
+export function getAuthPageHtml(
+  error?: string,
+  clientName?: string,
+  verificationCode?: string
+): string {
   const displayClientName = clientName ?? "Unknown Client";
   const displayCode = verificationCode ?? "---";
 

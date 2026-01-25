@@ -35,12 +35,29 @@ import {
   Lock as LockIcon,
   LockOpen as LockOpenIcon,
   Logout as LogoutIcon,
+  CloudUpload as UploadIcon,
+  Image as ImageIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
+
+interface BlobFieldMetadata {
+  mimeType?: string;
+  maxSize?: number;
+  description?: string;
+}
+
+interface AwpExtension {
+  blobs?: {
+    input?: Record<string, BlobFieldMetadata>;
+    output?: Record<string, BlobFieldMetadata>;
+  };
+}
 
 interface Tool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  _awp?: AwpExtension;
 }
 
 interface JsonRpcResponse {
@@ -68,6 +85,99 @@ const PORTAL_ENDPOINTS: Record<string, string> = {
   auth: '/auth',
   blob: '/blob',
 };
+
+// Image Preview Component for output blobs
+function ImagePreview({
+  response,
+  getOutputBlobFields,
+  outputBlobUrls,
+}: {
+  response: JsonRpcResponse | null;
+  getOutputBlobFields: () => string[];
+  outputBlobUrls: Record<string, string>;
+}) {
+  if (!response?.result || getOutputBlobFields().length === 0) {
+    return null;
+  }
+
+  try {
+    const content = (response.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+    if (!content) return null;
+
+    const data = JSON.parse(content) as Record<string, unknown>;
+    const outputBlobs = getOutputBlobFields();
+    
+    // Get images from output blob URLs (written by the tool)
+    const imagesToShow = outputBlobs
+      .filter((field) => outputBlobUrls[field])
+      .map((field) => ({
+        field,
+        url: outputBlobUrls[field],
+        contentType: data.contentType as string | undefined,
+      }));
+
+    // Also check for images stored in permanent storage (key starts with images/)
+    const permanentImages = outputBlobs
+      .filter(
+        (field) =>
+          data[field] && typeof data[field] === 'string' && (data[field] as string).startsWith('images/')
+      )
+      .map((field) => ({
+        field,
+        url: `/blob/files/${encodeURIComponent(data[field] as string)}`,
+        contentType: data.contentType as string | undefined,
+      }));
+
+    const allImages = [...imagesToShow, ...permanentImages.filter(
+      (p) => !imagesToShow.some((i) => i.field === p.field)
+    )];
+
+    if (allImages.length === 0) return null;
+
+    return (
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ImageIcon fontSize="small" />
+          Output Images
+        </Typography>
+        <Stack direction="row" spacing={2} flexWrap="wrap">
+          {allImages.map(({ field, url }) => (
+            <Box key={field} sx={{ textAlign: 'center' }}>
+              <Box
+                component="img"
+                src={url}
+                alt={field}
+                sx={{
+                  maxWidth: 200,
+                  maxHeight: 150,
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+              <Typography variant="caption" display="block">
+                {field}
+              </Typography>
+              <Button
+                size="small"
+                startIcon={<DownloadIcon />}
+                href={url}
+                target="_blank"
+              >
+                Download
+              </Button>
+            </Box>
+          ))}
+        </Stack>
+      </Box>
+    );
+  } catch {
+    return null;
+  }
+}
 
 // Simple base64url encoding
 function base64urlEncode(data: Uint8Array): string {
@@ -221,6 +331,12 @@ export default function PortalTest() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [initialized, setInitialized] = useState(false);
+
+  // Blob upload state
+  const [uploadedFiles, setUploadedFiles] = useState<Record<string, { key: string; file: File }>>({});
+  const [uploading, setUploading] = useState(false);
+  // Output blob URLs for displaying results
+  const [outputBlobUrls, setOutputBlobUrls] = useState<Record<string, string>>({});
 
   // Auth state
   const [authState, setAuthState] = useState<AuthState>({ status: 'none' });
@@ -655,11 +771,57 @@ export default function PortalTest() {
     setResponse(null);
     try {
       const args = JSON.parse(arguments_);
+      
+      // Build blob context if the tool has blob fields
+      const inputBlobs = getInputBlobFields();
+      const outputBlobs = getOutputBlobFields();
+      
+      let blobContext: {
+        input: Record<string, string>;
+        output: Record<string, string>;
+        outputUri: Record<string, string>;
+      } | undefined;
+
+      if (inputBlobs.length > 0 || outputBlobs.length > 0) {
+        const input: Record<string, string> = {};
+        const output: Record<string, string> = {};
+        const outputUri: Record<string, string> = {};
+
+        // For input blob fields, convert relative path to full URL (presigned GET URL)
+        for (const field of inputBlobs) {
+          const value = args[field];
+          if (typeof value === 'string' && value.startsWith('/blob/')) {
+            // Convert to full URL - this acts as the presigned GET URL
+            input[field] = `${window.location.origin}${value}`;
+          }
+        }
+
+        // For output blob fields, get presigned PUT URL from prepare-download
+        const newOutputBlobUrls: Record<string, string> = {};
+        for (const field of outputBlobs) {
+          const res = await fetch('/blob/prepare-download', { method: 'POST' });
+          if (res.ok) {
+            const data = await res.json() as { id: string; writeUrl: string; readUrl: string };
+            // Convert to full URLs
+            output[field] = `${window.location.origin}${data.writeUrl}`;
+            outputUri[field] = data.id; // Use ID as the permanent URI
+            // Save readUrl for displaying the image after the call
+            newOutputBlobUrls[field] = data.readUrl;
+          }
+        }
+        setOutputBlobUrls(newOutputBlobUrls);
+
+        blobContext = { input, output, outputUri };
+      } else {
+        setOutputBlobUrls({});
+      }
+
       const result = await jsonRpc(
         'tools/call',
         {
           name: selectedTool,
           arguments: args,
+          ...(blobContext && { _blobContext: blobContext }),
         },
         authState.status === 'authenticated' && isAuthPortal
       );
@@ -691,6 +853,84 @@ export default function PortalTest() {
   };
 
   const selectedToolInfo = tools.find((t) => t.name === selectedTool);
+
+  // Get input blob fields for current tool
+  const getInputBlobFields = useCallback((): string[] => {
+    const tool = tools.find((t) => t.name === selectedTool);
+    if (!tool?._awp?.blobs?.input) return [];
+    return Object.keys(tool._awp.blobs.input);
+  }, [tools, selectedTool]);
+
+  // Get output blob fields for current tool
+  const getOutputBlobFields = useCallback((): string[] => {
+    const tool = tools.find((t) => t.name === selectedTool);
+    if (!tool?._awp?.blobs?.output) return [];
+    return Object.keys(tool._awp.blobs.output);
+  }, [tools, selectedTool]);
+
+  // Handle file selection and upload for blob INPUT fields
+  // This uploads the file and gets a temporary presigned GET URL (5 min TTL)
+  const handleFileSelect = async (fieldName: string, file: File) => {
+    setUploading(true);
+    setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      // Use prepare-upload to get a temporary presigned GET URL
+      const res = await fetch('/blob/prepare-upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const result = await res.json() as { id: string; readUrl: string; expiresAt: string };
+      setUploadedFiles((prev) => ({
+        ...prev,
+        [fieldName]: { key: result.readUrl, file },
+      }));
+
+      // Update arguments with the presigned GET URL (this is what the tool will read from)
+      try {
+        const currentArgs = JSON.parse(arguments_);
+        currentArgs[fieldName] = result.readUrl;
+        setArguments(JSON.stringify(currentArgs, null, 2));
+      } catch {
+        // If arguments is not valid JSON, just set it
+        setArguments(JSON.stringify({ [fieldName]: result.readUrl }, null, 2));
+      }
+    } catch {
+      setError('Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Clear uploaded file for a field
+  const clearUploadedFile = (fieldName: string) => {
+    setUploadedFiles((prev) => {
+      const newFiles = { ...prev };
+      delete newFiles[fieldName];
+      return newFiles;
+    });
+
+    try {
+      const currentArgs = JSON.parse(arguments_);
+      delete currentArgs[fieldName];
+      setArguments(JSON.stringify(currentArgs, null, 2));
+    } catch {
+      // Ignore
+    }
+  };
+
+  // Reset uploaded files when tool changes
+  useEffect(() => {
+    setUploadedFiles({});
+  }, [selectedTool]);
 
   const getAuthChip = () => {
     if (!isAuthPortal) return null;
@@ -795,6 +1035,27 @@ export default function PortalTest() {
       )}
 
       {initialized && (
+        <>
+          {/* Blob Info Section - Only for blob portal */}
+          {portalId === 'blob' && (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Blob Portal - Image Storage Demo
+              </Typography>
+              <Typography variant="body2">
+                <strong>put_image:</strong> Select a file below, it will be uploaded to a temporary URL (5 min TTL), 
+                then the tool reads from that URL and stores permanently. <em>(Demonstrates blob INPUT)</em>
+              </Typography>
+              <Typography variant="body2">
+                <strong>get_image:</strong> Retrieves an image by key and writes to an output URL. 
+                <em>(Demonstrates blob OUTPUT)</em>
+              </Typography>
+              <Typography variant="body2">
+                <strong>list_images:</strong> Lists all stored images with their keys.
+              </Typography>
+            </Alert>
+          )}
+
         <Grid container spacing={3}>
           {/* Tool Selection */}
           <Grid item xs={12} md={6}>
@@ -825,11 +1086,71 @@ export default function PortalTest() {
                   </Typography>
                 )}
 
+                {/* Blob Upload Fields */}
+                {getInputBlobFields().length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <ImageIcon fontSize="small" />
+                      File Upload
+                    </Typography>
+                    {getInputBlobFields().map((fieldName) => {
+                      const tool = tools.find((t) => t.name === selectedTool);
+                      const blobMeta = tool?._awp?.blobs?.input?.[fieldName];
+                      const uploadedFile = uploadedFiles[fieldName];
+
+                      return (
+                        <Box key={fieldName} sx={{ mb: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {fieldName}
+                            {blobMeta?.description && ` - ${blobMeta.description}`}
+                          </Typography>
+                          {uploadedFile ? (
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                              <Chip
+                                icon={<ImageIcon />}
+                                label={uploadedFile.file.name}
+                                onDelete={() => clearUploadedFile(fieldName)}
+                                size="small"
+                                color="success"
+                              />
+                              <Typography variant="caption" color="text.secondary">
+                                ({(uploadedFile.file.size / 1024).toFixed(1)} KB)
+                              </Typography>
+                            </Stack>
+                          ) : (
+                            <Button
+                              component="label"
+                              variant="outlined"
+                              size="small"
+                              startIcon={uploading ? <CircularProgress size={16} /> : <UploadIcon />}
+                              disabled={uploading}
+                              sx={{ mt: 0.5 }}
+                            >
+                              {uploading ? 'Uploading...' : 'Select File'}
+                              <input
+                                type="file"
+                                hidden
+                                accept={blobMeta?.mimeType || 'image/*'}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    handleFileSelect(fieldName, file);
+                                  }
+                                }}
+                              />
+                            </Button>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+
                 <TextField
                   fullWidth
                   label="Arguments (JSON)"
                   multiline
-                  rows={8}
+                  rows={getInputBlobFields().length > 0 ? 5 : 8}
                   value={arguments_}
                   onChange={(e) => setArguments(e.target.value)}
                   sx={{
@@ -874,13 +1195,16 @@ export default function PortalTest() {
                   )}
                 </Box>
 
+                {/* Image Preview for output blobs */}
+                <ImagePreview response={response} getOutputBlobFields={getOutputBlobFields} outputBlobUrls={outputBlobUrls} />
+
                 <Box
                   sx={{
                     p: 2,
                     bgcolor: '#1e1e1e',
                     borderRadius: 1,
-                    minHeight: 300,
-                    maxHeight: 500,
+                    minHeight: 200,
+                    maxHeight: 400,
                     overflow: 'auto',
                   }}
                 >
@@ -937,6 +1261,7 @@ export default function PortalTest() {
             ))}
           </Grid>
         </Grid>
+        </>
       )}
 
       {/* Auth Dialog */}

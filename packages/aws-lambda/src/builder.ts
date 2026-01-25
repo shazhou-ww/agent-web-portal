@@ -200,11 +200,14 @@ export class LambdaHandlerBuilder {
   /**
    * Configure AWP authentication with stores
    *
-   * This sets up the complete AWP auth flow including:
+   * This sets up the AWP auth flow including:
    * - Auth initiation endpoint (/auth/init)
    * - Auth status polling endpoint (/auth/status)
-   * - Auth completion endpoint (/auth/complete)
-   * - Request signature verification
+   * - Request signature verification middleware
+   *
+   * **Note:** The auth completion endpoint (/auth/complete) is NOT automatically
+   * handled because it requires application-specific user session validation.
+   * Use `withRoutes()` to add your own implementation.
    *
    * @param config - AWP auth configuration with stores
    * @returns this - for method chaining
@@ -212,20 +215,35 @@ export class LambdaHandlerBuilder {
    * @example
    * ```typescript
    * import { DynamoDBPendingAuthStore, DynamoDBPubkeyStore } from "@agent-web-portal/aws-lambda";
-   * import { createAwpAuthMiddleware } from "@agent-web-portal/auth";
+   * import { completeAuthorization } from "@agent-web-portal/auth";
    *
    * const pendingAuthStore = new DynamoDBPendingAuthStore({ tableName: "awp-auth" });
    * const pubkeyStore = new DynamoDBPubkeyStore({ tableName: "awp-auth" });
    *
    * export const handler = createAgentWebPortalHandler({ name: "my-portal" })
-   *   .withAwpAuth({
-   *     pendingAuthStore,
-   *     pubkeyStore,
-   *     getAuthenticatedUser: async (req) => {
-   *       // Get user from session/JWT cookie
-   *       const userId = await getUserFromSession(req);
-   *       return userId ? { userId } : null;
-   *     },
+   *   .withAwpAuth({ pendingAuthStore, pubkeyStore })
+   *   // Add custom route for auth completion
+   *   .withRoutes(async (request) => {
+   *     const url = new URL(request.url);
+   *     if (url.pathname === "/auth/complete" && request.method === "POST") {
+   *       // Get userId from your session/JWT (application-specific)
+   *       const userId = await getUserFromSession(request);
+   *       if (!userId) {
+   *         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+   *       }
+   *       const body = JSON.parse(await request.text());
+   *       const result = await completeAuthorization(
+   *         body.pubkey,
+   *         body.verification_code,
+   *         userId,
+   *         { pendingAuthStore, pubkeyStore }
+   *       );
+   *       return new Response(JSON.stringify(result), {
+   *         status: result.success ? 200 : 400,
+   *         headers: { "Content-Type": "application/json" },
+   *       });
+   *     }
+   *     return null;
    *   })
    *   .registerTool("greet", { ... })
    *   .build();

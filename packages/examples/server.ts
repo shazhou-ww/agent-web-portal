@@ -25,6 +25,16 @@ import {
 } from "./src/auth/session.ts";
 import { getAuthPageHtml, getAuthSuccessHtml } from "./src/auth/ui.ts";
 import {
+  createOutputBlobSlot,
+  getStoredImage,
+  getTempUpload,
+  listStoredImages,
+  readOutputBlob,
+  storeImage,
+  storeTempUpload,
+  writeOutputBlob,
+} from "./src/portals/blob.ts";
+import {
   authPortal,
   basicPortal,
   blobPortal,
@@ -99,6 +109,221 @@ async function handleRequest(req: Request): Promise<Response> {
   // Blob portal
   if (pathname === "/blob" || pathname === "/blob/mcp") {
     return blobPortal.handleRequest(req);
+  }
+
+  // ==========================================================================
+  // Blob Storage API routes (for demo/testing)
+  // These APIs simulate S3-like presigned URL functionality
+  // ==========================================================================
+
+  // Prepare upload - upload file and get a temporary presigned GET URL (5 min TTL)
+  // This is used by UI to upload a file before calling put_image tool
+  if (pathname === "/blob/prepare-upload" && req.method === "POST") {
+    try {
+      const contentType = req.headers.get("content-type") ?? "";
+
+      if (contentType.includes("multipart/form-data")) {
+        const formData = await req.formData();
+        const file = formData.get("image") as File | null;
+
+        if (!file) {
+          return new Response(JSON.stringify({ error: "No image file provided" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const data = await file.arrayBuffer();
+        const result = storeTempUpload(data, file.type || "image/png");
+
+        return new Response(JSON.stringify(result), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      // Handle raw binary upload
+      const data = await req.arrayBuffer();
+      const imageContentType = contentType.startsWith("image/") ? contentType : "image/png";
+      const result = storeTempUpload(data, imageContentType);
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch {
+      return new Response(JSON.stringify({ error: "Failed to prepare upload" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // Get temporary upload (presigned GET URL equivalent)
+  if (pathname.startsWith("/blob/temp/") && req.method === "GET") {
+    const id = decodeURIComponent(pathname.slice("/blob/temp/".length));
+    const upload = getTempUpload(id);
+
+    if (!upload) {
+      return new Response(JSON.stringify({ error: "Temporary upload not found or expired" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(upload.data, {
+      status: 200,
+      headers: {
+        "Content-Type": upload.contentType,
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  // Prepare download - create output blob slot and get presigned URLs
+  // This is used by UI before calling get_image tool
+  if (pathname === "/blob/prepare-download" && req.method === "POST") {
+    const result = createOutputBlobSlot();
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  // Write to output blob (presigned PUT URL equivalent)
+  if (pathname.startsWith("/blob/output/") && req.method === "PUT") {
+    const id = decodeURIComponent(pathname.slice("/blob/output/".length));
+    const contentType = req.headers.get("content-type") ?? "application/octet-stream";
+    const data = await req.arrayBuffer();
+
+    const success = writeOutputBlob(id, data, contentType);
+
+    if (!success) {
+      return new Response(JSON.stringify({ error: "Output blob not found or expired" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  // Read from output blob (presigned GET URL equivalent for reading after write)
+  if (pathname.startsWith("/blob/output/") && req.method === "GET") {
+    const id = decodeURIComponent(pathname.slice("/blob/output/".length));
+    const blob = readOutputBlob(id);
+
+    if (!blob) {
+      return new Response(JSON.stringify({ error: "Output blob not found or expired" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(blob.data, {
+      status: 200,
+      headers: {
+        "Content-Type": blob.contentType,
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  // Direct upload to permanent storage (legacy, still useful)
+  if (pathname === "/blob/upload" && req.method === "POST") {
+    try {
+      const contentType = req.headers.get("content-type") ?? "";
+
+      if (contentType.includes("multipart/form-data")) {
+        const formData = await req.formData();
+        const file = formData.get("image") as File | null;
+
+        if (!file) {
+          return new Response(JSON.stringify({ error: "No image file provided" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const data = await file.arrayBuffer();
+        const result = storeImage(data, file.type || "image/png");
+
+        return new Response(JSON.stringify(result), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      // Handle raw binary upload
+      const data = await req.arrayBuffer();
+      const imageContentType = contentType.startsWith("image/") ? contentType : "image/png";
+      const result = storeImage(data, imageContentType);
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch {
+      return new Response(JSON.stringify({ error: "Failed to upload image" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // Download image from permanent storage
+  if (pathname.startsWith("/blob/files/") && req.method === "GET") {
+    const key = decodeURIComponent(pathname.slice("/blob/files/".length));
+    const image = getStoredImage(key);
+
+    if (!image) {
+      return new Response(JSON.stringify({ error: "Image not found or expired" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(image.data, {
+      status: 200,
+      headers: {
+        "Content-Type": image.contentType,
+        "Content-Disposition": `inline; filename="${key.split("/").pop()}"`,
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  // List images in permanent storage
+  if (pathname === "/blob/files" && req.method === "GET") {
+    const images = listStoredImages();
+    return new Response(JSON.stringify({ images, count: images.length }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
   }
 
   // ==========================================================================
@@ -341,9 +566,12 @@ async function handleRequest(req: Request): Promise<Response> {
 
       // Get pending auth info to show client name
       const pendingAuth = await pendingAuthStore.get(pubkey);
-      return new Response(getAuthPageHtml(undefined, pendingAuth?.clientName, pendingAuth?.verificationCode), {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      return new Response(
+        getAuthPageHtml(undefined, pendingAuth?.clientName, pendingAuth?.verificationCode),
+        {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        }
+      );
     }
 
     // Auth success page
@@ -461,10 +689,13 @@ async function handleRequest(req: Request): Promise<Response> {
         // Return challenge response or a generic 401 if no challenge provided
         return (
           authResult.challengeResponse ??
-          new Response(JSON.stringify({ error: "unauthorized", error_description: "Invalid credentials" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          })
+          new Response(
+            JSON.stringify({ error: "unauthorized", error_description: "Invalid credentials" }),
+            {
+              status: 401,
+              headers: { "Content-Type": "application/json" },
+            }
+          )
         );
       }
       return authPortal.handleRequest(req);

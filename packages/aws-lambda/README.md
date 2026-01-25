@@ -93,30 +93,82 @@ interface SkillConfig {
 }
 ```
 
-### `.withAuth(middleware)`
+### `.withMiddleware(middleware)`
 
 添加认证中间件。
 
 ```typescript
-builder.withAuth(async (event) => {
-  const apiKey = event.headers["x-api-key"];
-  if (apiKey !== process.env.API_KEY) {
-    return { authorized: false };
-  }
-  return { authorized: true, context: { userId: "123" } };
+import { createAwpAuthMiddleware } from "@agent-web-portal/auth";
+
+const authMiddleware = createAwpAuthMiddleware({
+  pendingAuthStore,
+  pubkeyStore,
+});
+
+builder.withMiddleware(authMiddleware);
+```
+
+### `.withAwpAuth(config)`
+
+配置 AWP ECDSA P-256 认证。自动处理 `/auth/init` 和 `/auth/status` 端点。
+
+```typescript
+import { DynamoDBPendingAuthStore, DynamoDBPubkeyStore } from "@agent-web-portal/aws-lambda";
+
+const pendingAuthStore = new DynamoDBPendingAuthStore({ tableName: "awp-auth" });
+const pubkeyStore = new DynamoDBPubkeyStore({ tableName: "awp-auth" });
+
+builder.withAwpAuth({
+  pendingAuthStore,
+  pubkeyStore,
+  authInitPath: "/auth/init",      // 可选，默认 "/auth/init"
+  authStatusPath: "/auth/status",  // 可选，默认 "/auth/status"
+  authPagePath: "/auth",           // 可选，默认 "/auth"
 });
 ```
 
-### `.withRoute(path, method, handler)`
-
-添加自定义路由。
+**注意：** `/auth/complete` 端点需要应用自己实现，因为需要验证用户会话。使用 `.withRoutes()` 添加：
 
 ```typescript
-builder.withRoute("/health", "GET", async () => ({
-  statusCode: 200,
-  body: JSON.stringify({ status: "ok" }),
-}));
+import { completeAuthorization } from "@agent-web-portal/auth";
+
+builder.withRoutes(async (request) => {
+  const url = new URL(request.url);
+  if (url.pathname === "/auth/complete" && request.method === "POST") {
+    const userId = await getUserFromSession(request); // 应用特定的会话验证
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+    }
+    const body = JSON.parse(await request.text());
+    const result = await completeAuthorization(
+      body.pubkey,
+      body.verification_code,
+      userId,
+      { pendingAuthStore, pubkeyStore }
+    );
+    return new Response(JSON.stringify(result), {
+      status: result.success ? 200 : 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return null;
+});
 ```
+
+### `.withRoutes(handler)`
+
+添加自定义路由处理器。返回 `Response` 表示已处理，返回 `null` 继续到下一个处理器。
+
+```typescript
+builder.withRoutes(async (request) => {
+  const url = new URL(request.url);
+  if (url.pathname === "/health") {
+    return new Response(JSON.stringify({ status: "ok" }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return null;
+});
 
 ### `.build()`
 
@@ -128,8 +180,10 @@ builder.withRoute("/health", "GET", async () => ({
 
 | Path | Method | 功能 |
 |------|--------|------|
-| `/mcp` | POST | MCP 端点 |
-| `/.well-known/oauth-protected-resource` | GET | OAuth 元数据 |
+| `/mcp` 或 `/` | POST | MCP 端点 |
+| `/auth/init` | POST | AWP 认证初始化（需配置 `withAwpAuth`） |
+| `/auth/status` | GET | AWP 认证状态查询（需配置 `withAwpAuth`） |
+| `/skills/:name` | GET | Skill 下载（重定向到 S3 presigned URL） |
 | 任意路径 | OPTIONS | CORS 预检 |
 
 ## 环境变量
@@ -192,6 +246,9 @@ export const handler = createLambdaHandler(portal, {
 - `APIGatewayProxyResult` - API Gateway 响应
 - `SkillsConfig` - Skills 配置
 - `LambdaAuthMiddleware` - 认证中间件类型
+- `AwpAuthLambdaConfig` - AWP 认证配置
+- `DynamoDBPendingAuthStore` - DynamoDB 待授权存储
+- `DynamoDBPubkeyStore` - DynamoDB 公钥存储
 
 ## License
 

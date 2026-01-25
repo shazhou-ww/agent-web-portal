@@ -2,7 +2,6 @@
  * Auth module exports
  */
 
-export { getAuthPageHtml, getAuthSuccessHtml } from "./ui.ts";
 export {
   createClearSessionCookie,
   createSession,
@@ -11,8 +10,9 @@ export {
   getSession,
   getSessionFromRequest,
   getSessionIdFromRequest,
-  TEST_USERS,
-  validateCredentials,
   type Session,
+  TEST_USERS,
   type User,
+  validateCredentials,
 } from "./session.ts";
+export { getAuthPageHtml, getAuthSuccessHtml } from "./ui.ts";
