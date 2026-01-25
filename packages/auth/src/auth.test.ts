@@ -51,11 +51,10 @@ async function generateTestKeyPair(): Promise<{
   privateKey: CryptoKey;
   publicCryptoKey: CryptoKey;
 }> {
-  const keyPair = await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign", "verify"]
-  );
+  const keyPair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ]);
 
   const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
   const publicKey = `${publicJwk.x}.${publicJwk.y}`;

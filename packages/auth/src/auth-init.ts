@@ -8,7 +8,6 @@ import type {
   AuthHttpRequest,
   AuthInitRequest,
   AuthInitResponse,
-  AwpAuthConfig,
   PendingAuth,
   PendingAuthStore,
 } from "./types.ts";

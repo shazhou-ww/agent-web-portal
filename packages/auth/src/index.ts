@@ -53,11 +53,11 @@
 // ============================================================================
 
 export {
+  type AuthRouterOptions,
+  type AwpAuthMiddleware,
   createAwpAuthMiddleware,
   hasAwpAuthCredentials,
   routeAuthRequest,
-  type AuthRouterOptions,
-  type AwpAuthMiddleware,
 } from "./middleware.ts";
 
 // ============================================================================
@@ -66,11 +66,11 @@ export {
 
 export {
   generateVerificationCode,
+  type HandleAuthInitOptions,
+  type HandleAuthStatusOptions,
   handleAuthInit,
   handleAuthStatus,
   MemoryPendingAuthStore,
-  type HandleAuthInitOptions,
-  type HandleAuthStatusOptions,
 } from "./auth-init.ts";
 
 // ============================================================================
@@ -78,11 +78,11 @@ export {
 // ============================================================================
 
 export {
+  type AuthCompleteResult,
   completeAuthorization,
+  type HandleAuthCompleteOptions,
   handleAuthComplete,
   MemoryPubkeyStore,
-  type AuthCompleteResult,
-  type HandleAuthCompleteOptions,
 } from "./auth-complete.ts";
 
 // ============================================================================
@@ -101,24 +101,24 @@ export {
 // ============================================================================
 
 export type {
-  // Config
-  AwpAuthConfig,
-  // Stores
-  PendingAuth,
-  PendingAuthStore,
-  AuthorizedPubkey,
-  PubkeyStore,
+  AuthCompleteRequest,
   // Auth context and result
   AuthContext,
-  AuthResult,
   // HTTP
   AuthHttpRequest,
   // Request/Response types
   AuthInitRequest,
   AuthInitResponse,
-  AuthCompleteRequest,
+  AuthorizedPubkey,
+  AuthResult,
   AuthStatusResponse,
+  // Config
+  AwpAuthConfig,
   ChallengeBody,
+  // Stores
+  PendingAuth,
+  PendingAuthStore,
+  PubkeyStore,
 } from "./types.ts";
 
 // Constants

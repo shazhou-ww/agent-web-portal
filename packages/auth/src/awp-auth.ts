@@ -5,7 +5,7 @@
  * Signature format: timestamp.METHOD.path.bodyHash
  */
 
-import type { AuthContext, AuthHttpRequest, AuthResult, AwpAuthConfig, PubkeyStore } from "./types.ts";
+import type { AuthContext, AuthHttpRequest, AuthResult, PubkeyStore } from "./types.ts";
 import { AWP_AUTH_DEFAULTS, AWP_AUTH_HEADERS } from "./types.ts";
 
 // ============================================================================

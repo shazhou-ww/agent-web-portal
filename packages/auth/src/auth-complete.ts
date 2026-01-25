@@ -6,8 +6,8 @@
 
 import type {
   AuthCompleteRequest,
-  AuthorizedPubkey,
   AuthHttpRequest,
+  AuthorizedPubkey,
   PendingAuthStore,
   PubkeyStore,
 } from "./types.ts";

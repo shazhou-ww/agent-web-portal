@@ -33,7 +33,7 @@ function shouldExcludePath(path: string, excludePaths: string[]): boolean {
 /**
  * Check if a path is an auth endpoint
  */
-function isAuthPath(path: string, config: AwpAuthConfig): boolean {
+function _isAuthPath(path: string, config: AwpAuthConfig): boolean {
   const authInitPath = config.authInitPath ?? AWP_AUTH_DEFAULTS.authInitPath;
   const authStatusPath = config.authStatusPath ?? AWP_AUTH_DEFAULTS.authStatusPath;
   const authPagePath = config.authPagePath ?? AWP_AUTH_DEFAULTS.authPagePath;
