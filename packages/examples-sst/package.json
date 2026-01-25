@@ -1,0 +1,42 @@
+{
+  "name": "@agent-web-portal/examples-sst",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SST-based example Lambda portals for Agent Web Portal",
+  "type": "module",
+  "main": "dist/handler.mjs",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "sst dev",
+    "dev:local": "bun run --watch server.ts",
+    "ui": "bun run --cwd ui dev",
+    "clean": "rimraf .turbo dist .sst",
+    "build": "bun build src/handler.ts --outdir dist --format esm --target node --external '@aws-sdk/*' && mv dist/handler.js dist/handler.mjs",
+    "deploy": "sst deploy",
+    "deploy:prod": "sst deploy --stage production",
+    "remove": "sst remove",
+    "console": "sst console",
+    "test": "bun test",
+    "test:e2e": "bun test e2e.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "check": "tsc --noEmit && biome check ."
+  },
+  "dependencies": {
+    "@agent-web-portal/auth": "workspace:*",
+    "@agent-web-portal/aws-lambda": "workspace:*",
+    "@agent-web-portal/client": "workspace:*",
+    "@agent-web-portal/core": "workspace:*",
+    "@aws-sdk/client-s3": "^3.975.0",
+    "@aws-sdk/s3-request-presigner": "^3.975.0",
+    "jsonata": "^2.0.5",
+    "zod": "3"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.147",
+    "@types/bun": "latest",
+    "@types/node": "^22.10.5",
+    "sst": "^3.17.37"
+  }
+}
