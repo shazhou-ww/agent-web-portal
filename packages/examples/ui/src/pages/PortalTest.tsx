@@ -342,7 +342,6 @@ export default function PortalTest() {
   const [authState, setAuthState] = useState<AuthState>({ status: 'none' });
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [authExpiresAt, setAuthExpiresAt] = useState<number | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
   const keyPairRef = useRef<CryptoKeyPair | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -359,8 +358,7 @@ export default function PortalTest() {
   useEffect(() => {
     const checkStoredKey = async () => {
       if (!isAuthPortal) {
-        setAuthChecked(true);
-        return;
+        return { isAuthenticated: false };
       }
 
       const stored = await loadKeyPair(endpoint);
@@ -371,15 +369,19 @@ export default function PortalTest() {
           pubkey: stored.pubkeyB64,
         });
         setAuthExpiresAt(stored.expiresAt);
+        return { isAuthenticated: true };
       } else {
         setAuthState({ status: 'none' });
         keyPairRef.current = null;
+        return { isAuthenticated: false };
       }
-      setAuthChecked(true);
     };
 
-    setAuthChecked(false);
-    checkStoredKey();
+    checkStoredKey().then(({ isAuthenticated }) => {
+      // Load tools immediately with the correct auth status
+      // This avoids race condition where authState hasn't updated yet
+      loadTools(isAuthenticated);
+    });
 
     // Clear polling on endpoint change
     if (pollingRef.current) {
@@ -689,12 +691,8 @@ export default function PortalTest() {
     }
   };
 
-  // Initialize and load tools (after auth check is complete)
-  useEffect(() => {
-    if (authChecked) {
-      loadTools(authState.status === 'authenticated');
-    }
-  }, [endpoint, authChecked]);
+  // Note: loadTools is now called directly in checkStoredKey to avoid race conditions
+  // with authState updates. The old useEffect was removed.
 
   // Reload tools after successful authentication
   useEffect(() => {
