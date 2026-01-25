@@ -1,6 +1,6 @@
 {
   "name": "@agent-web-portal/examples",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Example Lambda-based portals for Agent Web Portal",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@agent-web-portal/client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Client SDK for Agent Web Portal - handles blob storage and presigned URL management",
   "license": "MIT",
   "author": "Agent Web Portal Contributors",

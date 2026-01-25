@@ -1,6 +1,6 @@
 {
   "name": "@agent-web-portal/auth",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Authentication middleware for Agent Web Portal - supports OAuth 2.1, HMAC, and API Key",
   "license": "MIT",
   "author": "Agent Web Portal Contributors",
