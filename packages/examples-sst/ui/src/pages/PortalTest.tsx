@@ -78,12 +78,15 @@ interface AuthState {
   error?: string;
 }
 
+// API base URL - uses VITE_API_URL in production, empty string for local dev (proxy)
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 const PORTAL_ENDPOINTS: Record<string, string> = {
-  basic: '/basic',
-  ecommerce: '/ecommerce',
-  jsonata: '/jsonata',
-  auth: '/auth',
-  blob: '/blob',
+  basic: `${API_BASE}/basic`,
+  ecommerce: `${API_BASE}/ecommerce`,
+  jsonata: `${API_BASE}/jsonata`,
+  auth: `${API_BASE}/auth`,
+  blob: `${API_BASE}/blob`,
 };
 
 // Image Preview Component for output blobs
@@ -502,8 +505,11 @@ export default function PortalTest() {
       // Generate key pair
       const { pubkeyB64 } = await generateKeyPair();
 
-      // Call auth/init
-      const initRes = await fetch(responseBody.auth_init_endpoint, {
+      // Call auth/init - prepend API_BASE if it's a relative path
+      const authInitUrl = responseBody.auth_init_endpoint.startsWith('/')
+        ? `${API_BASE}${responseBody.auth_init_endpoint}`
+        : responseBody.auth_init_endpoint;
+      const initRes = await fetch(authInitUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -548,7 +554,7 @@ export default function PortalTest() {
 
     const poll = async () => {
       try {
-        const res = await fetch(`/auth/status?pubkey=${encodeURIComponent(pubkey)}`);
+        const res = await fetch(`${API_BASE}/auth/status?pubkey=${encodeURIComponent(pubkey)}`);
         const data = await res.json();
 
         // Check if authorized (response is { authorized: true/false, expires_at?: number })
@@ -785,23 +791,34 @@ export default function PortalTest() {
         const output: Record<string, string> = {};
         const outputUri: Record<string, string> = {};
 
-        // For input blob fields, convert relative path to full URL (presigned GET URL)
+        // Determine API origin for blob URLs
+        const apiOrigin = API_BASE || window.location.origin;
+
+        // For input blob fields, get the presigned URL from args
+        // The URL could be:
+        // 1. A relative path like /blob/temp/xxx (convert to full URL)
+        // 2. A full S3 presigned URL (use as-is)
         for (const field of inputBlobs) {
           const value = args[field];
-          if (typeof value === 'string' && value.startsWith('/blob/')) {
-            // Convert to full URL - this acts as the presigned GET URL
-            input[field] = `${window.location.origin}${value}`;
+          if (typeof value === 'string') {
+            if (value.startsWith('/blob/')) {
+              // Convert relative path to full URL
+              input[field] = `${apiOrigin}${value}`;
+            } else if (value.startsWith('http://') || value.startsWith('https://')) {
+              // Already a full URL (S3 presigned URL)
+              input[field] = value;
+            }
           }
         }
 
         // For output blob fields, get presigned PUT URL from prepare-download
         const newOutputBlobUrls: Record<string, string> = {};
         for (const field of outputBlobs) {
-          const res = await fetch('/blob/prepare-download', { method: 'POST' });
+          const res = await fetch(`${API_BASE}/blob/prepare-download`, { method: 'POST' });
           if (res.ok) {
             const data = await res.json() as { id: string; writeUrl: string; readUrl: string };
             // Convert to full URLs
-            output[field] = `${window.location.origin}${data.writeUrl}`;
+            output[field] = `${apiOrigin}${data.writeUrl}`;
             outputUri[field] = data.id; // Use ID as the permanent URI
             // Save readUrl for displaying the image after the call
             newOutputBlobUrls[field] = data.readUrl;
@@ -877,7 +894,7 @@ export default function PortalTest() {
       formData.append('image', file);
 
       // Use prepare-upload to get a temporary presigned GET URL
-      const res = await fetch('/blob/prepare-upload', {
+      const res = await fetch(`${API_BASE}/blob/prepare-upload`, {
         method: 'POST',
         body: formData,
       });

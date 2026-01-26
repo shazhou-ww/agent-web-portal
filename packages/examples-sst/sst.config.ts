@@ -99,7 +99,12 @@ export default $config({
           "X-AWP-Timestamp",
         ],
         allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allowOrigins: ["*"],
+        allowOrigins: [
+          "https://di1uex7qyodzs.cloudfront.net",
+          "http://localhost:5173",
+          "http://localhost:3000",
+        ],
+        allowCredentials: true,
       },
     });
 

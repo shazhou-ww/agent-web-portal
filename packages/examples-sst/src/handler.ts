@@ -27,6 +27,16 @@ import {
 } from "@agent-web-portal/aws-lambda";
 import { getAuthPageHtml, getAuthSuccessHtml } from "./auth/ui.ts";
 import {
+  initSessionStore,
+  createSession,
+  getSession,
+  deleteSession,
+  getSessionIdFromCookie,
+  createSessionCookie,
+  createClearSessionCookie,
+  validateCredentials,
+} from "./auth/dynamodb-session.ts";
+import {
   createOutputBlobSlotS3,
   getImagePresignedUrlS3,
   getTempUploadS3,
@@ -73,6 +83,12 @@ const pubkeyStore = new DynamoDBPubkeyStore({
   region: AWS_REGION,
 });
 
+// Initialize session store
+initSessionStore({
+  tableName: AUTH_TABLE,
+  region: AWS_REGION,
+});
+
 // Auth middleware
 const authMiddleware = createAwpAuthMiddleware({
   pendingAuthStore,
@@ -87,6 +103,28 @@ const authMiddleware = createAwpAuthMiddleware({
 // =============================================================================
 
 function createAuthRequest(event: APIGatewayProxyEvent, baseUrl: string): AuthHttpRequest {
+  // API Gateway v2 (HTTP API) uses different event structure
+  const eventV2 = event as unknown as { 
+    rawPath?: string; 
+    rawQueryString?: string;
+    requestContext?: { http?: { method?: string } } 
+  };
+  const path = event.path ?? eventV2.rawPath ?? "/";
+  const method = event.httpMethod ?? eventV2.requestContext?.http?.method ?? "GET";
+  
+  // Build query string - API Gateway v2 uses rawQueryString
+  let queryString = "";
+  if (eventV2.rawQueryString) {
+    queryString = `?${eventV2.rawQueryString}`;
+  } else if (event.queryStringParameters) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(event.queryStringParameters)) {
+      if (value) params.append(key, value);
+    }
+    const qs = params.toString();
+    if (qs) queryString = `?${qs}`;
+  }
+
   const body = event.body
     ? event.isBase64Encoded
       ? Buffer.from(event.body, "base64").toString("utf-8")
@@ -96,8 +134,8 @@ function createAuthRequest(event: APIGatewayProxyEvent, baseUrl: string): AuthHt
   const headers = new Headers(event.headers as Record<string, string>);
 
   const request: AuthHttpRequest = {
-    method: event.httpMethod,
-    url: `${baseUrl}${event.path}`,
+    method,
+    url: `${baseUrl}${path}${queryString}`,
     headers,
     text: async () => body,
     clone: () => createAuthRequest(event, baseUrl),
@@ -107,6 +145,14 @@ function createAuthRequest(event: APIGatewayProxyEvent, baseUrl: string): AuthHt
 }
 
 function createWebRequest(event: APIGatewayProxyEvent, baseUrl: string): Request {
+  // API Gateway v2 (HTTP API) uses different event structure
+  const eventV2 = event as unknown as { 
+    rawPath?: string; 
+    requestContext?: { http?: { method?: string } } 
+  };
+  const path = event.path ?? eventV2.rawPath ?? "/";
+  const method = event.httpMethod ?? eventV2.requestContext?.http?.method ?? "GET";
+  
   const body = event.body
     ? event.isBase64Encoded
       ? Buffer.from(event.body, "base64").toString("utf-8")
@@ -114,12 +160,12 @@ function createWebRequest(event: APIGatewayProxyEvent, baseUrl: string): Request
     : undefined;
 
   const headers = new Headers(event.headers as Record<string, string>);
-  const url = `${baseUrl}${event.path}`;
+  const url = `${baseUrl}${path}`;
 
   return new Request(url, {
-    method: event.httpMethod,
+    method,
     headers,
-    body: event.httpMethod !== "GET" && event.httpMethod !== "HEAD" ? body : undefined,
+    body: method !== "GET" && method !== "HEAD" ? body : undefined,
   });
 }
 
@@ -179,24 +225,41 @@ export async function handler(
   event: APIGatewayProxyEvent,
   _context: LambdaContext
 ): Promise<APIGatewayProxyResult> {
-  const { path, httpMethod } = event;
+  // API Gateway v2 (HTTP API) uses rawPath, v1 (REST API) uses path
+  const path = event.path ?? (event as unknown as { rawPath?: string }).rawPath ?? "/";
+  const httpMethod = event.httpMethod ?? (event as unknown as { requestContext?: { http?: { method?: string } } }).requestContext?.http?.method ?? "GET";
 
   // Build base URL
   const protocol = event.headers["x-forwarded-proto"] ?? "https";
   const host = event.headers.host ?? event.headers.Host ?? "localhost";
   const baseUrl = `${protocol}://${host}`;
 
+  // Get origin for CORS - must be explicit origin when using credentials
+  const requestOrigin = event.headers.origin ?? event.headers.Origin;
+  // Allowed origins for CORS with credentials
+  const allowedOrigins = [
+    "https://di1uex7qyodzs.cloudfront.net",
+    "http://localhost:5173",
+    "http://localhost:3000",
+  ];
+  const origin = requestOrigin && allowedOrigins.includes(requestOrigin) 
+    ? requestOrigin 
+    : allowedOrigins[0]; // Default to production UI origin
+  
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, Mcp-Session-Id, X-AWP-Signature, X-AWP-Pubkey, X-AWP-Timestamp",
+    "Access-Control-Allow-Credentials": "true",
+  };
+
   try {
     // Handle CORS preflight
     if (httpMethod === "OPTIONS") {
       return {
         statusCode: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers":
-            "Content-Type, Authorization, Mcp-Session-Id, X-AWP-Signature, X-AWP-Pubkey, X-AWP-Timestamp",
-        },
+        headers: corsHeaders,
         body: "",
       };
     }
@@ -205,12 +268,120 @@ export async function handler(
     if (path === "/health" || path === "/healthz" || path === "/ping") {
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "ok",
           timestamp: new Date().toISOString(),
           deployment: "sst",
         }),
+      };
+    }
+
+    // =========================================================================
+    // Session API Endpoints (for UI)
+    // =========================================================================
+
+    // GET /api/me - Get current user
+    if (path === "/api/me" && httpMethod === "GET") {
+      const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
+      const sessionId = getSessionIdFromCookie(cookieHeader);
+
+      if (!sessionId) {
+        return {
+          statusCode: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ authenticated: false }),
+        };
+      }
+
+      const session = await getSession(sessionId);
+      if (!session) {
+        return {
+          statusCode: 200,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Set-Cookie": createClearSessionCookie(),
+          },
+          body: JSON.stringify({ authenticated: false }),
+        };
+      }
+
+      return {
+        statusCode: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          authenticated: true,
+          user: {
+            userId: session.userId,
+            username: session.username,
+          },
+        }),
+      };
+    }
+
+    // POST /api/login - Login with username/password
+    if (path === "/api/login" && httpMethod === "POST") {
+      const body = event.body
+        ? event.isBase64Encoded
+          ? Buffer.from(event.body, "base64").toString("utf-8")
+          : event.body
+        : "{}";
+
+      let credentials: { username?: string; password?: string };
+      try {
+        credentials = JSON.parse(body);
+      } catch {
+        credentials = {};
+      }
+
+      const { username = "", password = "" } = credentials;
+      const user = validateCredentials(username, password);
+
+      if (!user) {
+        return {
+          statusCode: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Invalid username or password" }),
+        };
+      }
+
+      const { sessionId, session } = await createSession(user);
+
+      return {
+        statusCode: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Set-Cookie": createSessionCookie(sessionId),
+        },
+        body: JSON.stringify({
+          success: true,
+          user: {
+            userId: session.userId,
+            username: session.username,
+          },
+        }),
+      };
+    }
+
+    // POST /api/logout - Logout
+    if (path === "/api/logout" && httpMethod === "POST") {
+      const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
+      const sessionId = getSessionIdFromCookie(cookieHeader);
+
+      if (sessionId) {
+        await deleteSession(sessionId);
+      }
+
+      return {
+        statusCode: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Set-Cookie": createClearSessionCookie(),
+        },
+        body: JSON.stringify({ success: true }),
       };
     }
 
@@ -502,10 +673,105 @@ export async function handler(
 
       // Auth page - login UI
       if (path === "/auth/page") {
+        // Get pubkey from query string to show client info
+        const queryString = event.queryStringParameters ?? {};
+        const pubkey = queryString.pubkey ?? "";
+        
+        let clientName: string | undefined;
+        let verificationCode: string | undefined;
+        
+        if (pubkey) {
+          // Look up pending auth to get client name and verification code
+          const pendingAuth = await pendingAuthStore.get(pubkey);
+          if (pendingAuth) {
+            clientName = pendingAuth.clientName;
+            verificationCode = pendingAuth.verificationCode;
+          }
+        }
+        
         return {
           statusCode: 200,
           headers: { "Content-Type": "text/html; charset=utf-8" },
-          body: getAuthPageHtml(),
+          body: getAuthPageHtml(undefined, clientName, verificationCode),
+        };
+      }
+
+      // Handle auth complete (JSON API from auth page)
+      if (path === "/auth/complete" && httpMethod === "POST") {
+        const body = event.body
+          ? event.isBase64Encoded
+            ? Buffer.from(event.body, "base64").toString("utf-8")
+            : event.body
+          : "{}";
+
+        let payload: { pubkey?: string; verification_code?: string; expires_in?: number };
+        try {
+          payload = JSON.parse(body);
+        } catch {
+          payload = {};
+        }
+
+        const { pubkey = "", verification_code = "" } = payload;
+
+        if (!pubkey || !verification_code) {
+          return {
+            statusCode: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "invalid_request", error_description: "Missing pubkey or verification_code" }),
+          };
+        }
+
+        // Look up pending auth to get user ID (the UI auth page doesn't require login,
+        // but in production you would verify the session here)
+        // For demo purposes, we'll use a default user ID
+        const pendingAuth = await pendingAuthStore.get(pubkey);
+        if (!pendingAuth) {
+          return {
+            statusCode: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "invalid_request", error_description: "No pending authorization found" }),
+          };
+        }
+
+        // Verify the verification code matches
+        if (pendingAuth.verificationCode !== verification_code) {
+          return {
+            statusCode: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "invalid_request", error_description: "Invalid verification code" }),
+          };
+        }
+
+        // For demo, use a default user ID (in production, get from session)
+        const userId = "demo-user-001";
+
+        // Complete authorization
+        const result = await completeAuthorization(pubkey, verification_code, userId, {
+          pendingAuthStore,
+          pubkeyStore,
+        });
+
+        if (result.success) {
+          return {
+            statusCode: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ success: true }),
+          };
+        }
+
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "authorization_failed", error_description: result.errorDescription ?? "Authorization failed" }),
+        };
+      }
+
+      // Auth success page
+      if (path === "/auth/success") {
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+          body: getAuthSuccessHtml(),
         };
       }
 

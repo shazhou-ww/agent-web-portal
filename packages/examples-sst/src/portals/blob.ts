@@ -7,12 +7,19 @@
  * - get_image: blob OUTPUT (tool writes to presigned PUT URL)
  * - list_images: no blobs
  *
- * Images are stored in memory with a 1 day TTL.
+ * Images are stored in S3 with a 1 day TTL.
  * Temporary upload URLs have a 5 minute TTL.
  */
 
 import { blob, createAgentWebPortal } from "@agent-web-portal/core";
 import { z } from "zod";
+import {
+  storeImageS3,
+  getStoredImageS3,
+  listStoredImagesS3,
+  isS3BlobStorageConfigured,
+  writeOutputBlobS3,
+} from "./blob-s3.ts";
 
 // =============================================================================
 // Blob Handler Call Tracking (for testing)
@@ -380,9 +387,14 @@ export const blobPortal = createAgentWebPortal({
       const detectedContentType =
         response.headers.get("content-type") ?? contentType ?? "image/png";
 
-      // Store the image
+      // Store the image to S3
+      if (isS3BlobStorageConfigured()) {
+        const result = await storeImageS3(data, detectedContentType);
+        return result;
+      }
+      
+      // Fallback to memory storage
       const result = storeImage(data, detectedContentType);
-
       return result;
     },
   })
@@ -398,11 +410,18 @@ export const blobPortal = createAgentWebPortal({
         outputBlobs: context?.blobs.output ?? {},
       });
 
-      // Clean up expired images
-      cleanupExpiredImages();
-
-      // Look up the image
-      const storedImage = getStoredImage(key);
+      // Look up the image (try S3 first, then memory)
+      let storedImage: { data: ArrayBuffer; contentType: string; uploadedAt: string; expiresAt: string } | null = null;
+      
+      if (isS3BlobStorageConfigured()) {
+        storedImage = await getStoredImageS3(key);
+      }
+      
+      if (!storedImage) {
+        // Fallback to memory storage
+        cleanupExpiredImages();
+        storedImage = getStoredImage(key);
+      }
 
       if (!storedImage) {
         throw new Error(`Image not found or expired: ${key}`);
@@ -411,17 +430,36 @@ export const blobPortal = createAgentWebPortal({
       // Get the presigned PUT URL for the output image
       const outputUrl = context?.blobs.output.image;
       if (outputUrl) {
-        // Write the image data to the presigned PUT URL
-        const putResponse = await fetch(outputUrl, {
-          method: "PUT",
-          headers: {
-            "Content-Type": storedImage.contentType,
-          },
-          body: storedImage.data,
-        });
+        try {
+          // Extract the output blob ID from the presigned URL
+          // URL format: https://bucket.s3.region.amazonaws.com/output/{id}?...
+          const urlObj = new URL(outputUrl);
+          const pathParts = urlObj.pathname.split("/");
+          const outputIndex = pathParts.indexOf("output");
+          
+          if (outputIndex !== -1 && outputIndex < pathParts.length - 1) {
+            // Use direct S3 write (more reliable than fetch in Lambda)
+            const outputId = pathParts[outputIndex + 1];
+            await writeOutputBlobS3(outputId, storedImage.data, storedImage.contentType);
+          } else {
+            // Fallback to presigned URL if we can't extract the ID
+            const putResponse = await fetch(outputUrl, {
+              method: "PUT",
+              headers: {
+                "Content-Type": storedImage.contentType,
+              },
+              body: new Uint8Array(storedImage.data),
+            });
 
-        if (!putResponse.ok) {
-          throw new Error(`Failed to write image: ${putResponse.status} ${putResponse.statusText}`);
+            if (!putResponse.ok) {
+              const errorText = await putResponse.text().catch(() => "");
+              throw new Error(`Failed to write image: ${putResponse.status} ${putResponse.statusText} - ${errorText}`);
+            }
+          }
+        } catch (fetchError) {
+          const errorMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
+          console.error("[get_image] fetch error:", errorMessage, "URL:", outputUrl.substring(0, 100));
+          throw new Error(`Failed to upload output image: ${errorMessage}`);
         }
       }
 
@@ -442,9 +480,17 @@ export const blobPortal = createAgentWebPortal({
     }),
     description: "List all stored images (not expired)",
     handler: async () => {
-      // Clean up expired images
+      // List images from S3 if configured
+      if (isS3BlobStorageConfigured()) {
+        const images = await listStoredImagesS3();
+        return {
+          images,
+          count: images.length,
+        };
+      }
+      
+      // Fallback to memory storage
       cleanupExpiredImages();
-
       const images = listStoredImages();
 
       return {
