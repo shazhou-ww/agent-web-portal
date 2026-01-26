@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: AWP Examples - Multi-portal Lambda with React UI
+Description: AWP Examples SST - Multi-portal Lambda with React UI (SAM version)
 
 Globals:
   Function:
@@ -37,7 +37,7 @@ Resources:
         Enabled: true
       Tags:
         - Key: Application
-          Value: AWP-Examples
+          Value: AWP-Examples-SST
 
   # ==========================================================================
   # S3 Bucket for Skills (optional)
@@ -69,17 +69,14 @@ Resources:
         RestrictPublicBuckets: true
       LifecycleConfiguration:
         Rules:
-          # Permanent images: 1 day TTL
           - Id: ExpirePermanentImages
             Prefix: images/
             Status: Enabled
             ExpirationInDays: 1
-          # Temporary uploads: 1 hour TTL (cleanup buffer)
           - Id: ExpireTempUploads
             Prefix: temp/
             Status: Enabled
             ExpirationInDays: 1
-          # Output blobs: 1 hour TTL (cleanup buffer)
           - Id: ExpireOutputBlobs
             Prefix: output/
             Status: Enabled
@@ -106,7 +103,7 @@ Resources:
       FunctionName: !Sub "${AWS::StackName}-handler"
       CodeUri: dist/
       Handler: handler.handler
-      Description: AWP Examples - Multi-portal MCP endpoint with React UI
+      Description: AWP Examples SST - Multi-portal MCP endpoint with React UI
       Environment:
         Variables:
           AUTH_TABLE: !Ref AuthTable
@@ -127,14 +124,12 @@ Resources:
               - !Ref SkillsS3Bucket
               - !Ref SkillsBucket
       Events:
-        # Catch-all route for all paths
         ProxyRoute:
           Type: Api
           Properties:
             Path: /{proxy+}
             Method: ANY
             RestApiId: !Ref ExamplesApi
-        # Root route
         RootRoute:
           Type: Api
           Properties:
@@ -196,9 +191,9 @@ Outputs:
     Description: Auth Portal MCP endpoint
     Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/auth"
   
-  AuthInitEndpoint:
-    Description: Auth Init endpoint
-    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/auth/init"
+  BlobPortal:
+    Description: Blob Portal MCP endpoint
+    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/blob"
   
   FunctionArn:
     Description: Lambda Function ARN
@@ -218,7 +213,3 @@ Outputs:
   BlobBucketName:
     Description: Blob S3 Bucket Name
     Value: !Ref BlobS3Bucket
-  
-  BlobPortal:
-    Description: Blob Portal MCP endpoint
-    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/blob"

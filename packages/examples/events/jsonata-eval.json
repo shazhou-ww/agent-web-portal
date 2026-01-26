@@ -1,9 +1,0 @@
-{
-  "httpMethod": "POST",
-  "path": "/mcp",
-  "headers": {
-    "Content-Type": "application/json"
-  },
-  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"jsonata_eval\",\"arguments\":{\"expression\":\"$sum(values)\",\"input\":{\"values\":[1,2,3,4,5]}}}}",
-  "isBase64Encoded": false
-}

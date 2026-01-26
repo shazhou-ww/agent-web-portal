@@ -1,7 +1,9 @@
 /**
- * Static Asset Serving for Lambda
+ * Static Asset Serving for SST Lambda
  *
  * Serves bundled React app from the dist/ui directory.
+ * Note: In SST, static sites are typically deployed separately via CloudFront.
+ * This module provides fallback static serving for development/testing.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -27,8 +29,10 @@ const MIME_TYPES: Record<string, string> = {
   ".eot": "application/vnd.ms-fontobject",
 };
 
-// Base path for static assets (relative to Lambda function root)
-const STATIC_BASE = process.env.STATIC_BASE ?? join(__dirname, "..", "ui");
+// Base path for static assets
+// In Lambda: set STATIC_BASE=/var/task/ui
+// Locally: defaults to ./ui relative to current working directory
+const STATIC_BASE = process.env.STATIC_BASE ?? join(process.cwd(), "ui");
 
 /**
  * Serve static assets from the UI build directory

@@ -109,25 +109,6 @@
         "@agent-web-portal/aws-lambda": "workspace:*",
         "@agent-web-portal/client": "workspace:*",
         "@agent-web-portal/core": "workspace:*",
-        "@aws-sdk/client-s3": "^3.975.0",
-        "@aws-sdk/s3-request-presigner": "^3.975.0",
-        "jsonata": "^2.0.5",
-        "zod": "3",
-      },
-      "devDependencies": {
-        "@types/aws-lambda": "^8.10.147",
-        "@types/bun": "latest",
-        "@types/node": "^22.10.5",
-      },
-    },
-    "packages/examples-sst": {
-      "name": "@agent-web-portal/examples-sst",
-      "version": "0.1.0",
-      "dependencies": {
-        "@agent-web-portal/auth": "workspace:*",
-        "@agent-web-portal/aws-lambda": "workspace:*",
-        "@agent-web-portal/client": "workspace:*",
-        "@agent-web-portal/core": "workspace:*",
         "@aws-sdk/client-dynamodb": "^3.975.0",
         "@aws-sdk/client-s3": "^3.975.0",
         "@aws-sdk/s3-request-presigner": "^3.975.0",
@@ -153,8 +134,6 @@
     "@agent-web-portal/core": ["@agent-web-portal/core@workspace:packages/core"],
 
     "@agent-web-portal/examples": ["@agent-web-portal/examples@workspace:packages/examples"],
-
-    "@agent-web-portal/examples-sst": ["@agent-web-portal/examples-sst@workspace:packages/examples-sst"],
 
     "@aws-crypto/crc32": ["@aws-crypto/crc32@5.2.0", "", { "dependencies": { "@aws-crypto/util": "^5.2.0", "@aws-sdk/types": "^3.222.0", "tslib": "^2.6.2" } }, "sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg=="],
 

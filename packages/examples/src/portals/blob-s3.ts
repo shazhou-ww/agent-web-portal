@@ -1,5 +1,5 @@
 /**
- * S3-based Blob Storage for Lambda deployment
+ * S3-based Blob Storage for SST Lambda deployment
  *
  * Provides presigned URLs for blob upload/download operations.
  * - Temporary uploads: temp/{id} - 5 minute presigned GET URL
@@ -201,6 +201,28 @@ export async function readOutputBlobS3(
   }
 }
 
+/**
+ * Write data directly to an output blob (bypassing presigned URL)
+ * This is useful when the Lambda needs to write output blob data directly
+ */
+export async function writeOutputBlobS3(
+  id: string,
+  data: ArrayBuffer | Uint8Array,
+  contentType: string
+): Promise<void> {
+  const key = `output/${id}`;
+  const client = getS3Client();
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: BLOB_BUCKET,
+      Key: key,
+      Body: data instanceof Uint8Array ? data : new Uint8Array(data),
+      ContentType: contentType,
+    })
+  );
+}
+
 // =============================================================================
 // Permanent Image Store
 // =============================================================================
@@ -267,11 +289,16 @@ export async function getStoredImageS3(key: string): Promise<{
       return null;
     }
 
-    const data = await response.Body.transformToByteArray();
+    const uint8Array = await response.Body.transformToByteArray();
+    // Create a proper ArrayBuffer copy (not a view with offset)
+    const data = uint8Array.buffer.slice(
+      uint8Array.byteOffset,
+      uint8Array.byteOffset + uint8Array.byteLength
+    );
     const metadata = response.Metadata ?? {};
 
     return {
-      data: data.buffer as ArrayBuffer,
+      data,
       contentType: response.ContentType ?? "application/octet-stream",
       uploadedAt: metadata["uploaded-at"] ?? new Date().toISOString(),
       expiresAt: metadata["expires-at"] ?? new Date().toISOString(),
@@ -292,6 +319,7 @@ export async function listStoredImagesS3(): Promise<
     key: string;
     contentType: string;
     uploadedAt: string;
+    expiresAt: string;
     size: number;
   }>
 > {
@@ -300,6 +328,7 @@ export async function listStoredImagesS3(): Promise<
     key: string;
     contentType: string;
     uploadedAt: string;
+    expiresAt: string;
     size: number;
   }> = [];
 
@@ -317,10 +346,14 @@ export async function listStoredImagesS3(): Promise<
     if (response.Contents) {
       for (const object of response.Contents) {
         if (object.Key) {
+          const uploadedAt = object.LastModified ?? new Date();
+          // Images expire 1 day after upload
+          const expiresAt = new Date(uploadedAt.getTime() + 24 * 60 * 60 * 1000);
           images.push({
             key: object.Key,
             contentType: "image/*", // Would need HeadObject for actual content type
-            uploadedAt: object.LastModified?.toISOString() ?? new Date().toISOString(),
+            uploadedAt: uploadedAt.toISOString(),
+            expiresAt: expiresAt.toISOString(),
             size: object.Size ?? 0,
           });
         }

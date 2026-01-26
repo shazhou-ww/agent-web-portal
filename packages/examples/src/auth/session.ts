@@ -1,5 +1,5 @@
 /**
- * Session Management for Example Server
+ * Session Management for SST Example Server
  *
  * Simple cookie-based session for the example/demo server.
  * In production, replace with your own session management (e.g., Cognito).

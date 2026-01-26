@@ -2,9 +2,9 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext", "DOM"],
-    "types": ["node"],
+    "types": ["node", "bun"],
     "skipLibCheck": true
   },
   "include": ["src", "*.ts"],
-  "exclude": ["node_modules", "dist", "ui"]
+  "exclude": ["node_modules", "dist", ".sst", "ui", "sst.config.ts"]
 }

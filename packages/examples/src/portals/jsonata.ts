@@ -2,7 +2,6 @@
  * JSONata Portal
  *
  * Provides JSONata expression evaluation as a tool.
- * Migrated from packages/jsonata-portal.
  */
 
 import { createAgentWebPortal } from "@agent-web-portal/core";

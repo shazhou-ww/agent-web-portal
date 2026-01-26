@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@agent-web-portal/examples-ui",
+      "name": "@agent-web-portal/examples-sst-ui",
       "dependencies": {
         "@emotion/react": "^11.13.5",
         "@emotion/styled": "^11.13.5",

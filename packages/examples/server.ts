@@ -1,8 +1,8 @@
 /**
- * Local Development Server for AWP Examples
+ * Local Development Server for AWP Examples (SST)
  *
  * This is a Bun-based server for local development and testing.
- * For production, use the Lambda handler with SAM.
+ * For production, use `npx sst deploy` to deploy to AWS.
  *
  * Run with: bun run server.ts
  */
@@ -46,7 +46,7 @@ import {
 // Configuration
 // =============================================================================
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
 
 // =============================================================================
 // Auth Stores (in-memory for local development)
@@ -77,7 +77,7 @@ async function handleRequest(req: Request): Promise<Response> {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers":
           "Content-Type, Authorization, Mcp-Session-Id, X-AWP-Signature, X-AWP-Pubkey, X-AWP-Timestamp",
       },
@@ -86,9 +86,12 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // Health check
   if (pathname === "/health" || pathname === "/healthz" || pathname === "/ping") {
-    return new Response(JSON.stringify({ status: "ok", timestamp: new Date().toISOString() }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ status: "ok", timestamp: new Date().toISOString(), deployment: "local" }),
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   // Basic portal
@@ -113,11 +116,9 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // ==========================================================================
   // Blob Storage API routes (for demo/testing)
-  // These APIs simulate S3-like presigned URL functionality
   // ==========================================================================
 
   // Prepare upload - upload file and get a temporary presigned GET URL (5 min TTL)
-  // This is used by UI to upload a file before calling put_image tool
   if (pathname === "/blob/prepare-upload" && req.method === "POST") {
     try {
       const contentType = req.headers.get("content-type") ?? "";
@@ -187,7 +188,6 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // Prepare download - create output blob slot and get presigned URLs
-  // This is used by UI before calling get_image tool
   if (pathname === "/blob/prepare-download" && req.method === "POST") {
     const result = createOutputBlobSlot();
     return new Response(JSON.stringify(result), {
@@ -223,7 +223,7 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // Read from output blob (presigned GET URL equivalent for reading after write)
+  // Read from output blob
   if (pathname.startsWith("/blob/output/") && req.method === "GET") {
     const id = decodeURIComponent(pathname.slice("/blob/output/".length));
     const blob = readOutputBlob(id);
@@ -244,7 +244,7 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // Direct upload to permanent storage (legacy, still useful)
+  // Direct upload to permanent storage
   if (pathname === "/blob/upload" && req.method === "POST") {
     try {
       const contentType = req.headers.get("content-type") ?? "";
@@ -440,11 +440,9 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    // Extract pubkey from URL (URL-encoded)
     const pubkeyEncoded = pathname.slice("/api/clients/".length);
     const pubkey = decodeURIComponent(pubkeyEncoded);
 
-    // Verify the pubkey belongs to this user
     const authInfo = await pubkeyStore.lookup(pubkey);
     if (!authInfo || authInfo.userId !== session.userId) {
       return new Response(JSON.stringify({ error: "Client not found" }), {
@@ -470,11 +468,9 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    // Extract pubkey from URL
     const pubkeyEncoded = pathname.slice("/api/clients/".length);
     const pubkey = decodeURIComponent(pubkeyEncoded);
 
-    // Verify the pubkey belongs to this user
     const authInfo = await pubkeyStore.lookup(pubkey);
     if (!authInfo || authInfo.userId !== session.userId) {
       return new Response(JSON.stringify({ error: "Client not found" }), {
@@ -487,7 +483,6 @@ async function handleRequest(req: Request): Promise<Response> {
       const body = await req.json();
       const { expiresIn } = body as { expiresIn?: number };
 
-      // Update expiration
       const newExpiresAt = expiresIn ? Date.now() + expiresIn * 1000 : undefined;
       const updatedAuth: AuthorizedPubkey = {
         ...authInfo,
@@ -556,7 +551,6 @@ async function handleRequest(req: Request): Promise<Response> {
       const pubkey = url.searchParams.get("pubkey") ?? "";
 
       if (!session) {
-        // Redirect to login with return URL
         const returnUrl = encodeURIComponent(`/auth/page?pubkey=${encodeURIComponent(pubkey)}`);
         return new Response(null, {
           status: 302,
@@ -564,7 +558,6 @@ async function handleRequest(req: Request): Promise<Response> {
         });
       }
 
-      // Get pending auth info to show client name
       const pendingAuth = await pendingAuthStore.get(pubkey);
       return new Response(
         getAuthPageHtml(undefined, pendingAuth?.clientName, pendingAuth?.verificationCode),
@@ -627,7 +620,7 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    // Legacy login form handler (for backward compatibility)
+    // Legacy login form handler
     if (pathname === "/auth/login" && req.method === "POST") {
       const contentType = req.headers.get("content-type") ?? "";
       const formData: Record<string, string> = {};
@@ -666,7 +659,6 @@ async function handleRequest(req: Request): Promise<Response> {
       });
 
       if (result.success) {
-        // Create session and set cookie
         const { sessionId } = createSession(user);
         return new Response(getAuthSuccessHtml(), {
           headers: {
@@ -686,7 +678,6 @@ async function handleRequest(req: Request): Promise<Response> {
     if (pathname === "/auth" || pathname === "/auth/mcp") {
       const authResult = await authMiddleware(authReq);
       if (!authResult.authorized) {
-        // Return challenge response or a generic 401 if no challenge provided
         return (
           authResult.challengeResponse ??
           new Response(
@@ -706,7 +697,9 @@ async function handleRequest(req: Request): Promise<Response> {
   if (pathname === "/api" || pathname === "/") {
     return new Response(
       JSON.stringify({
-        name: "Agent Web Portal - Examples",
+        name: "Agent Web Portal - Examples (SST)",
+        version: "0.1.0",
+        deployment: "local",
         portals: {
           basic: { endpoint: "/basic", description: "Basic greeting portal" },
           ecommerce: { endpoint: "/ecommerce", description: "E-commerce portal" },
@@ -741,7 +734,7 @@ const server = Bun.serve({
 });
 
 console.log(`
-🌐 AWP Examples - Local Development Server
+🚀 AWP Examples (SST) - Local Development Server
    URL: http://localhost:${PORT}
 
 📡 Available Portals:
@@ -760,6 +753,10 @@ console.log(`
    - test / test123
    - admin / admin123
    - demo / demo
+
+📦 Deployment:
+   - npx sst dev      - Development with live reload
+   - npx sst deploy   - Deploy to AWS
 
 Press Ctrl+C to stop.
 `);
