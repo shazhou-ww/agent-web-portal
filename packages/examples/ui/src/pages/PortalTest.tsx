@@ -38,6 +38,7 @@ import {
   CloudUpload as UploadIcon,
   Image as ImageIcon,
   Download as DownloadIcon,
+  AutoAwesome as SkillIcon,
 } from '@mui/icons-material';
 
 interface BlobFieldMetadata {
@@ -58,6 +59,17 @@ interface Tool {
   description: string;
   inputSchema: Record<string, unknown>;
   _awp?: AwpExtension;
+}
+
+interface Skill {
+  url: string;
+  frontmatter: {
+    name?: string;
+    description?: string;
+    version?: string;
+    'allowed-tools'?: string[];
+    [key: string]: unknown;
+  };
 }
 
 interface JsonRpcResponse {
@@ -328,6 +340,7 @@ export default function PortalTest() {
   const isAuthPortal = portalId === 'auth';
 
   const [tools, setTools] = useState<Tool[]>([]);
+  const [skills, setSkills] = useState<Record<string, Skill>>({});
   const [selectedTool, setSelectedTool] = useState('');
   const [arguments_, setArguments] = useState('{}');
   const [response, setResponse] = useState<JsonRpcResponse | null>(null);
@@ -689,6 +702,20 @@ export default function PortalTest() {
           setSelectedTool(toolsList[0].name);
           updateDefaultArgs(toolsList[0]);
         }
+      }
+
+      // Get skills (AWP extension)
+      try {
+        const skillsRes = await jsonRpc('skills/list', undefined, signed && isAuthPortal);
+        if (
+          skillsRes.data.result &&
+          typeof skillsRes.data.result === 'object'
+        ) {
+          setSkills(skillsRes.data.result as Record<string, Skill>);
+        }
+      } catch {
+        // Skills are optional, ignore errors
+        setSkills({});
       }
     } catch (err) {
       setError('Failed to load tools');
@@ -1275,6 +1302,105 @@ export default function PortalTest() {
               </Accordion>
             ))}
           </Grid>
+
+          {/* Available Skills */}
+          {Object.keys(skills).length > 0 && (
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <SkillIcon color="primary" />
+                Available Skills
+              </Typography>
+              {Object.entries(skills).map(([skillName, skill]) => (
+                <Accordion key={skillName}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      <Typography fontWeight={500}>
+                        {skill.frontmatter?.name || skillName}
+                      </Typography>
+                      {skill.frontmatter?.version && (
+                        <Chip label={`v${skill.frontmatter.version}`} size="small" variant="outlined" />
+                      )}
+                      <Typography variant="body2" color="text.secondary">
+                        {skill.frontmatter?.description}
+                      </Typography>
+                    </Stack>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Stack spacing={2}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Skill URL:
+                          </Typography>
+                          <Chip
+                            label={skill.url}
+                            size="small"
+                            sx={{ fontFamily: 'monospace' }}
+                            onClick={() => copyToClipboard(skill.url)}
+                            icon={<CopyIcon fontSize="small" />}
+                          />
+                        </Box>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<DownloadIcon />}
+                          href={`${API_BASE}/api/skills/${skill.url.replace('/skills/', '')}/download`}
+                          download
+                        >
+                          Download
+                        </Button>
+                      </Box>
+                      
+                      {skill.frontmatter?.['allowed-tools'] && skill.frontmatter['allowed-tools'].length > 0 && (
+                        <Box>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Allowed Tools:
+                          </Typography>
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            {skill.frontmatter['allowed-tools'].map((toolName) => (
+                              <Chip
+                                key={toolName}
+                                label={toolName}
+                                size="small"
+                                color="primary"
+                                variant="outlined"
+                                onClick={() => {
+                                  const tool = tools.find(t => t.name === toolName);
+                                  if (tool) {
+                                    setSelectedTool(toolName);
+                                    updateDefaultArgs(tool);
+                                  }
+                                }}
+                                sx={{ cursor: 'pointer' }}
+                              />
+                            ))}
+                          </Stack>
+                        </Box>
+                      )}
+
+                      <Box>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Frontmatter:
+                        </Typography>
+                        <Box
+                          component="pre"
+                          sx={{
+                            p: 2,
+                            bgcolor: '#f5f5f5',
+                            borderRadius: 1,
+                            overflow: 'auto',
+                            fontSize: 12,
+                          }}
+                        >
+                          {JSON.stringify(skill.frontmatter, null, 2)}
+                        </Box>
+                      </Box>
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
+              ))}
+            </Grid>
+          )}
         </Grid>
         </>
       )}

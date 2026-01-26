@@ -65,7 +65,7 @@ export const jsonataPortal = createAgentWebPortal({
   })
   .registerSkills({
     "automata-transition": {
-      url: "/skills/automata-transition",
+      url: "/api/skills/automata-transition/download",
       frontmatter: {
         name: "Automata State Transition",
         description:
@@ -77,7 +77,7 @@ export const jsonataPortal = createAgentWebPortal({
       },
     },
     statistics: {
-      url: "/skills/statistics",
+      url: "/api/skills/statistics/download",
       frontmatter: {
         name: "Statistics Calculator",
         description:

@@ -7,6 +7,9 @@
  * Run with: bun run server.ts
  */
 
+// Polyfill for JSZip
+import "setimmediate";
+
 import {
   type AuthHttpRequest,
   type AuthorizedPubkey,
@@ -47,6 +50,65 @@ import {
 // =============================================================================
 
 const PORT = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+interface SkillFrontmatter {
+  name: string;
+  description?: string;
+  version?: string;
+  "allowed-tools"?: string[];
+  [key: string]: unknown;
+}
+
+/**
+ * Parse YAML-like frontmatter from SKILL.md
+ */
+function parseFrontmatter(content: string): SkillFrontmatter | null {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!match) return null;
+  
+  const frontmatterText = match[1];
+  const result: SkillFrontmatter = { name: "" };
+  
+  const lines = frontmatterText.split("\n");
+  let currentKey = "";
+  let inArray = false;
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    
+    // Check for array item
+    if (inArray && trimmed.startsWith("- ")) {
+      const value = trimmed.slice(2).trim();
+      if (Array.isArray(result[currentKey])) {
+        (result[currentKey] as string[]).push(value);
+      }
+      continue;
+    }
+    
+    // Check for key: value
+    const colonIdx = trimmed.indexOf(":");
+    if (colonIdx > 0) {
+      currentKey = trimmed.slice(0, colonIdx).trim();
+      const value = trimmed.slice(colonIdx + 1).trim();
+      
+      if (value === "") {
+        // Could be start of array
+        result[currentKey] = [];
+        inArray = true;
+      } else {
+        result[currentKey] = value;
+        inArray = false;
+      }
+    }
+  }
+  
+  return result;
+}
 
 // =============================================================================
 // Auth Stores (in-memory for local development)
@@ -697,8 +759,8 @@ async function handleRequest(req: Request): Promise<Response> {
   if (pathname === "/api" || pathname === "/") {
     return new Response(
       JSON.stringify({
-        name: "Agent Web Portal - Examples (SST)",
-        version: "0.1.0",
+        name: "Agent Web Portal - Examples",
+        version: "0.2.0",
         deployment: "local",
         portals: {
           basic: { endpoint: "/basic", description: "Basic greeting portal" },
@@ -715,6 +777,157 @@ async function handleRequest(req: Request): Promise<Response> {
       }),
       { headers: { "Content-Type": "application/json" } }
     );
+  }
+
+  // =========================================================================
+  // Skills API
+  // =========================================================================
+  
+  // GET /api/skills/list - List all available skills from local skills directory
+  if (pathname === "/api/skills/list" && req.method === "GET") {
+    const currentDir = import.meta.dir;
+    const skillsDir = `${currentDir}/skills`;
+    
+    try {
+      const fs = await import("fs");
+      
+      if (!fs.existsSync(skillsDir)) {
+        return new Response(JSON.stringify([]), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      
+      const skillDirs = fs.readdirSync(skillsDir).filter((name: string) => {
+        const skillPath = `${skillsDir}/${name}`;
+        return fs.statSync(skillPath).isDirectory();
+      });
+      
+      const skills = [];
+      
+      for (const skillName of skillDirs) {
+        const skillMdPath = `${skillsDir}/${skillName}/SKILL.md`;
+        
+        if (!fs.existsSync(skillMdPath)) continue;
+        
+        const content = fs.readFileSync(skillMdPath, "utf-8");
+        const frontmatter = parseFrontmatter(content);
+        
+        skills.push({
+          id: skillName,
+          url: `/skills/${skillName}`,
+          zipUrl: `/api/skills/${skillName}/download`,
+          frontmatter: frontmatter || { name: skillName },
+        });
+      }
+      
+      return new Response(JSON.stringify(skills), {
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("Skills list error:", error);
+      return new Response(
+        JSON.stringify({ error: "Failed to list skills" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }
+  
+  // GET /api/skills/:skillName/download - Download skill as ZIP
+  if (pathname.startsWith("/api/skills/") && pathname.endsWith("/download") && req.method === "GET") {
+    const skillName = pathname.slice("/api/skills/".length, -"/download".length);
+    
+    // Get the directory of this file to find skills relative to it
+    const currentDir = import.meta.dir;
+    const skillDir = `${currentDir}/skills/${skillName}`;
+    const tempDir = `${currentDir}/.skill-cache`;
+    const zipPath = `${tempDir}/${skillName}.zip`;
+    
+    try {
+      // Check if skill directory exists
+      const fs = await import("fs");
+      if (!fs.existsSync(skillDir)) {
+        return new Response(
+          JSON.stringify({ error: "Skill not found", skill: skillName }),
+          { status: 404, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      
+      // Ensure temp directory exists
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Check if cached zip exists and is newer than skill folder
+      let needsRebuild = true;
+      if (fs.existsSync(zipPath)) {
+        const zipStat = fs.statSync(zipPath);
+        const dirStat = fs.statSync(skillDir);
+        
+        // Get latest modification time from skill directory files
+        const files = fs.readdirSync(skillDir);
+        let latestMtime = dirStat.mtimeMs;
+        for (const file of files) {
+          const fileStat = fs.statSync(`${skillDir}/${file}`);
+          if (fileStat.mtimeMs > latestMtime) {
+            latestMtime = fileStat.mtimeMs;
+          }
+        }
+        
+        // Use cached zip if it's newer than all files
+        if (zipStat.mtimeMs > latestMtime) {
+          needsRebuild = false;
+        }
+      }
+      
+      // Build zip if needed
+      if (needsRebuild) {
+        console.log(`Building skill zip: ${skillName}`);
+        
+        // Use Bun's built-in zip writer
+        const { Glob } = await import("bun");
+        const glob = new Glob("**/*");
+        
+        const filesToZip: { path: string; data: Uint8Array }[] = [];
+        
+        for await (const relativePath of glob.scan({ cwd: skillDir, absolute: false })) {
+          const fullPath = `${skillDir}/${relativePath}`;
+          const stat = fs.statSync(fullPath);
+          if (stat.isFile()) {
+            const data = fs.readFileSync(fullPath);
+            filesToZip.push({ path: relativePath, data });
+          }
+        }
+        
+        // Create zip using Bun.write with gzip (simplified approach)
+        // Since Bun doesn't have native zip, we'll use a simple implementation
+        const JSZip = (await import("jszip")).default;
+        const zip = new JSZip();
+        
+        for (const file of filesToZip) {
+          zip.file(file.path, file.data);
+        }
+        
+        const zipContent = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+        fs.writeFileSync(zipPath, zipContent);
+      }
+      
+      // Return cached zip
+      const zipContent = fs.readFileSync(zipPath);
+      
+      return new Response(zipContent, {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${skillName}.zip"`,
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Skill download error:", error);
+      return new Response(
+        JSON.stringify({ error: "Failed to download skill", message: String(error) }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
   }
 
   // 404
@@ -734,7 +947,7 @@ const server = Bun.serve({
 });
 
 console.log(`
-🚀 AWP Examples (SST) - Local Development Server
+🚀 AWP Examples - Local Development Server
    URL: http://localhost:${PORT}
 
 📡 Available Portals:
@@ -749,14 +962,17 @@ console.log(`
    - GET  /auth/status - Check auth status
    - GET  /auth/page   - Login page
 
+📦 Skill Download:
+   - GET /api/skills/{name}/download - Download skill file
+
 👤 Test Users:
    - test / test123
    - admin / admin123
    - demo / demo
 
 📦 Deployment:
-   - npx sst dev      - Development with live reload
-   - npx sst deploy   - Deploy to AWS
+   - bun run sam:build  - Build for SAM
+   - bun run sam:deploy - Deploy to AWS
 
 Press Ctrl+C to stop.
 `);

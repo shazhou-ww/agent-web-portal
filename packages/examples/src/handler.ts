@@ -14,6 +14,7 @@
 
 import {
   type AuthHttpRequest,
+  type AuthorizedPubkey,
   completeAuthorization,
   createAwpAuthMiddleware,
   routeAuthRequest,
@@ -81,6 +82,7 @@ const pendingAuthStore = new DynamoDBPendingAuthStore({
 const pubkeyStore = new DynamoDBPubkeyStore({
   tableName: AUTH_TABLE,
   region: AWS_REGION,
+  userIdIndexName: "userId-createdAt-index",
 });
 
 // Initialize session store
@@ -238,7 +240,7 @@ export async function handler(
   const requestOrigin = event.headers.origin ?? event.headers.Origin;
   // Allowed origins for CORS with credentials
   const allowedOrigins = [
-    "https://di1uex7qyodzs.cloudfront.net",
+    "https://d2gky9zm1ughki.cloudfront.net",
     "http://localhost:5173",
     "http://localhost:3000",
   ];
@@ -385,6 +387,158 @@ export async function handler(
       };
     }
 
+    // GET /api/clients - List authorized clients for current user
+    if (path === "/api/clients" && httpMethod === "GET") {
+      const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
+      const sessionId = getSessionIdFromCookie(cookieHeader);
+
+      if (!sessionId) {
+        return {
+          statusCode: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Unauthorized" }),
+        };
+      }
+
+      const session = await getSession(sessionId);
+      if (!session) {
+        return {
+          statusCode: 401,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Set-Cookie": createClearSessionCookie(),
+          },
+          body: JSON.stringify({ error: "Unauthorized" }),
+        };
+      }
+
+      const clients = await pubkeyStore.listByUser(session.userId);
+      return {
+        statusCode: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clients: clients.map((c: AuthorizedPubkey) => ({
+            pubkey: c.pubkey,
+            clientName: c.clientName,
+            createdAt: c.createdAt,
+            expiresAt: c.expiresAt,
+          })),
+        }),
+      };
+    }
+
+    // DELETE /api/clients/:pubkey - Revoke a client authorization
+    if (path.startsWith("/api/clients/") && httpMethod === "DELETE") {
+      const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
+      const sessionId = getSessionIdFromCookie(cookieHeader);
+
+      if (!sessionId) {
+        return {
+          statusCode: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Unauthorized" }),
+        };
+      }
+
+      const session = await getSession(sessionId);
+      if (!session) {
+        return {
+          statusCode: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Unauthorized" }),
+        };
+      }
+
+      const pubkeyEncoded = path.slice("/api/clients/".length);
+      const pubkey = decodeURIComponent(pubkeyEncoded);
+
+      const authInfo = await pubkeyStore.lookup(pubkey);
+      if (!authInfo || authInfo.userId !== session.userId) {
+        return {
+          statusCode: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Client not found" }),
+        };
+      }
+
+      await pubkeyStore.revoke(pubkey);
+      return {
+        statusCode: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ success: true }),
+      };
+    }
+
+    // PATCH /api/clients/:pubkey - Renew a client authorization
+    if (path.startsWith("/api/clients/") && httpMethod === "PATCH") {
+      const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
+      const sessionId = getSessionIdFromCookie(cookieHeader);
+
+      if (!sessionId) {
+        return {
+          statusCode: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Unauthorized" }),
+        };
+      }
+
+      const session = await getSession(sessionId);
+      if (!session) {
+        return {
+          statusCode: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Unauthorized" }),
+        };
+      }
+
+      const pubkeyEncoded = path.slice("/api/clients/".length);
+      const pubkey = decodeURIComponent(pubkeyEncoded);
+
+      const authInfo = await pubkeyStore.lookup(pubkey);
+      if (!authInfo || authInfo.userId !== session.userId) {
+        return {
+          statusCode: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Client not found" }),
+        };
+      }
+
+      const body = event.body
+        ? event.isBase64Encoded
+          ? Buffer.from(event.body, "base64").toString("utf-8")
+          : event.body
+        : "{}";
+
+      let payload: { expiresIn?: number };
+      try {
+        payload = JSON.parse(body);
+      } catch {
+        payload = {};
+      }
+
+      const newExpiresAt = payload.expiresIn ? Date.now() + payload.expiresIn * 1000 : undefined;
+      const updatedAuth: AuthorizedPubkey = {
+        ...authInfo,
+        expiresAt: newExpiresAt,
+      };
+      await pubkeyStore.store(updatedAuth);
+
+      return {
+        statusCode: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          success: true,
+          client: {
+            pubkey: updatedAuth.pubkey,
+            clientName: updatedAuth.clientName,
+            createdAt: updatedAuth.createdAt,
+            expiresAt: updatedAuth.expiresAt,
+          },
+        }),
+      };
+    }
+
     // Static UI assets
     if (path.startsWith("/ui") || path === "/" || path === "/index.html") {
       return serveStaticAssets(event, path);
@@ -440,36 +594,67 @@ export async function handler(
             : Buffer.from(event.body)
           : Buffer.alloc(0);
 
-        // For multipart, we need to parse the form data
+        // For multipart, we need to parse the form data using Buffer operations
+        // to avoid corrupting binary data
         if (contentType.includes("multipart/form-data")) {
           const boundary = contentType.match(/boundary=(.+)/)?.[1];
           if (boundary) {
-            const parts = body.toString("binary").split(`--${boundary}`);
-            for (const part of parts) {
-              if (part.includes('name="image"')) {
-                const headerEnd = part.indexOf("\r\n\r\n");
-                if (headerEnd !== -1) {
-                  const fileData = part.slice(headerEnd + 4);
-                  const dataEnd = fileData.lastIndexOf("\r\n");
-                  const cleanData = dataEnd !== -1 ? fileData.slice(0, dataEnd) : fileData;
-                  const fileBuffer = Buffer.from(cleanData, "binary");
-                  const partContentType =
-                    part.match(/Content-Type:\s*([^\r\n]+)/i)?.[1] ?? "image/png";
-
-                  const result = await storeTempUploadS3(
-                    fileBuffer.buffer as ArrayBuffer,
-                    partContentType
-                  );
-                  return {
-                    statusCode: 200,
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Access-Control-Allow-Origin": "*",
-                    },
-                    body: JSON.stringify(result),
-                  };
-                }
+            const boundaryBuffer = Buffer.from(`--${boundary}`);
+            
+            // Find all boundary positions
+            const boundaryPositions: number[] = [];
+            let searchStart = 0;
+            while (true) {
+              const pos = body.indexOf(boundaryBuffer, searchStart);
+              if (pos === -1) break;
+              boundaryPositions.push(pos);
+              searchStart = pos + boundaryBuffer.length;
+            }
+            
+            // Process each part
+            for (let i = 0; i < boundaryPositions.length - 1; i++) {
+              const partStart = boundaryPositions[i] + boundaryBuffer.length;
+              const partEnd = boundaryPositions[i + 1];
+              const partBuffer = body.subarray(partStart, partEnd);
+              
+              // Find header end (double CRLF)
+              const headerEndMarker = Buffer.from("\r\n\r\n");
+              const headerEnd = partBuffer.indexOf(headerEndMarker);
+              if (headerEnd === -1) continue;
+              
+              // Extract header as string (headers are ASCII-safe)
+              const headerBuffer = partBuffer.subarray(0, headerEnd);
+              const headerStr = headerBuffer.toString("utf-8");
+              
+              // Check if this is the image part
+              if (!headerStr.includes('name="image"')) continue;
+              
+              // Extract file data (pure binary, no string conversion)
+              let fileData = partBuffer.subarray(headerEnd + 4);
+              
+              // Remove trailing CRLF if present
+              if (fileData.length >= 2 && 
+                  fileData[fileData.length - 2] === 0x0D && 
+                  fileData[fileData.length - 1] === 0x0A) {
+                fileData = fileData.subarray(0, fileData.length - 2);
               }
+              
+              // Extract content type from header
+              const partContentType =
+                headerStr.match(/Content-Type:\s*([^\r\n]+)/i)?.[1] ?? "image/png";
+
+              const result = await storeTempUploadS3(
+                fileData.buffer.slice(fileData.byteOffset, fileData.byteOffset + fileData.length),
+                partContentType
+              );
+              return {
+                statusCode: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*",
+                },
+                body: JSON.stringify(result),
+              };
             }
           }
           return {
@@ -844,11 +1029,11 @@ export async function handler(
     if (path === "/api" || path === "/api/") {
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Agent Web Portal - Examples (SST)",
-          version: "0.1.0",
-          deployment: "sst",
+          name: "Agent Web Portal - Examples",
+          version: "0.2.0",
+          deployment: "sam",
           portals: {
             basic: { endpoint: "/basic", description: "Basic greeting portal" },
             ecommerce: { endpoint: "/ecommerce", description: "E-commerce portal" },
@@ -864,6 +1049,139 @@ export async function handler(
           ui: "/ui",
         }),
       };
+    }
+
+    // =========================================================================
+    // Skills API
+    // =========================================================================
+    
+    // GET /api/skills/list - List all available skills from S3 manifest
+    if (path === "/api/skills/list" && httpMethod === "GET") {
+      try {
+        const bucketName = process.env.SKILLS_BUCKET || process.env.BLOB_BUCKET;
+        
+        if (!bucketName) {
+          return {
+            statusCode: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Skills bucket not configured" }),
+          };
+        }
+        
+        const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+        const s3 = new S3Client({});
+        
+        try {
+          const response = await s3.send(new GetObjectCommand({
+            Bucket: bucketName,
+            Key: "skills/skills-manifest.json",
+          }));
+          
+          if (!response.Body) {
+            return {
+              statusCode: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              body: JSON.stringify([]),
+            };
+          }
+          
+          const manifestContent = await response.Body.transformToString();
+          
+          return {
+            statusCode: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: manifestContent,
+          };
+        } catch (s3Error: unknown) {
+          if ((s3Error as { name?: string }).name === "NoSuchKey") {
+            return {
+              statusCode: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              body: JSON.stringify([]),
+            };
+          }
+          throw s3Error;
+        }
+      } catch (error) {
+        console.error("Skills list error:", error);
+        return {
+          statusCode: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Failed to list skills" }),
+        };
+      }
+    }
+    
+    // GET /api/skills/:skillName/download - Download skill as ZIP from S3
+    if (path.startsWith("/api/skills/") && path.endsWith("/download") && httpMethod === "GET") {
+      const skillName = path.slice("/api/skills/".length, -"/download".length);
+      
+      try {
+        // In Lambda, skills are pre-packaged and uploaded to S3 during deployment
+        const bucketName = process.env.SKILLS_BUCKET || process.env.BLOB_BUCKET;
+        
+        if (!bucketName) {
+          return {
+            statusCode: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Skills bucket not configured" }),
+          };
+        }
+        
+        const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+        const s3 = new S3Client({});
+        
+        const key = `skills/${skillName}.zip`;
+        
+        try {
+          const response = await s3.send(new GetObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+          }));
+          
+          if (!response.Body) {
+            return {
+              statusCode: 404,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Skill not found", skill: skillName }),
+            };
+          }
+          
+          // Convert stream to buffer
+          const chunks: Uint8Array[] = [];
+          for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+            chunks.push(chunk);
+          }
+          const zipContent = Buffer.concat(chunks);
+          
+          return {
+            statusCode: 200,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/zip",
+              "Content-Disposition": `attachment; filename="${skillName}.zip"`,
+            },
+            body: zipContent.toString("base64"),
+            isBase64Encoded: true,
+          };
+        } catch (s3Error: unknown) {
+          if ((s3Error as { name?: string }).name === "NoSuchKey") {
+            return {
+              statusCode: 404,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Skill not found", skill: skillName }),
+            };
+          }
+          throw s3Error;
+        }
+      } catch (error) {
+        console.error("Skill download error:", error);
+        return {
+          statusCode: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Failed to download skill" }),
+        };
+      }
     }
 
     // 404 Not Found

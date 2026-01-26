@@ -191,14 +191,15 @@ export function getSessionIdFromCookie(cookieHeader: string | null): string | nu
  */
 export function createSessionCookie(sessionId: string): string {
   const expires = new Date(Date.now() + SESSION_TTL).toUTCString();
-  return `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Expires=${expires}`;
+  // Use Secure flag for HTTPS (CloudFront), SameSite=Lax for same-origin navigation
+  return `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=${expires}`;
 }
 
 /**
  * Create Set-Cookie header to clear session
  */
 export function createClearSessionCookie(): string {
-  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
 }
 
 /**

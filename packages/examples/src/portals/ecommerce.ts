@@ -145,7 +145,7 @@ export const ecommercePortal = createAgentWebPortal({
   })
   .registerSkills({
     "shopping-assistant": {
-      url: "/skills/shopping-assistant",
+      url: "/api/skills/shopping-assistant/download",
       frontmatter: {
         name: "Shopping Assistant",
         description: "Complete e-commerce shopping flow",
@@ -154,7 +154,7 @@ export const ecommercePortal = createAgentWebPortal({
       },
     },
     "product-comparison": {
-      url: "/skills/product-comparison",
+      url: "/api/skills/product-comparison/download",
       frontmatter: {
         name: "Product Comparison",
         description: "Compare products across sources",

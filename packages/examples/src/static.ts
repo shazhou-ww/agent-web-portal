@@ -30,9 +30,12 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 // Base path for static assets
-// In Lambda: set STATIC_BASE=/var/task/ui
+// In Lambda: code runs from /var/task, UI is in /var/task/ui
 // Locally: defaults to ./ui relative to current working directory
-const STATIC_BASE = process.env.STATIC_BASE ?? join(process.cwd(), "ui");
+const STATIC_BASE = process.env.STATIC_BASE ?? 
+  (process.env.AWS_LAMBDA_FUNCTION_NAME 
+    ? "/var/task/ui"  // Lambda environment
+    : join(process.cwd(), "ui"));
 
 /**
  * Serve static assets from the UI build directory

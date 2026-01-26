@@ -37,6 +37,17 @@ function getS3Client(): S3Client {
   return s3Client;
 }
 
+/**
+ * Create a clean ArrayBuffer copy from a Uint8Array.
+ * This ensures no shared buffer or byteOffset issues.
+ */
+function toCleanArrayBuffer(uint8Array: Uint8Array): ArrayBuffer {
+  // Create a completely new Uint8Array with its own buffer
+  const copy = new Uint8Array(uint8Array.length);
+  copy.set(uint8Array);
+  return copy.buffer;
+}
+
 // =============================================================================
 // Temporary Upload Store (presigned GET URLs)
 // =============================================================================
@@ -106,9 +117,11 @@ export async function getTempUploadS3(
       return null;
     }
 
-    const data = await response.Body.transformToByteArray();
+    const uint8Array = await response.Body.transformToByteArray();
+    // Create a completely new ArrayBuffer copy (no shared buffer issues)
+    const data = toCleanArrayBuffer(uint8Array);
     return {
-      data: data.buffer as ArrayBuffer,
+      data,
       contentType: response.ContentType ?? "application/octet-stream",
     };
   } catch (error) {
@@ -188,9 +201,11 @@ export async function readOutputBlobS3(
       return null;
     }
 
-    const data = await response.Body.transformToByteArray();
+    const uint8Array = await response.Body.transformToByteArray();
+    // Create a completely new ArrayBuffer copy (no shared buffer issues)
+    const data = toCleanArrayBuffer(uint8Array);
     return {
-      data: data.buffer as ArrayBuffer,
+      data,
       contentType: response.ContentType ?? "application/octet-stream",
     };
   } catch (error) {
@@ -290,11 +305,8 @@ export async function getStoredImageS3(key: string): Promise<{
     }
 
     const uint8Array = await response.Body.transformToByteArray();
-    // Create a proper ArrayBuffer copy (not a view with offset)
-    const data = uint8Array.buffer.slice(
-      uint8Array.byteOffset,
-      uint8Array.byteOffset + uint8Array.byteLength
-    );
+    // Create a completely new ArrayBuffer copy (no shared buffer issues)
+    const data = toCleanArrayBuffer(uint8Array);
     const metadata = response.Metadata ?? {};
 
     return {

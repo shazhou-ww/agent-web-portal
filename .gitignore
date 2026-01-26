@@ -45,3 +45,6 @@ samconfig.toml
 
 # SST generated files
 .sst/
+# Skill cache (local dev)
+.skill-cache/
+temp-*.bin
