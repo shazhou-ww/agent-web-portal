@@ -42,3 +42,6 @@ samconfig.toml
 
 # Publish temp directory
 .publish
+
+# SST generated files
+.sst/
