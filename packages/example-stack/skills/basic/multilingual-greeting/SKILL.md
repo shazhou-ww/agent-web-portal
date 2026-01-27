@@ -8,7 +8,7 @@ allowed-tools:
 
 # Multilingual Greeting Skill
 
-This skill uses the `greet` tool to generate personalized greeting messages in various languages.
+This skill uses the {{greet}} tool to generate personalized greeting messages in various languages.
 
 ## Overview
 
@@ -23,12 +23,11 @@ The greeting service supports the following languages:
 
 ### Example 1: Basic English Greeting
 
+Use {{greet}} with just a name for the default English greeting:
+
 ```json
 {
-  "name": "greet",
-  "arguments": {
-    "name": "Alice"
-  }
+  "name": "Alice"
 }
 ```
 
@@ -42,13 +41,12 @@ The greeting service supports the following languages:
 
 ### Example 2: Spanish Greeting
 
+Use {{greet}} with a language code:
+
 ```json
 {
-  "name": "greet",
-  "arguments": {
-    "name": "Carlos",
-    "language": "es"
-  }
+  "name": "Carlos",
+  "language": "es"
 }
 ```
 
@@ -64,11 +62,8 @@ The greeting service supports the following languages:
 
 ```json
 {
-  "name": "greet",
-  "arguments": {
-    "name": "田中",
-    "language": "ja"
-  }
+  "name": "田中",
+  "language": "ja"
 }
 ```
 
@@ -82,7 +77,7 @@ The greeting service supports the following languages:
 
 ## Tool Reference
 
-### greet
+### {{greet}}
 
 Generate a greeting message in the specified language.
 

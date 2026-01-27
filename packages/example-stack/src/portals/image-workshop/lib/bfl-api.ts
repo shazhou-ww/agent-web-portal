@@ -57,7 +57,7 @@ export interface BflImageResponse {
 export async function submitBflTask(
   endpoint: BflEndpoint,
   apiKey: string,
-  body: Record<string, unknown>,
+  body: Record<string, unknown>
 ): Promise<string> {
   const response = await fetch(`${BFL_API_HOST}${endpoint}`, {
     method: "POST",
@@ -100,7 +100,7 @@ export async function getTaskResult(taskId: string, apiKey: string): Promise<Bfl
 export async function waitForResult(
   taskId: string,
   apiKey: string,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<BflResultResponse> {
   const startTime = Date.now();
 
@@ -132,7 +132,7 @@ export async function callBflApi(
   endpoint: BflEndpoint,
   apiKey: string,
   body: Record<string, unknown>,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
+  timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<BflImageResponse> {
   const taskId = await submitBflTask(endpoint, apiKey, body);
   const result = await waitForResult(taskId, apiKey, timeoutMs);

@@ -8,7 +8,7 @@ allowed-tools:
 
 # Automata State Transition Skill
 
-This skill uses the `jsonata_eval` tool to compute state transitions for finite automata (DFA/NFA).
+This skill uses the {{jsonata_eval}} tool to compute state transitions for finite automata (DFA/NFA).
 
 ## Overview
 

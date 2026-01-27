@@ -286,16 +286,19 @@ async function handleRequest(req: Request): Promise<Response> {
         const protocol = req.headers.get("x-forwarded-proto") || "http";
         const baseUrl = `${protocol}://${host}`;
 
-        return new Response(JSON.stringify({
-          ...result,
-          readUrl: `${baseUrl}${result.readUrl}`,
-        }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
+        return new Response(
+          JSON.stringify({
+            ...result,
+            readUrl: `${baseUrl}${result.readUrl}`,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
       }
 
       // Handle raw binary upload
@@ -308,16 +311,19 @@ async function handleRequest(req: Request): Promise<Response> {
       const protocol = req.headers.get("x-forwarded-proto") || "http";
       const baseUrl = `${protocol}://${host}`;
 
-      return new Response(JSON.stringify({
-        ...result,
-        readUrl: `${baseUrl}${result.readUrl}`,
-      }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
+      return new Response(
+        JSON.stringify({
+          ...result,
+          readUrl: `${baseUrl}${result.readUrl}`,
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
     } catch {
       return new Response(JSON.stringify({ error: "Failed to prepare upload" }), {
         status: 500,
@@ -354,17 +360,20 @@ async function handleRequest(req: Request): Promise<Response> {
     const host = req.headers.get("host") || `localhost:${PORT}`;
     const protocol = req.headers.get("x-forwarded-proto") || "http";
     const baseUrl = `${protocol}://${host}`;
-    return new Response(JSON.stringify({
-      ...result,
-      writeUrl: `${baseUrl}${result.writeUrl}`,
-      readUrl: `${baseUrl}${result.readUrl}`,
-    }), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+    return new Response(
+      JSON.stringify({
+        ...result,
+        writeUrl: `${baseUrl}${result.writeUrl}`,
+        readUrl: `${baseUrl}${result.readUrl}`,
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
   }
 
   // Write to output blob (presigned PUT URL equivalent)
@@ -918,7 +927,7 @@ async function handleRequest(req: Request): Promise<Response> {
   // =========================================================================
 
   // Match /api/awp/{portal}/skills or /api/awp/{portal}/skills/{skillName}
-  const portalSkillsMatch = pathname.match(/^\/api\/awp\/([^\/]+)\/skills(?:\/(.*))?$/);
+  const portalSkillsMatch = pathname.match(/^\/api\/awp\/([^/]+)\/skills(?:\/(.*))?$/);
   if (portalSkillsMatch) {
     const portalName = portalSkillsMatch[1];
     const skillPath = portalSkillsMatch[2]; // Could be undefined, a skill name, or "skillName/download"
@@ -981,10 +990,13 @@ async function handleRequest(req: Request): Promise<Response> {
       try {
         const fs = await import("node:fs");
         if (!fs.existsSync(skillDir)) {
-          return new Response(JSON.stringify({ error: "Skill not found", skill: skillName, portal: portalName }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({ error: "Skill not found", skill: skillName, portal: portalName }),
+            {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
         }
 
         // Ensure temp directory exists
@@ -1039,7 +1051,10 @@ async function handleRequest(req: Request): Promise<Response> {
             zip.file(file.path, file.data);
           }
 
-          const zipContent = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+          const zipContent = await zip.generateAsync({
+            type: "nodebuffer",
+            compression: "DEFLATE",
+          });
           fs.writeFileSync(zipPath, zipContent);
         }
 

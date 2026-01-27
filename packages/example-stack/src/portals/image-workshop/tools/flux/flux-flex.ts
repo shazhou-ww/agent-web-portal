@@ -11,7 +11,8 @@ import { getBflApiKey } from "../../secrets.ts";
 
 export const fluxFlexTool = defineTool({
   name: "flux_flex",
-  description: "Generate an image with fine-grained control using FLUX Dev with adjustable guidance",
+  description:
+    "Generate an image with fine-grained control using FLUX Dev with adjustable guidance",
 
   input: {
     prompt: z.string().describe("Text prompt describing the image to generate"),

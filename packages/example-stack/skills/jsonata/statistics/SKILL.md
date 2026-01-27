@@ -8,7 +8,7 @@ allowed-tools:
 
 # Statistics Calculator Skill
 
-This skill uses the `jsonata_eval` tool to perform statistical calculations and aggregations on record lists.
+This skill uses the {{jsonata_eval}} tool to perform statistical calculations and aggregations on record lists.
 
 ## Overview
 

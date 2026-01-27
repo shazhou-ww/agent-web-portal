@@ -54,7 +54,7 @@ export const sketchTool = defineTool({
       {
         image: { buffer: imageBuffer, filename: "sketch.png" },
       },
-      args.output_format,
+      args.output_format
     );
 
     // Write output blob

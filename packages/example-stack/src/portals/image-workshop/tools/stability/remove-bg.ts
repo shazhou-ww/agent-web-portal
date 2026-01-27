@@ -15,7 +15,10 @@ export const removeBgTool = defineTool({
 
   input: {
     image: blob({ mimeType: "image/*", description: "Source image" }),
-    output_format: z.enum(["png", "webp"]).default("png").describe("Output format (PNG for transparency)"),
+    output_format: z
+      .enum(["png", "webp"])
+      .default("png")
+      .describe("Output format (PNG for transparency)"),
   },
 
   output: {
@@ -39,7 +42,7 @@ export const removeBgTool = defineTool({
       {
         image: { buffer: imageBuffer, filename: "image.png" },
       },
-      args.output_format,
+      args.output_format
     );
 
     // Write output blob

@@ -15,22 +15,21 @@ This skill provides a complete e-commerce shopping experience using three tools:
 ## Overview
 
 The shopping flow consists of three main steps:
-1. **Search Products** - Find products by name, category, or filters
-2. **Manage Cart** - Add, remove, or view items in the shopping cart
-3. **Checkout** - Complete the purchase with shipping and payment details
+1. **{{search_products}}** - Find products by name, category, or filters
+2. **{{manage_cart}}** - Add, remove, or view items in the shopping cart
+3. **{{checkout}}** - Complete the purchase with shipping and payment details
 
 ## Usage Examples
 
 ### Example 1: Search for Products
 
+Use {{search_products}} to find products:
+
 ```json
 {
-  "name": "search_products",
-  "arguments": {
-    "query": "laptop",
-    "category": "electronics",
-    "maxPrice": 1500
-  }
+  "query": "laptop",
+  "category": "electronics",
+  "maxPrice": 1500
 }
 ```
 
@@ -52,14 +51,13 @@ The shopping flow consists of three main steps:
 
 ### Example 2: Add Item to Cart
 
+Use {{manage_cart}} with action "add":
+
 ```json
 {
-  "name": "manage_cart",
-  "arguments": {
-    "action": "add",
-    "productId": "prod-001",
-    "quantity": 1
-  }
+  "action": "add",
+  "productId": "prod-001",
+  "quantity": 1
 }
 ```
 
@@ -83,30 +81,28 @@ The shopping flow consists of three main steps:
 
 ### Example 3: View Cart
 
+Use {{manage_cart}} with action "list":
+
 ```json
 {
-  "name": "manage_cart",
-  "arguments": {
-    "action": "list"
-  }
+  "action": "list"
 }
 ```
 
 ### Example 4: Complete Checkout
 
+Use {{checkout}} with shipping and payment details:
+
 ```json
 {
-  "name": "checkout",
-  "arguments": {
-    "shippingAddress": {
-      "street": "123 Main St",
-      "city": "Seattle",
-      "state": "WA",
-      "zipCode": "98101",
-      "country": "USA"
-    },
-    "paymentMethod": "credit_card"
-  }
+  "shippingAddress": {
+    "street": "123 Main St",
+    "city": "Seattle",
+    "state": "WA",
+    "zipCode": "98101",
+    "country": "USA"
+  },
+  "paymentMethod": "credit_card"
 }
 ```
 
@@ -121,7 +117,7 @@ The shopping flow consists of three main steps:
 
 ## Tool Reference
 
-### search_products
+### {{search_products}}
 
 Search for products in the catalog.
 
@@ -135,7 +131,7 @@ Search for products in the catalog.
 - `products` (array): List of matching products
 - `totalResults` (number): Total count of results
 
-### manage_cart
+### {{manage_cart}}
 
 Manage the shopping cart.
 
@@ -148,7 +144,7 @@ Manage the shopping cart.
 - `cart` (object): Current cart state
 - `message` (string): Action result message
 
-### checkout
+### {{checkout}}
 
 Complete the checkout process.
 

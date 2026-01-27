@@ -33,12 +33,11 @@ The secure greeting service is similar to the basic greeting service but require
 
 ### Example 1: Authenticated English Greeting
 
+Use {{secure_greet}} with just a name:
+
 ```json
 {
-  "name": "secure_greet",
-  "arguments": {
-    "name": "Alice"
-  }
+  "name": "Alice"
 }
 ```
 
@@ -52,13 +51,12 @@ The secure greeting service is similar to the basic greeting service but require
 
 ### Example 2: Authenticated Spanish Greeting
 
+Use {{secure_greet}} with a language code:
+
 ```json
 {
-  "name": "secure_greet",
-  "arguments": {
-    "name": "Carlos",
-    "language": "es"
-  }
+  "name": "Carlos",
+  "language": "es"
 }
 ```
 
@@ -72,7 +70,7 @@ The secure greeting service is similar to the basic greeting service but require
 
 ### Example 3: Unauthenticated Request
 
-If an agent tries to call `secure_greet` without authentication, the request will be rejected with an authentication error.
+If an agent tries to call {{secure_greet}} without authentication, the request will be rejected with an authentication error.
 
 **Error Response:**
 ```json
@@ -86,7 +84,7 @@ If an agent tries to call `secure_greet` without authentication, the request wil
 
 ## Tool Reference
 
-### secure_greet
+### {{secure_greet}}
 
 Generate a secure greeting message that confirms authentication.
 

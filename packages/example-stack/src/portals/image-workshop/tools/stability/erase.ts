@@ -52,7 +52,7 @@ export const eraseTool = defineTool({
         image: { buffer: imageBuffer, filename: "image.png" },
         mask: { buffer: maskBuffer, filename: "mask.png" },
       },
-      args.output_format,
+      args.output_format
     );
 
     // Write output blob

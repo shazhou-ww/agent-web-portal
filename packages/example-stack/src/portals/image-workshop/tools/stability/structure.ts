@@ -54,7 +54,7 @@ export const structureTool = defineTool({
       {
         image: { buffer: imageBuffer, filename: "structure.png" },
       },
-      args.output_format,
+      args.output_format
     );
 
     // Write output blob

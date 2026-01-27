@@ -63,7 +63,7 @@ export const transferTool = defineTool({
         image: { buffer: sourceBuffer, filename: "source.png" },
         style_image: { buffer: styleBuffer, filename: "style.png" },
       },
-      args.output_format,
+      args.output_format
     );
 
     // Write output blob

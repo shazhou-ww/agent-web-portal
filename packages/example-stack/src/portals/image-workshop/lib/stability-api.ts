@@ -39,7 +39,7 @@ export function getContentType(format: string): string {
 
 function buildMultipartFormData(
   fields: Record<string, string | number | undefined>,
-  files: Record<string, { buffer: Buffer; filename: string } | undefined>,
+  files: Record<string, { buffer: Buffer; filename: string } | undefined>
 ): { body: Buffer; contentType: string } {
   const boundary = `----FormBoundary${Date.now()}${Math.random().toString(36).substring(2)}`;
   const parts: Buffer[] = [];
@@ -50,8 +50,8 @@ function buildMultipartFormData(
       Buffer.from(
         `--${boundary}\r\n` +
           `Content-Disposition: form-data; name="${key}"\r\n\r\n` +
-          `${value}\r\n`,
-      ),
+          `${value}\r\n`
+      )
     );
   }
 
@@ -61,8 +61,8 @@ function buildMultipartFormData(
       Buffer.from(
         `--${boundary}\r\n` +
           `Content-Disposition: form-data; name="${key}"; filename="${file.filename}"\r\n` +
-          `Content-Type: application/octet-stream\r\n\r\n`,
-      ),
+          `Content-Type: application/octet-stream\r\n\r\n`
+      )
     );
     parts.push(file.buffer);
     parts.push(Buffer.from("\r\n"));
@@ -88,11 +88,11 @@ export async function callStabilityApi(
   apiKey: string,
   fields: Record<string, string | number | undefined>,
   files: Record<string, { buffer: Buffer; filename: string } | undefined>,
-  outputFormat = "png",
+  outputFormat = "png"
 ): Promise<StabilityImageResponse> {
   const { body, contentType } = buildMultipartFormData(
     { ...fields, output_format: outputFormat },
-    files,
+    files
   );
 
   const response = await fetch(`${STABILITY_API_HOST}${endpoint}`, {
@@ -131,7 +131,7 @@ export async function callStabilityApi(
   const finishReason = artifact.finish_reason || artifact.finishReason || "SUCCESS";
   const validFinishReasons = ["SUCCESS", "CONTENT_FILTERED", "ERROR"] as const;
   const normalizedFinishReason = validFinishReasons.includes(
-    finishReason as (typeof validFinishReasons)[number],
+    finishReason as (typeof validFinishReasons)[number]
   )
     ? (finishReason as StabilityImageResponse["finishReason"])
     : "SUCCESS";
@@ -151,7 +151,7 @@ export async function callStabilityApiV1(
   endpoint: string,
   apiKey: string,
   body: Record<string, unknown>,
-  outputFormat = "png",
+  outputFormat = "png"
 ): Promise<StabilityImageResponse> {
   console.log("[stability-api] V1 request to:", `${STABILITY_API_HOST}${endpoint}`);
   console.log("[stability-api] Request body:", JSON.stringify(body, null, 2));
@@ -175,7 +175,10 @@ export async function callStabilityApiV1(
   }
 
   const data = (await response.json()) as Record<string, unknown>;
-  console.log("[stability-api] Response received, artifacts count:", (data.artifacts as unknown[])?.length ?? "N/A");
+  console.log(
+    "[stability-api] Response received, artifacts count:",
+    (data.artifacts as unknown[])?.length ?? "N/A"
+  );
 
   interface StabilityArtifact {
     base64?: string;
@@ -192,7 +195,7 @@ export async function callStabilityApiV1(
   const finishReason = artifact.finishReason || "SUCCESS";
   const validFinishReasons = ["SUCCESS", "CONTENT_FILTERED", "ERROR"] as const;
   const normalizedFinishReason = validFinishReasons.includes(
-    finishReason as (typeof validFinishReasons)[number],
+    finishReason as (typeof validFinishReasons)[number]
   )
     ? (finishReason as StabilityImageResponse["finishReason"])
     : "SUCCESS";

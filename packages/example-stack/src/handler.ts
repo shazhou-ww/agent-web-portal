@@ -703,7 +703,13 @@ export async function handler(
 
     // Image Workshop portal - /api/awp/image-workshop
     if (path === "/api/awp/image-workshop" || path === "/api/awp/image-workshop/mcp") {
-      return handlePortalMcpRequest(event, imageWorkshopPortal, "image-workshop", baseUrl, corsHeaders);
+      return handlePortalMcpRequest(
+        event,
+        imageWorkshopPortal,
+        "image-workshop",
+        baseUrl,
+        corsHeaders
+      );
     }
 
     // =========================================================================
@@ -983,7 +989,9 @@ export async function handler(
       const authReq = createAuthRequest(event, baseUrl);
 
       // When accessing through API Gateway directly (not via CloudFront), auth page path needs stage prefix
-      const authPagePathWithStage = isApiGatewayDirect ? `/${stage}/api/auth/page` : "/api/auth/page";
+      const authPagePathWithStage = isApiGatewayDirect
+        ? `/${stage}/api/auth/page`
+        : "/api/auth/page";
 
       // Handle AWP auth endpoints (/api/auth/init, /api/auth/status)
       const authRouteResponse = await routeAuthRequest(authReq, {
@@ -1196,7 +1204,10 @@ export async function handler(
             ecommerce: { endpoint: "/api/awp/ecommerce", description: "E-commerce portal" },
             jsonata: { endpoint: "/api/awp/jsonata", description: "JSONata expression portal" },
             blob: { endpoint: "/api/awp/blob", description: "Blob portal" },
-            secure: { endpoint: "/api/awp/secure", description: "Secure portal (requires AWP auth)" },
+            secure: {
+              endpoint: "/api/awp/secure",
+              description: "Secure portal (requires AWP auth)",
+            },
           },
           auth: {
             init: "/api/auth/init",
@@ -1223,7 +1234,7 @@ export async function handler(
     // =========================================================================
 
     // Match /api/awp/{portal}/skills or /api/awp/{portal}/skills/{skillName}
-    const portalSkillsMatch = path.match(/^\/api\/awp\/([^\/]+)\/skills(?:\/(.*))?$/);
+    const portalSkillsMatch = path.match(/^\/api\/awp\/([^/]+)\/skills(?:\/(.*))?$/);
     if (portalSkillsMatch) {
       const portalName = portalSkillsMatch[1];
       const skillPath = portalSkillsMatch[2]; // Could be undefined, a skill name, or "skillName/download"
@@ -1290,7 +1301,9 @@ export async function handler(
         const skillName = skillPath.slice(0, -".zip".length);
 
         try {
-          const { S3Client, GetObjectCommand, HeadObjectCommand } = await import("@aws-sdk/client-s3");
+          const { S3Client, GetObjectCommand, HeadObjectCommand } = await import(
+            "@aws-sdk/client-s3"
+          );
           const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
           const s3 = new S3Client({});
           const key = `skills/${portalName}/${skillName}.zip`;
@@ -1303,7 +1316,11 @@ export async function handler(
               return {
                 statusCode: 404,
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
-                body: JSON.stringify({ error: "Skill not found", skill: skillName, portal: portalName }),
+                body: JSON.stringify({
+                  error: "Skill not found",
+                  skill: skillName,
+                  portal: portalName,
+                }),
               };
             }
             throw s3Error;

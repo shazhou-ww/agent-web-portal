@@ -15,9 +15,9 @@ This skill provides image management capabilities using blob storage. It support
 ## Overview
 
 The image gallery provides three main operations:
-1. **Put Image** - Upload an image to storage (blob INPUT)
-2. **Get Image** - Retrieve a previously uploaded image by key (blob OUTPUT)
-3. **List Images** - List all stored images with metadata
+1. **{{put_image}}** - Upload an image to storage (blob INPUT)
+2. **{{get_image}}** - Retrieve a previously uploaded image by key (blob OUTPUT)
+3. **{{list_images}}** - List all stored images with metadata
 
 Images are stored with a 1-day TTL and automatically expire.
 
@@ -25,18 +25,15 @@ Images are stored with a 1-day TTL and automatically expire.
 
 ### Example 1: Upload an Image
 
-The `put_image` tool reads image data from a presigned URL provided by the client.
+Use {{put_image}} to upload an image to storage:
 
 ```json
 {
-  "name": "put_image",
-  "arguments": {
-    "contentType": "image/png"
-  }
+  "contentType": "image/png"
 }
 ```
 
-**Note:** The actual image data is provided via blob INPUT mechanism - the client uploads the image first and provides the presigned URL.
+**Blob inputs:** `image` (the image data to upload)
 
 **Result:**
 ```json
@@ -49,16 +46,15 @@ The `put_image` tool reads image data from a presigned URL provided by the clien
 
 ### Example 2: Retrieve an Image
 
+Use {{get_image}} to retrieve a previously uploaded image:
+
 ```json
 {
-  "name": "get_image",
-  "arguments": {
-    "key": "images/2026-01-27/1706350800000-abc123"
-  }
+  "key": "images/2026-01-27/1706350800000-abc123"
 }
 ```
 
-**Note:** The image data is provided via blob OUTPUT mechanism - the tool writes the image to a presigned URL that the client can then access.
+**Blob outputs:** `image` (the retrieved image data)
 
 **Result:**
 ```json
@@ -72,11 +68,10 @@ The `put_image` tool reads image data from a presigned URL provided by the clien
 
 ### Example 3: List All Images
 
+Use {{list_images}} to list all stored images:
+
 ```json
-{
-  "name": "list_images",
-  "arguments": {}
-}
+{}
 ```
 
 **Result:**
@@ -97,7 +92,7 @@ The `put_image` tool reads image data from a presigned URL provided by the clien
 
 ## Tool Reference
 
-### put_image
+### {{put_image}}
 
 Upload an image to storage. Uses blob INPUT mechanism.
 
@@ -112,7 +107,7 @@ Upload an image to storage. Uses blob INPUT mechanism.
 - `uploadedAt` (string): Upload timestamp
 - `expiresAt` (string): Expiration timestamp
 
-### get_image
+### {{get_image}}
 
 Retrieve a previously uploaded image. Uses blob OUTPUT mechanism.
 
@@ -128,7 +123,7 @@ Retrieve a previously uploaded image. Uses blob OUTPUT mechanism.
 - `uploadedAt` (string): Upload timestamp
 - `expiresAt` (string): Expiration timestamp
 
-### list_images
+### {{list_images}}
 
 List all stored images (not expired).
 

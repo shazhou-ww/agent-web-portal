@@ -53,7 +53,11 @@ export const txt2imgTool = defineTool({
   },
 
   handler: async (args, context) => {
-    console.log("[txt2img] Starting handler with args:", { prompt: args.prompt, width: args.width, height: args.height });
+    console.log("[txt2img] Starting handler with args:", {
+      prompt: args.prompt,
+      width: args.width,
+      height: args.height,
+    });
     console.log("[txt2img] Output blob URL:", context.blobs.output.image);
 
     const apiKey = await getStabilityApiKey();
@@ -75,10 +79,15 @@ export const txt2imgTool = defineTool({
         seed: args.seed,
         style_preset: args.style_preset,
       },
-      args.output_format,
+      args.output_format
     );
 
-    console.log("[txt2img] Stability API response received, seed:", response.seed, "finishReason:", response.finishReason);
+    console.log(
+      "[txt2img] Stability API response received, seed:",
+      response.seed,
+      "finishReason:",
+      response.finishReason
+    );
 
     // Write output blob to presigned URL
     const imageBuffer = Buffer.from(response.image, "base64");
