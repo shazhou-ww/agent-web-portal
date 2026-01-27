@@ -135,9 +135,15 @@ function createAuthRequest(event: APIGatewayProxyEvent, baseUrl: string): AuthHt
 
   const headers = new Headers(event.headers as Record<string, string>);
 
+  // For auth request URL, use protocol://host without stage path
+  // The baseUrl with stage is only for generating redirect URLs, not for path matching
+  const protocol = event.headers["x-forwarded-proto"] ?? "https";
+  const host = event.headers.host ?? event.headers.Host ?? "localhost";
+  const authRequestBaseUrl = `${protocol}://${host}`;
+
   const request: AuthHttpRequest = {
     method,
-    url: `${baseUrl}${path}${queryString}`,
+    url: `${authRequestBaseUrl}${path}${queryString}`,
     headers,
     text: async () => body,
     clone: () => createAuthRequest(event, baseUrl),
@@ -235,13 +241,27 @@ export async function handler(
       ?.method ??
     "GET";
 
-  // Build base URL - include stage for API Gateway direct access
+  // Build base URL
   const protocol = event.headers["x-forwarded-proto"] ?? "https";
   const host = event.headers.host ?? event.headers.Host ?? "localhost";
   const stage = event.requestContext?.stage;
+
+  // Detect if request came through CloudFront by checking for CloudFront headers
+  // CloudFront adds these headers when forwarding requests
+  const cloudFrontId = event.headers["x-amz-cf-id"] ?? event.headers["X-Amz-Cf-Id"];
+  const isViaCloudFront = !!cloudFrontId;
+
   // If accessing through API Gateway directly (not CloudFront), include the stage
-  const isApiGatewayDirect = host.includes("execute-api.") && stage && stage !== "$default";
-  const baseUrl = isApiGatewayDirect ? `${protocol}://${host}/${stage}` : `${protocol}://${host}`;
+  const isApiGatewayDirect =
+    !isViaCloudFront && host.includes("execute-api.") && stage && stage !== "$default";
+
+  // For CloudFront, use the known CloudFront domain
+  const cloudFrontDomain = "d2gky9zm1ughki.cloudfront.net";
+  const baseUrl = isViaCloudFront
+    ? `${protocol}://${cloudFrontDomain}`
+    : isApiGatewayDirect
+      ? `${protocol}://${host}/${stage}`
+      : `${protocol}://${host}`;
 
   // Get origin for CORS - must be explicit origin when using credentials
   const requestOrigin = event.headers.origin ?? event.headers.Origin;
@@ -857,6 +877,9 @@ export async function handler(
     if (path.startsWith("/auth")) {
       const authReq = createAuthRequest(event, baseUrl);
 
+      // When accessing through API Gateway directly (not via CloudFront), auth page path needs stage prefix
+      const authPagePathWithStage = isApiGatewayDirect ? `/${stage}/auth/page` : "/auth/page";
+
       // Handle AWP auth endpoints (/auth/init, /auth/status)
       const authRouteResponse = await routeAuthRequest(authReq, {
         baseUrl,
@@ -864,7 +887,7 @@ export async function handler(
         pubkeyStore,
         authInitPath: "/auth/init",
         authStatusPath: "/auth/status",
-        authPagePath: "/auth/page",
+        authPagePath: authPagePathWithStage,
       });
       if (authRouteResponse) {
         return responseToApiGateway(authRouteResponse);
