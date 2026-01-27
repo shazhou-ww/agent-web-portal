@@ -11,7 +11,7 @@
  *   bun run scripts/upload-skills.ts <bucket>     # Upload to specific bucket
  *
  * Environment:
- *   AWS_PROFILE - AWS profile to use (default: shazhou-ww)
+ *   AWS_PROFILE - AWS profile to use (uses default credential chain if not set)
  *   STACK_NAME  - CloudFormation stack name (default: awp-examples)
  */
 
@@ -22,18 +22,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { join } from "node:path";
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { fromIni } from "@aws-sdk/credential-providers";
 import JSZip from "jszip";
 
 const SKILLS_DIR = join(import.meta.dir, "../skills");
 const DIST_DIR = join(import.meta.dir, "../dist/skills");
 const DEFAULT_STACK_NAME = process.env.STACK_NAME || "awp-examples";
-const DEFAULT_AWS_PROFILE = process.env.AWS_PROFILE || "shazhou-ww";
 
-// AWS client config with profile
-const awsConfig = {
-  credentials: fromIni({ profile: DEFAULT_AWS_PROFILE }),
-};
+// AWS client config - uses default credential chain (env vars, ~/.aws/credentials, IAM role, etc.)
+const awsConfig = {};
 
 interface SkillFrontmatter {
   name: string;
