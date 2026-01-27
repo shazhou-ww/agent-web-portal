@@ -142,7 +142,6 @@ async function getSkillsManifest(portalName: string): Promise<Record<string, unk
     const skills = JSON.parse(content) as Array<{
       id: string;
       url: string;
-      zipUrl: string;
       frontmatter: Record<string, unknown>;
     }>;
 
@@ -150,7 +149,7 @@ async function getSkillsManifest(portalName: string): Promise<Record<string, unk
     const result: Record<string, unknown> = {};
     for (const skill of skills) {
       result[skill.id] = {
-        url: skill.zipUrl,
+        url: skill.url,
         frontmatter: skill.frontmatter,
       };
     }
@@ -925,8 +924,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
           skills.push({
             id: skillName,
-            url: `/api/awp/${portalName}/skills/${skillName}`,
-            zipUrl: `/api/awp/${portalName}/skills/${skillName}/download`,
+            url: `/api/awp/${portalName}/skills/${skillName}.zip`,
             frontmatter: frontmatter || { name: skillName },
           });
         }
@@ -943,9 +941,9 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    // GET /api/awp/{portal}/skills/{skillName}/download - Download skill as ZIP
-    if (skillPath?.endsWith("/download") && req.method === "GET") {
-      const skillName = skillPath.slice(0, -"/download".length);
+    // GET /api/awp/{portal}/skills/{skillName}.zip - Download skill as ZIP
+    if (skillPath?.endsWith(".zip") && req.method === "GET") {
+      const skillName = skillPath.slice(0, -".zip".length);
       const skillDir = `${portalSkillsDir}/${skillName}`;
       const tempDir = `${currentDir}/.skill-cache/${portalName}`;
       const zipPath = `${tempDir}/${skillName}.zip`;

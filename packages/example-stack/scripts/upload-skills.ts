@@ -276,7 +276,7 @@ async function main() {
         // Add to portal manifest
         manifest.push({
           id: skillName,
-          url: `/portals/${portalName}/skills/${skillName}/download`,
+          url: `/api/awp/${portalName}/skills/${skillName}.zip`,
           frontmatter: frontmatter || { name: skillName },
         });
 
@@ -338,10 +338,10 @@ async function main() {
         console.log(`    → Parsed frontmatter: ${frontmatter.name || skillName}`);
       }
 
-      // Add to manifest (use generic /portals path - user can specify portal)
+      // Add to manifest (use generic /api/awp path - user can specify portal)
       manifest.push({
         id: skillName,
-        url: `/portals/{portal}/skills/${skillName}/download`,
+        url: `/api/awp/{portal}/skills/${skillName}.zip`,
         frontmatter: frontmatter || { name: skillName },
       });
 

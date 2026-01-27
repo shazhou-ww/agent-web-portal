@@ -225,7 +225,6 @@ async function getSkillsManifestFromS3(portalName: string): Promise<Record<strin
     const skills = JSON.parse(content) as Array<{
       id: string;
       url: string;
-      zipUrl: string;
       frontmatter: Record<string, unknown>;
     }>;
 
@@ -233,7 +232,7 @@ async function getSkillsManifestFromS3(portalName: string): Promise<Record<strin
     const result: Record<string, unknown> = {};
     for (const skill of skills) {
       result[skill.id] = {
-        url: skill.zipUrl,
+        url: skill.url,
         frontmatter: skill.frontmatter,
       };
     }
@@ -1280,48 +1279,21 @@ export async function handler(
         }
       }
 
-      // GET /portals/{portal}/skills/{skillName}/download - Download skill
-      if (skillPath?.endsWith("/download") && httpMethod === "GET") {
-        const skillName = skillPath.slice(0, -"/download".length);
+      // GET /api/awp/{portal}/skills/{skillName}.zip - Download skill (redirect to S3 presigned URL)
+      if (skillPath?.endsWith(".zip") && httpMethod === "GET") {
+        const skillName = skillPath.slice(0, -".zip".length);
 
         try {
-          const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+          const { S3Client, GetObjectCommand, HeadObjectCommand } = await import("@aws-sdk/client-s3");
+          const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
           const s3 = new S3Client({});
+          const key = `skills/${portalName}/${skillName}.zip`;
 
+          // Check if skill exists
           try {
-            const response = await s3.send(
-              new GetObjectCommand({
-                Bucket: bucketName,
-                Key: `skills/${portalName}/${skillName}.zip`,
-              })
-            );
-
-            if (!response.Body) {
-              return {
-                statusCode: 404,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                body: JSON.stringify({ error: "Skill not found", skill: skillName, portal: portalName }),
-              };
-            }
-
-            const chunks: Uint8Array[] = [];
-            for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
-              chunks.push(chunk);
-            }
-            const zipContent = Buffer.concat(chunks);
-
-            return {
-              statusCode: 200,
-              headers: {
-                ...corsHeaders,
-                "Content-Type": "application/zip",
-                "Content-Disposition": `attachment; filename="${skillName}.zip"`,
-              },
-              body: zipContent.toString("base64"),
-              isBase64Encoded: true,
-            };
+            await s3.send(new HeadObjectCommand({ Bucket: bucketName, Key: key }));
           } catch (s3Error: unknown) {
-            if ((s3Error as { name?: string }).name === "NoSuchKey") {
+            if ((s3Error as { name?: string }).name === "NotFound") {
               return {
                 statusCode: 404,
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1330,6 +1302,26 @@ export async function handler(
             }
             throw s3Error;
           }
+
+          // Generate presigned URL and redirect
+          const presignedUrl = await getSignedUrl(
+            s3,
+            new GetObjectCommand({
+              Bucket: bucketName,
+              Key: key,
+              ResponseContentDisposition: `attachment; filename="${skillName}.zip"`,
+            }),
+            { expiresIn: 300 } // 5 minutes
+          );
+
+          return {
+            statusCode: 302,
+            headers: {
+              ...corsHeaders,
+              Location: presignedUrl,
+            },
+            body: "",
+          };
         } catch (error) {
           console.error("Portal skill download error:", error);
           return {
