@@ -8,6 +8,7 @@
   "scripts": {
     "start": "bun run server.ts",
     "dev": "bun run server.ts",
+    "dev:sam": "bun run build && sam build && sam local start-api --port 3456",
     "clean": "rimraf .turbo dist .aws-sam .skill-cache",
     "build": "bun build src/handler.ts --outdir dist --format esm --target node --external '@aws-sdk/*' && mv dist/handler.js dist/handler.mjs",
     "sam:build": "bun run build && sam build",

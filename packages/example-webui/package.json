@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:sam": "vite --api sam",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "bun run scripts/deploy.ts",

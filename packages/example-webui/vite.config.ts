@@ -1,22 +1,16 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// API URL: defaults to local server, can override with --api flag
+// API URL: defaults to SAM local, can override with --url flag
 // Usage:
-//   bun run dev              -> uses http://localhost:3000 (local bun server)
-//   bun run dev --api sam    -> uses http://localhost:3456 (SAM local)
-//   bun run dev --api https://xxx.execute-api.us-east-1.amazonaws.com/prod -> uses remote API
+//   bun run dev                    -> uses http://localhost:3456 (SAM local)
+//   bun run dev --url <endpoint>   -> uses custom API endpoint
 const args = process.argv.slice(2);
-const apiIndex = args.indexOf("--api");
-let apiUrl = "http://localhost:3000"; // default: local bun server
+const urlIndex = args.indexOf("--url");
+let apiUrl = "http://localhost:3456"; // default: SAM local
 
-if (apiIndex !== -1 && args[apiIndex + 1]) {
-  const apiArg = args[apiIndex + 1];
-  if (apiArg === "sam") {
-    apiUrl = "http://localhost:3456"; // SAM local
-  } else {
-    apiUrl = apiArg; // custom URL
-  }
+if (urlIndex !== -1 && args[urlIndex + 1]) {
+  apiUrl = args[urlIndex + 1];
 }
 
 console.log(`[vite] Proxying API requests to: ${apiUrl}`);
