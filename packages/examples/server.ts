@@ -49,7 +49,7 @@ import {
 // Configuration
 // =============================================================================
 
-const PORT = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3400;
+const PORT = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
 
 // =============================================================================
 // Utility Functions
@@ -146,8 +146,8 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // Health check - /api/health
-  if (pathname === "/api/health") {
+  // Health check
+  if (pathname === "/health" || pathname === "/healthz" || pathname === "/ping") {
     return new Response(
       JSON.stringify({ status: "ok", timestamp: new Date().toISOString(), deployment: "local" }),
       {
@@ -156,32 +156,28 @@ async function handleRequest(req: Request): Promise<Response> {
     );
   }
 
-  // =========================================================================
-  // Portal MCP Endpoints - /api/awp/*
-  // =========================================================================
-
-  // Basic portal - /api/awp/basic
+  // Basic portal
   if (pathname === "/api/awp/basic" || pathname === "/api/awp/basic/mcp") {
     return basicPortal.handleRequest(req);
   }
 
-  // E-commerce portal - /api/awp/ecommerce
+  // E-commerce portal
   if (pathname === "/api/awp/ecommerce" || pathname === "/api/awp/ecommerce/mcp") {
     return ecommercePortal.handleRequest(req);
   }
 
-  // JSONata portal - /api/awp/jsonata
+  // JSONata portal
   if (pathname === "/api/awp/jsonata" || pathname === "/api/awp/jsonata/mcp") {
     return jsonataPortal.handleRequest(req);
   }
 
-  // Blob portal - /api/awp/blob
+  // Blob portal
   if (pathname === "/api/awp/blob" || pathname === "/api/awp/blob/mcp") {
     return blobPortal.handleRequest(req);
   }
 
   // ==========================================================================
-  // Blob Storage API routes - /api/blob/*
+  // Blob Storage API routes (for demo/testing)
   // ==========================================================================
 
   // Prepare upload - upload file and get a temporary presigned GET URL (5 min TTL)
@@ -393,11 +389,11 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // ==========================================================================
-  // Auth API routes - /api/auth/*
+  // Session API routes
   // ==========================================================================
 
-  // Login API (JSON) - /api/auth/login
-  if (pathname === "/api/auth/login" && req.method === "POST") {
+  // Login API (JSON)
+  if (pathname === "/api/login" && req.method === "POST") {
     try {
       const body = await req.json();
       const { username, password } = body as { username: string; password: string };
@@ -432,8 +428,8 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
-  // Logout API - /api/auth/logout
-  if (pathname === "/api/auth/logout" && req.method === "POST") {
+  // Logout API
+  if (pathname === "/api/logout" && req.method === "POST") {
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: {
@@ -443,8 +439,8 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // Get current user session - /api/auth/me
-  if (pathname === "/api/auth/me" && req.method === "GET") {
+  // Get current user session
+  if (pathname === "/api/me" && req.method === "GET") {
     const session = getSessionFromRequest(req);
     if (!session) {
       return new Response(JSON.stringify({ authenticated: false }), {
@@ -466,11 +462,11 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // ==========================================================================
-  // Client Management API routes - /api/auth/clients/*
+  // Client Management API routes
   // ==========================================================================
 
-  // List authorized clients for current user - /api/auth/clients
-  if (pathname === "/api/auth/clients" && req.method === "GET") {
+  // List authorized clients for current user
+  if (pathname === "/api/clients" && req.method === "GET") {
     const session = getSessionFromRequest(req);
     if (!session) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -496,8 +492,8 @@ async function handleRequest(req: Request): Promise<Response> {
     );
   }
 
-  // Revoke a client authorization - DELETE /api/auth/clients/:pubkey
-  if (pathname.startsWith("/api/auth/clients/") && req.method === "DELETE") {
+  // Revoke a client authorization
+  if (pathname.startsWith("/api/clients/") && req.method === "DELETE") {
     const session = getSessionFromRequest(req);
     if (!session) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -506,7 +502,7 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    const pubkeyEncoded = pathname.slice("/api/auth/clients/".length);
+    const pubkeyEncoded = pathname.slice("/api/clients/".length);
     const pubkey = decodeURIComponent(pubkeyEncoded);
 
     const authInfo = await pubkeyStore.lookup(pubkey);
@@ -524,8 +520,8 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // Renew a client authorization - PATCH /api/auth/clients/:pubkey
-  if (pathname.startsWith("/api/auth/clients/") && req.method === "PATCH") {
+  // Renew a client authorization
+  if (pathname.startsWith("/api/clients/") && req.method === "PATCH") {
     const session = getSessionFromRequest(req);
     if (!session) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -534,7 +530,7 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    const pubkeyEncoded = pathname.slice("/api/auth/clients/".length);
+    const pubkeyEncoded = pathname.slice("/api/clients/".length);
     const pubkey = decodeURIComponent(pubkeyEncoded);
 
     const authInfo = await pubkeyStore.lookup(pubkey);
@@ -580,7 +576,7 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // ==========================================================================
-  // AWP Auth Flow routes - /api/auth/*
+  // Auth portal routes
   // ==========================================================================
 
   if (pathname.startsWith("/api/auth")) {
@@ -686,8 +682,8 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     }
 
-    // Legacy login form handler (for AWP auth page)
-    if (pathname === "/api/auth/form-login" && req.method === "POST") {
+    // Legacy login form handler
+    if (pathname === "/api/auth/login" && req.method === "POST") {
       const contentType = req.headers.get("content-type") ?? "";
       const formData: Record<string, string> = {};
 
@@ -739,41 +735,24 @@ async function handleRequest(req: Request): Promise<Response> {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
-  }
 
-  // ==========================================================================
-  // Secure Portal MCP Endpoint - /api/awp/secure (requires AWP auth)
-  // ==========================================================================
-
-  if (pathname === "/api/awp/secure" || pathname === "/api/awp/secure/mcp") {
-    const authReq: AuthHttpRequest = {
-      method: req.method,
-      url: req.url,
-      headers: req.headers,
-      text: () => req.clone().text(),
-      clone: () => ({
-        method: req.method,
-        url: req.url,
-        headers: req.headers,
-        text: () => req.clone().text(),
-        clone: () => authReq,
-      }),
-    };
-
-    const authResult = await authMiddleware(authReq);
-    if (!authResult.authorized) {
-      return (
-        authResult.challengeResponse ??
-        new Response(
-          JSON.stringify({ error: "unauthorized", error_description: "Invalid credentials" }),
-          {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-      );
+    // Secure MCP portal endpoint (requires AWP auth)
+    if (pathname === "/api/awp/secure" || pathname === "/api/awp/secure/mcp") {
+      const authResult = await authMiddleware(authReq);
+      if (!authResult.authorized) {
+        return (
+          authResult.challengeResponse ??
+          new Response(
+            JSON.stringify({ error: "unauthorized", error_description: "Invalid credentials" }),
+            {
+              status: 401,
+              headers: { "Content-Type": "application/json" },
+            }
+          )
+        );
+      }
+      return authPortal.handleRequest(req);
     }
-    return authPortal.handleRequest(req);
   }
 
   // API info
@@ -787,178 +766,171 @@ async function handleRequest(req: Request): Promise<Response> {
           basic: { endpoint: "/api/awp/basic", description: "Basic greeting portal" },
           ecommerce: { endpoint: "/api/awp/ecommerce", description: "E-commerce portal" },
           jsonata: { endpoint: "/api/awp/jsonata", description: "JSONata expression portal" },
-          blob: { endpoint: "/api/awp/blob", description: "Blob portal" },
-          secure: { endpoint: "/api/awp/secure", description: "Secure portal (auth required)" },
+          secure: { endpoint: "/api/awp/secure", description: "Secure portal (requires AWP auth)" },
+          blob: { endpoint: "/api/awp/blob", description: "Blob-enabled portal" },
         },
         auth: {
           init: "/api/auth/init",
           status: "/api/auth/status",
           page: "/api/auth/page",
-          login: "/api/login",
-          logout: "/api/logout",
-          me: "/api/me",
-          clients: "/api/clients",
         },
-        blob: {
-          upload: "/api/blob/upload",
-          files: "/api/blob/files",
-          prepareUpload: "/api/blob/prepare-upload",
-          prepareDownload: "/api/blob/prepare-download",
-        },
-        health: "/api/health",
       }),
       { headers: { "Content-Type": "application/json" } }
     );
   }
 
   // =========================================================================
-  // Per-Portal Skills API - /api/awp/{portal}/skills/*
+  // Skills API
   // =========================================================================
 
-  // Match /api/awp/{portal}/skills or /api/awp/{portal}/skills/{skillName}
-  const portalSkillsMatch = pathname.match(/^\/api\/awp\/([^\/]+)\/skills(?:\/(.*))?$/);
-  if (portalSkillsMatch) {
-    const portalName = portalSkillsMatch[1];
-    const skillPath = portalSkillsMatch[2]; // Could be undefined, a skill name, or "skillName/download"
-
+  // GET /api/skills/list - List all available skills from local skills directory
+  if (pathname === "/api/skills/list" && req.method === "GET") {
     const currentDir = import.meta.dir;
-    const portalSkillsDir = `${currentDir}/skills/${portalName}`;
+    const skillsDir = `${currentDir}/skills`;
 
-    // GET /api/awp/{portal}/skills - List skills for this portal
-    if (!skillPath && req.method === "GET") {
-      try {
-        const fs = await import("node:fs");
+    try {
+      const fs = await import("node:fs");
 
-        if (!fs.existsSync(portalSkillsDir)) {
-          return new Response(JSON.stringify([]), {
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const skillDirs = fs.readdirSync(portalSkillsDir).filter((name: string) => {
-          const skillSubPath = `${portalSkillsDir}/${name}`;
-          return fs.statSync(skillSubPath).isDirectory();
-        });
-
-        const skills = [];
-
-        for (const skillName of skillDirs) {
-          const skillMdPath = `${portalSkillsDir}/${skillName}/SKILL.md`;
-
-          if (!fs.existsSync(skillMdPath)) continue;
-
-          const content = fs.readFileSync(skillMdPath, "utf-8");
-          const frontmatter = parseFrontmatter(content);
-
-          skills.push({
-            id: skillName,
-            url: `/api/awp/${portalName}/skills/${skillName}`,
-            zipUrl: `/api/awp/${portalName}/skills/${skillName}/download`,
-            frontmatter: frontmatter || { name: skillName },
-          });
-        }
-
-        return new Response(JSON.stringify(skills), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (error) {
-        console.error("Portal skills list error:", error);
-        return new Response(JSON.stringify({ error: "Failed to list skills" }), {
-          status: 500,
+      if (!fs.existsSync(skillsDir)) {
+        return new Response(JSON.stringify([]), {
           headers: { "Content-Type": "application/json" },
         });
       }
+
+      const skillDirs = fs.readdirSync(skillsDir).filter((name: string) => {
+        const skillPath = `${skillsDir}/${name}`;
+        return fs.statSync(skillPath).isDirectory();
+      });
+
+      const skills = [];
+
+      for (const skillName of skillDirs) {
+        const skillMdPath = `${skillsDir}/${skillName}/SKILL.md`;
+
+        if (!fs.existsSync(skillMdPath)) continue;
+
+        const content = fs.readFileSync(skillMdPath, "utf-8");
+        const frontmatter = parseFrontmatter(content);
+
+        skills.push({
+          id: skillName,
+          url: `/skills/${skillName}`,
+          zipUrl: `/api/skills/${skillName}/download`,
+          frontmatter: frontmatter || { name: skillName },
+        });
+      }
+
+      return new Response(JSON.stringify(skills), {
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("Skills list error:", error);
+      return new Response(JSON.stringify({ error: "Failed to list skills" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
+  }
 
-    // GET /api/awp/{portal}/skills/{skillName}/download - Download skill as ZIP
-    if (skillPath?.endsWith("/download") && req.method === "GET") {
-      const skillName = skillPath.slice(0, -"/download".length);
-      const skillDir = `${portalSkillsDir}/${skillName}`;
-      const tempDir = `${currentDir}/.skill-cache/${portalName}`;
-      const zipPath = `${tempDir}/${skillName}.zip`;
+  // GET /api/skills/:skillName/download - Download skill as ZIP
+  if (
+    pathname.startsWith("/api/skills/") &&
+    pathname.endsWith("/download") &&
+    req.method === "GET"
+  ) {
+    const skillName = pathname.slice("/api/skills/".length, -"/download".length);
 
-      try {
-        const fs = await import("node:fs");
-        if (!fs.existsSync(skillDir)) {
-          return new Response(JSON.stringify({ error: "Skill not found", skill: skillName, portal: portalName }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
+    // Get the directory of this file to find skills relative to it
+    const currentDir = import.meta.dir;
+    const skillDir = `${currentDir}/skills/${skillName}`;
+    const tempDir = `${currentDir}/.skill-cache`;
+    const zipPath = `${tempDir}/${skillName}.zip`;
 
-        // Ensure temp directory exists
-        if (!fs.existsSync(tempDir)) {
-          fs.mkdirSync(tempDir, { recursive: true });
-        }
-
-        // Check if cached zip exists and is newer than skill folder
-        let needsRebuild = true;
-        if (fs.existsSync(zipPath)) {
-          const zipStat = fs.statSync(zipPath);
-          const dirStat = fs.statSync(skillDir);
-
-          // Get latest modification time from skill directory files
-          const files = fs.readdirSync(skillDir);
-          let latestMtime = dirStat.mtimeMs;
-          for (const file of files) {
-            const fileStat = fs.statSync(`${skillDir}/${file}`);
-            if (fileStat.mtimeMs > latestMtime) {
-              latestMtime = fileStat.mtimeMs;
-            }
-          }
-
-          // Use cached zip if it's newer than all files
-          if (zipStat.mtimeMs > latestMtime) {
-            needsRebuild = false;
-          }
-        }
-
-        // Build zip if needed
-        if (needsRebuild) {
-          console.log(`Building skill zip: ${portalName}/${skillName}`);
-
-          const { Glob } = await import("bun");
-          const glob = new Glob("**/*");
-
-          const filesToZip: { path: string; data: Uint8Array }[] = [];
-
-          for await (const relativePath of glob.scan({ cwd: skillDir, absolute: false })) {
-            const fullPath = `${skillDir}/${relativePath}`;
-            const stat = fs.statSync(fullPath);
-            if (stat.isFile()) {
-              const data = fs.readFileSync(fullPath);
-              filesToZip.push({ path: relativePath, data });
-            }
-          }
-
-          const JSZip = (await import("jszip")).default;
-          const zip = new JSZip();
-
-          for (const file of filesToZip) {
-            zip.file(file.path, file.data);
-          }
-
-          const zipContent = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-          fs.writeFileSync(zipPath, zipContent);
-        }
-
-        // Return cached zip
-        const zipContent = fs.readFileSync(zipPath);
-
-        return new Response(zipContent, {
-          headers: {
-            "Content-Type": "application/zip",
-            "Content-Disposition": `attachment; filename="${skillName}.zip"`,
-            "Access-Control-Allow-Origin": "*",
-          },
+    try {
+      // Check if skill directory exists
+      const fs = await import("node:fs");
+      if (!fs.existsSync(skillDir)) {
+        return new Response(JSON.stringify({ error: "Skill not found", skill: skillName }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
         });
-      } catch (error) {
-        console.error("Portal skill download error:", error);
-        return new Response(
-          JSON.stringify({ error: "Failed to download skill", message: String(error) }),
-          { status: 500, headers: { "Content-Type": "application/json" } }
-        );
       }
+
+      // Ensure temp directory exists
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      // Check if cached zip exists and is newer than skill folder
+      let needsRebuild = true;
+      if (fs.existsSync(zipPath)) {
+        const zipStat = fs.statSync(zipPath);
+        const dirStat = fs.statSync(skillDir);
+
+        // Get latest modification time from skill directory files
+        const files = fs.readdirSync(skillDir);
+        let latestMtime = dirStat.mtimeMs;
+        for (const file of files) {
+          const fileStat = fs.statSync(`${skillDir}/${file}`);
+          if (fileStat.mtimeMs > latestMtime) {
+            latestMtime = fileStat.mtimeMs;
+          }
+        }
+
+        // Use cached zip if it's newer than all files
+        if (zipStat.mtimeMs > latestMtime) {
+          needsRebuild = false;
+        }
+      }
+
+      // Build zip if needed
+      if (needsRebuild) {
+        console.log(`Building skill zip: ${skillName}`);
+
+        // Use Bun's built-in zip writer
+        const { Glob } = await import("bun");
+        const glob = new Glob("**/*");
+
+        const filesToZip: { path: string; data: Uint8Array }[] = [];
+
+        for await (const relativePath of glob.scan({ cwd: skillDir, absolute: false })) {
+          const fullPath = `${skillDir}/${relativePath}`;
+          const stat = fs.statSync(fullPath);
+          if (stat.isFile()) {
+            const data = fs.readFileSync(fullPath);
+            filesToZip.push({ path: relativePath, data });
+          }
+        }
+
+        // Create zip using Bun.write with gzip (simplified approach)
+        // Since Bun doesn't have native zip, we'll use a simple implementation
+        const JSZip = (await import("jszip")).default;
+        const zip = new JSZip();
+
+        for (const file of filesToZip) {
+          zip.file(file.path, file.data);
+        }
+
+        const zipContent = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+        fs.writeFileSync(zipPath, zipContent);
+      }
+
+      // Return cached zip
+      const zipContent = fs.readFileSync(zipPath);
+
+      return new Response(zipContent, {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${skillName}.zip"`,
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Skill download error:", error);
+      return new Response(
+        JSON.stringify({ error: "Failed to download skill", message: String(error) }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
     }
   }
 
@@ -986,25 +958,17 @@ console.log(`
    - /api/awp/basic     - Basic greeting portal
    - /api/awp/ecommerce - E-commerce portal  
    - /api/awp/jsonata   - JSONata expression portal
-   - /api/awp/blob      - Blob portal
    - /api/awp/secure    - Secure portal (requires AWP auth)
+   - /api/awp/blob      - Blob-enabled portal
 
 🔐 Auth Endpoints:
    - POST /api/auth/init     - Initialize AWP auth
-   - GET  /api/auth/status   - Check AWP auth status
+   - GET  /api/auth/status   - Check auth status
    - GET  /api/auth/page     - Authorization page
    - POST /api/auth/complete - Complete authorization
-   - POST /api/login         - Login with credentials
-   - POST /api/logout        - Logout
-   - GET  /api/me            - Get current user
 
-📦 Skills (per-portal):
-   - GET /api/awp/{portal}/skills - List skills
-   - GET /api/awp/{portal}/skills/{name}/download - Download skill
-
-💾 Blob Storage:
-   - POST /api/blob/upload - Upload image
-   - GET  /api/blob/files  - List images
+📦 Skill Download:
+   - GET /api/skills/{name}/download - Download skill file
 
 👤 Test Users:
    - test / test123

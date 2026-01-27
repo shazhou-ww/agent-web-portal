@@ -2,18 +2,16 @@
  * Lambda Handler for AWP Examples (SST)
  *
  * Routes requests to multiple portals based on path prefix:
- * - /api/auth/*          -> AWP auth endpoints (init, status, page, complete)
- * - /api/login, logout, me, clients/* -> Session management APIs
- * - /api/blob/*          -> Blob storage APIs (prepare-upload, prepare-download, upload, files)
- * - /api/health          -> Health check
- * - /api/awp/basic       -> Basic greeting portal
- * - /api/awp/ecommerce   -> E-commerce portal
- * - /api/awp/jsonata     -> JSONata portal
- * - /api/awp/blob        -> Blob portal
- * - /api/awp/secure      -> Secure portal (requires AWP auth)
- * - /api/awp/{name}/skills/* -> Per-portal skills
+ * - /api/awp/basic     -> Basic greeting portal
+ * - /api/awp/ecommerce -> E-commerce portal
+ * - /api/awp/jsonata   -> JSONata portal
+ * - /api/awp/secure    -> Secure portal (requires AWP auth)
+ * - /api/awp/blob      -> Blob portal
+ * - /api/auth/*        -> Auth endpoints
+ * - /api/blob/*        -> Blob storage APIs
+ * - /ui/*              -> Static UI assets
  *
- * This handler is optimized for SAM deployment with CloudFront.
+ * This handler is optimized for SST v3 (Ion) deployment.
  */
 
 import {
@@ -139,15 +137,9 @@ function createAuthRequest(event: APIGatewayProxyEvent, baseUrl: string): AuthHt
 
   const headers = new Headers(event.headers as Record<string, string>);
 
-  // For auth request URL, use protocol://host without stage path
-  // The baseUrl with stage is only for generating redirect URLs, not for path matching
-  const protocol = event.headers["x-forwarded-proto"] ?? "https";
-  const host = event.headers.host ?? event.headers.Host ?? "localhost";
-  const authRequestBaseUrl = `${protocol}://${host}`;
-
   const request: AuthHttpRequest = {
     method,
-    url: `${authRequestBaseUrl}${path}${queryString}`,
+    url: `${baseUrl}${path}${queryString}`,
     headers,
     text: async () => body,
     clone: () => createAuthRequest(event, baseUrl),
@@ -248,24 +240,7 @@ export async function handler(
   // Build base URL
   const protocol = event.headers["x-forwarded-proto"] ?? "https";
   const host = event.headers.host ?? event.headers.Host ?? "localhost";
-  const stage = (event as { requestContext?: { stage?: string } }).requestContext?.stage;
-
-  // Detect if request came through CloudFront by checking for CloudFront headers
-  // CloudFront adds these headers when forwarding requests
-  const cloudFrontId = event.headers["x-amz-cf-id"] ?? event.headers["X-Amz-Cf-Id"];
-  const isViaCloudFront = !!cloudFrontId;
-
-  // If accessing through API Gateway directly (not CloudFront), include the stage
-  const isApiGatewayDirect =
-    !isViaCloudFront && host.includes("execute-api.") && stage && stage !== "$default";
-
-  // For CloudFront, use the known CloudFront domain
-  const cloudFrontDomain = "d2gky9zm1ughki.cloudfront.net";
-  const baseUrl = isViaCloudFront
-    ? `${protocol}://${cloudFrontDomain}`
-    : isApiGatewayDirect
-      ? `${protocol}://${host}/${stage}`
-      : `${protocol}://${host}`;
+  const baseUrl = `${protocol}://${host}`;
 
   // Get origin for CORS - must be explicit origin when using credentials
   const requestOrigin = event.headers.origin ?? event.headers.Origin;
@@ -299,25 +274,25 @@ export async function handler(
       };
     }
 
-    // Health check - /api/health
-    if (path === "/api/health") {
+    // Health check
+    if (path === "/health" || path === "/healthz" || path === "/ping") {
       return {
         statusCode: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "ok",
           timestamp: new Date().toISOString(),
-          deployment: "sam",
+          deployment: "sst",
         }),
       };
     }
 
     // =========================================================================
-    // Auth API Endpoints - /api/auth/*
+    // Session API Endpoints (for UI)
     // =========================================================================
 
-    // GET /api/auth/me - Get current user
-    if (path === "/api/auth/me" && httpMethod === "GET") {
+    // GET /api/me - Get current user
+    if (path === "/api/me" && httpMethod === "GET") {
       const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
       const sessionId = getSessionIdFromCookie(cookieHeader);
 
@@ -355,8 +330,8 @@ export async function handler(
       };
     }
 
-    // POST /api/auth/login - Login with username/password
-    if (path === "/api/auth/login" && httpMethod === "POST") {
+    // POST /api/login - Login with username/password
+    if (path === "/api/login" && httpMethod === "POST") {
       const body = event.body
         ? event.isBase64Encoded
           ? Buffer.from(event.body, "base64").toString("utf-8")
@@ -400,8 +375,8 @@ export async function handler(
       };
     }
 
-    // POST /api/auth/logout - Logout
-    if (path === "/api/auth/logout" && httpMethod === "POST") {
+    // POST /api/logout - Logout
+    if (path === "/api/logout" && httpMethod === "POST") {
       const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
       const sessionId = getSessionIdFromCookie(cookieHeader);
 
@@ -420,8 +395,8 @@ export async function handler(
       };
     }
 
-    // GET /api/auth/clients - List authorized clients for current user
-    if (path === "/api/auth/clients" && httpMethod === "GET") {
+    // GET /api/clients - List authorized clients for current user
+    if (path === "/api/clients" && httpMethod === "GET") {
       const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
       const sessionId = getSessionIdFromCookie(cookieHeader);
 
@@ -461,8 +436,8 @@ export async function handler(
       };
     }
 
-    // DELETE /api/auth/clients/:pubkey - Revoke a client authorization
-    if (path.startsWith("/api/auth/clients/") && httpMethod === "DELETE") {
+    // DELETE /api/clients/:pubkey - Revoke a client authorization
+    if (path.startsWith("/api/clients/") && httpMethod === "DELETE") {
       const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
       const sessionId = getSessionIdFromCookie(cookieHeader);
 
@@ -483,7 +458,7 @@ export async function handler(
         };
       }
 
-      const pubkeyEncoded = path.slice("/api/auth/clients/".length);
+      const pubkeyEncoded = path.slice("/api/clients/".length);
       const pubkey = decodeURIComponent(pubkeyEncoded);
 
       const authInfo = await pubkeyStore.lookup(pubkey);
@@ -503,8 +478,8 @@ export async function handler(
       };
     }
 
-    // PATCH /api/auth/clients/:pubkey - Renew a client authorization
-    if (path.startsWith("/api/auth/clients/") && httpMethod === "PATCH") {
+    // PATCH /api/clients/:pubkey - Renew a client authorization
+    if (path.startsWith("/api/clients/") && httpMethod === "PATCH") {
       const cookieHeader = event.headers.cookie ?? event.headers.Cookie ?? null;
       const sessionId = getSessionIdFromCookie(cookieHeader);
 
@@ -525,7 +500,7 @@ export async function handler(
         };
       }
 
-      const pubkeyEncoded = path.slice("/api/auth/clients/".length);
+      const pubkeyEncoded = path.slice("/api/clients/".length);
       const pubkey = decodeURIComponent(pubkeyEncoded);
 
       const authInfo = await pubkeyStore.lookup(pubkey);
@@ -577,32 +552,28 @@ export async function handler(
       return serveStaticAssets(event, path);
     }
 
-    // =========================================================================
-    // Portal MCP Endpoints - /api/awp/*
-    // =========================================================================
-
-    // Basic portal - /api/awp/basic
+    // Basic portal
     if (path === "/api/awp/basic" || path === "/api/awp/basic/mcp") {
       const req = createWebRequest(event, baseUrl);
       const res = await basicPortal.handleRequest(req);
       return responseToApiGateway(res);
     }
 
-    // E-commerce portal - /api/awp/ecommerce
+    // E-commerce portal
     if (path === "/api/awp/ecommerce" || path === "/api/awp/ecommerce/mcp") {
       const req = createWebRequest(event, baseUrl);
       const res = await ecommercePortal.handleRequest(req);
       return responseToApiGateway(res);
     }
 
-    // JSONata portal - /api/awp/jsonata
+    // JSONata portal
     if (path === "/api/awp/jsonata" || path === "/api/awp/jsonata/mcp") {
       const req = createWebRequest(event, baseUrl);
       const res = await jsonataPortal.handleRequest(req);
       return responseToApiGateway(res);
     }
 
-    // Blob portal MCP endpoint - /api/awp/blob
+    // Blob portal MCP endpoint
     if (path === "/api/awp/blob" || path === "/api/awp/blob/mcp") {
       const req = createWebRequest(event, baseUrl);
       const res = await blobPortal.handleRequest(req);
@@ -610,7 +581,7 @@ export async function handler(
     }
 
     // =========================================================================
-    // Blob Storage API Routes - /api/blob/*
+    // Blob Storage API Routes (S3-based presigned URLs)
     // =========================================================================
 
     // Prepare upload - upload file and get presigned GET URL (5 min TTL)
@@ -879,14 +850,11 @@ export async function handler(
     }
 
     // =========================================================================
-    // AWP Auth Flow Routes - /api/auth/*
+    // Auth Portal Routes
     // =========================================================================
 
     if (path.startsWith("/api/auth")) {
       const authReq = createAuthRequest(event, baseUrl);
-
-      // When accessing through API Gateway directly (not via CloudFront), auth page path needs stage prefix
-      const authPagePathWithStage = isApiGatewayDirect ? `/${stage}/api/auth/page` : "/api/auth/page";
 
       // Handle AWP auth endpoints (/api/auth/init, /api/auth/status)
       const authRouteResponse = await routeAuthRequest(authReq, {
@@ -895,7 +863,7 @@ export async function handler(
         pubkeyStore,
         authInitPath: "/api/auth/init",
         authStatusPath: "/api/auth/status",
-        authPagePath: authPagePathWithStage,
+        authPagePath: "/api/auth/page",
       });
       if (authRouteResponse) {
         return responseToApiGateway(authRouteResponse);
@@ -1017,9 +985,8 @@ export async function handler(
         };
       }
 
-      // Handle login form submission (legacy path, now handled by /api/auth/login)
-      // This is kept for AWP auth page form submission during the auth flow
-      if (path === "/api/auth/form-login" && httpMethod === "POST") {
+      // Handle login form submission
+      if (path === "/api/auth/login" && httpMethod === "POST") {
         const contentType = event.headers["content-type"] ?? event.headers["Content-Type"] ?? "";
         const body = event.body
           ? event.isBase64Encoded
@@ -1062,29 +1029,25 @@ export async function handler(
           body: getAuthPageHtml(result.errorDescription ?? "Authorization failed"),
         };
       }
-    }
 
-    // =========================================================================
-    // Secure Portal MCP Endpoint - /api/awp/secure (requires AWP auth)
-    // =========================================================================
-
-    if (path === "/api/awp/secure" || path === "/api/awp/secure/mcp") {
-      const authReq = createAuthRequest(event, baseUrl);
-      const authResult = await authMiddleware(authReq);
-      if (!authResult.authorized) {
-        if (authResult.challengeResponse) {
-          return responseToApiGateway(authResult.challengeResponse);
+      // Secure MCP portal endpoint (requires AWP authentication)
+      if (path === "/api/awp/secure" || path === "/api/awp/secure/mcp") {
+        const authResult = await authMiddleware(authReq);
+        if (!authResult.authorized) {
+          if (authResult.challengeResponse) {
+            return responseToApiGateway(authResult.challengeResponse);
+          }
+          return {
+            statusCode: 401,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Unauthorized" }),
+          };
         }
-        return {
-          statusCode: 401,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ error: "Unauthorized" }),
-        };
-      }
 
-      const req = createWebRequest(event, baseUrl);
-      const res = await authPortal.handleRequest(req);
-      return responseToApiGateway(res);
+        const req = createWebRequest(event, baseUrl);
+        const res = await authPortal.handleRequest(req);
+        return responseToApiGateway(res);
+      }
     }
 
     // Root API route - show available portals
@@ -1100,154 +1063,153 @@ export async function handler(
             basic: { endpoint: "/api/awp/basic", description: "Basic greeting portal" },
             ecommerce: { endpoint: "/api/awp/ecommerce", description: "E-commerce portal" },
             jsonata: { endpoint: "/api/awp/jsonata", description: "JSONata expression portal" },
-            blob: { endpoint: "/api/awp/blob", description: "Blob portal" },
             secure: { endpoint: "/api/awp/secure", description: "Secure portal (requires AWP auth)" },
+            blob: { endpoint: "/api/awp/blob", description: "Blob-enabled portal" },
           },
           auth: {
             init: "/api/auth/init",
             status: "/api/auth/status",
             page: "/api/auth/page",
-            login: "/api/login",
-            logout: "/api/logout",
-            me: "/api/me",
-            clients: "/api/clients",
           },
-          blob: {
-            upload: "/api/blob/upload",
-            files: "/api/blob/files",
-            prepareUpload: "/api/blob/prepare-upload",
-            prepareDownload: "/api/blob/prepare-download",
-          },
-          health: "/api/health",
+          ui: "/ui",
         }),
       };
     }
 
     // =========================================================================
-    // Per-Portal Skills API - /api/awp/{portal}/skills/*
+    // Skills API
     // =========================================================================
 
-    // Match /api/awp/{portal}/skills or /api/awp/{portal}/skills/{skillName}
-    const portalSkillsMatch = path.match(/^\/api\/awp\/([^\/]+)\/skills(?:\/(.*))?$/);
-    if (portalSkillsMatch) {
-      const portalName = portalSkillsMatch[1];
-      const skillPath = portalSkillsMatch[2]; // Could be undefined, a skill name, or "skillName/download"
+    // GET /api/skills/list - List all available skills from S3 manifest
+    if (path === "/api/skills/list" && httpMethod === "GET") {
+      try {
+        const bucketName = process.env.SKILLS_BUCKET || process.env.BLOB_BUCKET;
 
-      const bucketName = process.env.SKILLS_BUCKET || process.env.BLOB_BUCKET;
-      if (!bucketName) {
-        return {
-          statusCode: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          body: JSON.stringify({ error: "Skills bucket not configured" }),
-        };
-      }
+        if (!bucketName) {
+          return {
+            statusCode: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ error: "Skills bucket not configured" }),
+          };
+        }
 
-      // GET /portals/{portal}/skills - List skills for this portal
-      if (!skillPath && httpMethod === "GET") {
+        const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+        const s3 = new S3Client({});
+
         try {
-          const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
-          const s3 = new S3Client({});
+          const response = await s3.send(
+            new GetObjectCommand({
+              Bucket: bucketName,
+              Key: "skills/skills-manifest.json",
+            })
+          );
 
-          try {
-            const response = await s3.send(
-              new GetObjectCommand({
-                Bucket: bucketName,
-                Key: `skills/${portalName}/skills-manifest.json`,
-              })
-            );
-
-            if (!response.Body) {
-              return {
-                statusCode: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                body: JSON.stringify([]),
-              };
-            }
-
-            const manifestContent = await response.Body.transformToString();
+          if (!response.Body) {
             return {
               statusCode: 200,
               headers: { ...corsHeaders, "Content-Type": "application/json" },
-              body: manifestContent,
+              body: JSON.stringify([]),
             };
-          } catch (s3Error: unknown) {
-            if ((s3Error as { name?: string }).name === "NoSuchKey") {
-              return {
-                statusCode: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                body: JSON.stringify([]),
-              };
-            }
-            throw s3Error;
           }
-        } catch (error) {
-          console.error("Portal skills list error:", error);
+
+          const manifestContent = await response.Body.transformToString();
+
           return {
-            statusCode: 500,
+            statusCode: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
-            body: JSON.stringify({ error: "Failed to list skills" }),
+            body: manifestContent,
           };
-        }
-      }
-
-      // GET /portals/{portal}/skills/{skillName}/download - Download skill
-      if (skillPath?.endsWith("/download") && httpMethod === "GET") {
-        const skillName = skillPath.slice(0, -"/download".length);
-
-        try {
-          const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
-          const s3 = new S3Client({});
-
-          try {
-            const response = await s3.send(
-              new GetObjectCommand({
-                Bucket: bucketName,
-                Key: `skills/${portalName}/${skillName}.zip`,
-              })
-            );
-
-            if (!response.Body) {
-              return {
-                statusCode: 404,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                body: JSON.stringify({ error: "Skill not found", skill: skillName, portal: portalName }),
-              };
-            }
-
-            const chunks: Uint8Array[] = [];
-            for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
-              chunks.push(chunk);
-            }
-            const zipContent = Buffer.concat(chunks);
-
+        } catch (s3Error: unknown) {
+          if ((s3Error as { name?: string }).name === "NoSuchKey") {
             return {
               statusCode: 200,
-              headers: {
-                ...corsHeaders,
-                "Content-Type": "application/zip",
-                "Content-Disposition": `attachment; filename="${skillName}.zip"`,
-              },
-              body: zipContent.toString("base64"),
-              isBase64Encoded: true,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              body: JSON.stringify([]),
             };
-          } catch (s3Error: unknown) {
-            if ((s3Error as { name?: string }).name === "NoSuchKey") {
-              return {
-                statusCode: 404,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                body: JSON.stringify({ error: "Skill not found", skill: skillName, portal: portalName }),
-              };
-            }
-            throw s3Error;
           }
-        } catch (error) {
-          console.error("Portal skill download error:", error);
+          throw s3Error;
+        }
+      } catch (error) {
+        console.error("Skills list error:", error);
+        return {
+          statusCode: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Failed to list skills" }),
+        };
+      }
+    }
+
+    // GET /api/skills/:skillName/download - Download skill as ZIP from S3
+    if (path.startsWith("/api/skills/") && path.endsWith("/download") && httpMethod === "GET") {
+      const skillName = path.slice("/api/skills/".length, -"/download".length);
+
+      try {
+        // In Lambda, skills are pre-packaged and uploaded to S3 during deployment
+        const bucketName = process.env.SKILLS_BUCKET || process.env.BLOB_BUCKET;
+
+        if (!bucketName) {
           return {
             statusCode: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
-            body: JSON.stringify({ error: "Failed to download skill" }),
+            body: JSON.stringify({ error: "Skills bucket not configured" }),
           };
         }
+
+        const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+        const s3 = new S3Client({});
+
+        const key = `skills/${skillName}.zip`;
+
+        try {
+          const response = await s3.send(
+            new GetObjectCommand({
+              Bucket: bucketName,
+              Key: key,
+            })
+          );
+
+          if (!response.Body) {
+            return {
+              statusCode: 404,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Skill not found", skill: skillName }),
+            };
+          }
+
+          // Convert stream to buffer
+          const chunks: Uint8Array[] = [];
+          for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+            chunks.push(chunk);
+          }
+          const zipContent = Buffer.concat(chunks);
+
+          return {
+            statusCode: 200,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/zip",
+              "Content-Disposition": `attachment; filename="${skillName}.zip"`,
+            },
+            body: zipContent.toString("base64"),
+            isBase64Encoded: true,
+          };
+        } catch (s3Error: unknown) {
+          if ((s3Error as { name?: string }).name === "NoSuchKey") {
+            return {
+              statusCode: 404,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              body: JSON.stringify({ error: "Skill not found", skill: skillName }),
+            };
+          }
+          throw s3Error;
+        }
+      } catch (error) {
+        console.error("Skill download error:", error);
+        return {
+          statusCode: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Failed to download skill" }),
+        };
       }
     }
 

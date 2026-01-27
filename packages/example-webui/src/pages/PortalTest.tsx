@@ -94,11 +94,11 @@ interface AuthState {
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 const PORTAL_ENDPOINTS: Record<string, string> = {
-  basic: `${API_BASE}/basic`,
-  ecommerce: `${API_BASE}/ecommerce`,
-  jsonata: `${API_BASE}/jsonata`,
-  auth: `${API_BASE}/auth`,
-  blob: `${API_BASE}/blob`,
+  basic: `${API_BASE}/api/awp/basic`,
+  ecommerce: `${API_BASE}/api/awp/ecommerce`,
+  jsonata: `${API_BASE}/api/awp/jsonata`,
+  secure: `${API_BASE}/api/awp/secure`,
+  blob: `${API_BASE}/api/awp/blob`,
 };
 
 // Image Preview Component for output blobs
@@ -121,7 +121,7 @@ function ImagePreview({
 
     const data = JSON.parse(content) as Record<string, unknown>;
     const outputBlobs = getOutputBlobFields();
-    
+
     // Get images from output blob URLs (written by the tool)
     const imagesToShow = outputBlobs
       .filter((field) => outputBlobUrls[field])
@@ -336,8 +336,8 @@ async function deleteKeyPair(endpoint: string): Promise<void> {
 
 export default function PortalTest() {
   const { portalId } = useParams<{ portalId: string }>();
-  const endpoint = PORTAL_ENDPOINTS[portalId ?? ''] ?? '/basic';
-  const isAuthPortal = portalId === 'auth';
+  const endpoint = PORTAL_ENDPOINTS[portalId ?? ''] ?? '/api/awp/basic';
+  const isAuthPortal = portalId === 'secure';
 
   const [tools, setTools] = useState<Tool[]>([]);
   const [skills, setSkills] = useState<Record<string, Skill>>({});
@@ -567,7 +567,7 @@ export default function PortalTest() {
 
     const poll = async () => {
       try {
-        const res = await fetch(`${API_BASE}/auth/status?pubkey=${encodeURIComponent(pubkey)}`);
+        const res = await fetch(`${API_BASE}/api/auth/status?pubkey=${encodeURIComponent(pubkey)}`);
         const data = await res.json();
 
         // Check if authorized (response is { authorized: true/false, expires_at?: number })
@@ -802,11 +802,11 @@ export default function PortalTest() {
     setResponse(null);
     try {
       const args = JSON.parse(arguments_);
-      
+
       // Build blob context if the tool has blob fields
       const inputBlobs = getInputBlobFields();
       const outputBlobs = getOutputBlobFields();
-      
+
       let blobContext: {
         input: Record<string, string>;
         output: Record<string, string>;
@@ -841,7 +841,7 @@ export default function PortalTest() {
         // For output blob fields, get presigned PUT URL from prepare-download
         const newOutputBlobUrls: Record<string, string> = {};
         for (const field of outputBlobs) {
-          const res = await fetch(`${API_BASE}/blob/prepare-download`, { method: 'POST' });
+          const res = await fetch(`${API_BASE}/api/blob/prepare-download`, { method: 'POST' });
           if (res.ok) {
             const data = await res.json() as { id: string; writeUrl: string; readUrl: string };
             // Convert to full URLs
@@ -921,7 +921,7 @@ export default function PortalTest() {
       formData.append('image', file);
 
       // Use prepare-upload to get a temporary presigned GET URL
-      const res = await fetch(`${API_BASE}/blob/prepare-upload`, {
+      const res = await fetch(`${API_BASE}/api/blob/prepare-upload`, {
         method: 'POST',
         body: formData,
       });
@@ -1085,11 +1085,11 @@ export default function PortalTest() {
                 Blob Portal - Image Storage Demo
               </Typography>
               <Typography variant="body2">
-                <strong>put_image:</strong> Select a file below, it will be uploaded to a temporary URL (5 min TTL), 
+                <strong>put_image:</strong> Select a file below, it will be uploaded to a temporary URL (5 min TTL),
                 then the tool reads from that URL and stores permanently. <em>(Demonstrates blob INPUT)</em>
               </Typography>
               <Typography variant="body2">
-                <strong>get_image:</strong> Retrieves an image by key and writes to an output URL. 
+                <strong>get_image:</strong> Retrieves an image by key and writes to an output URL.
                 <em>(Demonstrates blob OUTPUT)</em>
               </Typography>
               <Typography variant="body2">
@@ -1098,310 +1098,310 @@ export default function PortalTest() {
             </Alert>
           )}
 
-        <Grid container spacing={3}>
-          {/* Tool Selection */}
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Call Tool
-                </Typography>
-
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <InputLabel>Select Tool</InputLabel>
-                  <Select
-                    value={selectedTool}
-                    label="Select Tool"
-                    onChange={(e) => handleToolChange(e.target.value)}
-                  >
-                    {tools.map((tool) => (
-                      <MenuItem key={tool.name} value={tool.name}>
-                        {tool.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                {selectedToolInfo && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    {selectedToolInfo.description}
+          <Grid container spacing={3}>
+            {/* Tool Selection */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Call Tool
                   </Typography>
-                )}
 
-                {/* Blob Upload Fields */}
-                {getInputBlobFields().length > 0 && (
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ImageIcon fontSize="small" />
-                      File Upload
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Select Tool</InputLabel>
+                    <Select
+                      value={selectedTool}
+                      label="Select Tool"
+                      onChange={(e) => handleToolChange(e.target.value)}
+                    >
+                      {tools.map((tool) => (
+                        <MenuItem key={tool.name} value={tool.name}>
+                          {tool.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  {selectedToolInfo && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      {selectedToolInfo.description}
                     </Typography>
-                    {getInputBlobFields().map((fieldName) => {
-                      const tool = tools.find((t) => t.name === selectedTool);
-                      const blobMeta = tool?._awp?.blobs?.input?.[fieldName];
-                      const uploadedFile = uploadedFiles[fieldName];
-
-                      return (
-                        <Box key={fieldName} sx={{ mb: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            {fieldName}
-                            {blobMeta?.description && ` - ${blobMeta.description}`}
-                          </Typography>
-                          {uploadedFile ? (
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
-                              <Chip
-                                icon={<ImageIcon />}
-                                label={uploadedFile.file.name}
-                                onDelete={() => clearUploadedFile(fieldName)}
-                                size="small"
-                                color="success"
-                              />
-                              <Typography variant="caption" color="text.secondary">
-                                ({(uploadedFile.file.size / 1024).toFixed(1)} KB)
-                              </Typography>
-                            </Stack>
-                          ) : (
-                            <Button
-                              component="label"
-                              variant="outlined"
-                              size="small"
-                              startIcon={uploading ? <CircularProgress size={16} /> : <UploadIcon />}
-                              disabled={uploading}
-                              sx={{ mt: 0.5 }}
-                            >
-                              {uploading ? 'Uploading...' : 'Select File'}
-                              <input
-                                type="file"
-                                hidden
-                                accept={blobMeta?.mimeType || 'image/*'}
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    handleFileSelect(fieldName, file);
-                                  }
-                                }}
-                              />
-                            </Button>
-                          )}
-                        </Box>
-                      );
-                    })}
-                  </Box>
-                )}
-
-                <TextField
-                  fullWidth
-                  label="Arguments (JSON)"
-                  multiline
-                  rows={getInputBlobFields().length > 0 ? 5 : 8}
-                  value={arguments_}
-                  onChange={(e) => setArguments(e.target.value)}
-                  sx={{
-                    mb: 2,
-                    '& .MuiInputBase-input': {
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                    },
-                  }}
-                />
-
-                <Button
-                  variant="contained"
-                  startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <PlayIcon />}
-                  onClick={callTool}
-                  disabled={loading || !selectedTool}
-                  fullWidth
-                >
-                  Execute
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Response */}
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Box
-                  sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}
-                >
-                  <Typography variant="h6">Response</Typography>
-                  {response && (
-                    <Tooltip title="Copy">
-                      <IconButton
-                        size="small"
-                        onClick={() => copyToClipboard(JSON.stringify(response, null, 2))}
-                      >
-                        <CopyIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
                   )}
-                </Box>
 
-                {/* Image Preview for output blobs */}
-                <ImagePreview response={response} getOutputBlobFields={getOutputBlobFields} outputBlobUrls={outputBlobUrls} />
+                  {/* Blob Upload Fields */}
+                  {getInputBlobFields().length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <ImageIcon fontSize="small" />
+                        File Upload
+                      </Typography>
+                      {getInputBlobFields().map((fieldName) => {
+                        const tool = tools.find((t) => t.name === selectedTool);
+                        const blobMeta = tool?._awp?.blobs?.input?.[fieldName];
+                        const uploadedFile = uploadedFiles[fieldName];
 
-                <Box
-                  sx={{
-                    p: 2,
-                    bgcolor: '#1e1e1e',
-                    borderRadius: 1,
-                    minHeight: 200,
-                    maxHeight: 400,
-                    overflow: 'auto',
-                  }}
-                >
-                  <pre
-                    style={{
-                      margin: 0,
-                      color: '#d4d4d4',
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
+                        return (
+                          <Box key={fieldName} sx={{ mb: 1 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              {fieldName}
+                              {blobMeta?.description && ` - ${blobMeta.description}`}
+                            </Typography>
+                            {uploadedFile ? (
+                              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                                <Chip
+                                  icon={<ImageIcon />}
+                                  label={uploadedFile.file.name}
+                                  onDelete={() => clearUploadedFile(fieldName)}
+                                  size="small"
+                                  color="success"
+                                />
+                                <Typography variant="caption" color="text.secondary">
+                                  ({(uploadedFile.file.size / 1024).toFixed(1)} KB)
+                                </Typography>
+                              </Stack>
+                            ) : (
+                              <Button
+                                component="label"
+                                variant="outlined"
+                                size="small"
+                                startIcon={uploading ? <CircularProgress size={16} /> : <UploadIcon />}
+                                disabled={uploading}
+                                sx={{ mt: 0.5 }}
+                              >
+                                {uploading ? 'Uploading...' : 'Select File'}
+                                <input
+                                  type="file"
+                                  hidden
+                                  accept={blobMeta?.mimeType || 'image/*'}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      handleFileSelect(fieldName, file);
+                                    }
+                                  }}
+                                />
+                              </Button>
+                            )}
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  )}
+
+                  <TextField
+                    fullWidth
+                    label="Arguments (JSON)"
+                    multiline
+                    rows={getInputBlobFields().length > 0 ? 5 : 8}
+                    value={arguments_}
+                    onChange={(e) => setArguments(e.target.value)}
+                    sx={{
+                      mb: 2,
+                      '& .MuiInputBase-input': {
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                      },
                     }}
-                  >
-                    {response ? JSON.stringify(response, null, 2) : '// Response will appear here'}
-                  </pre>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
+                  />
 
-          {/* Available Tools */}
-          <Grid item xs={12}>
-            <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-              Available Tools
-            </Typography>
-            {tools.map((tool) => (
-              <Accordion key={tool.name}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Typography fontWeight={500}>{tool.name}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {tool.description}
-                    </Typography>
-                  </Stack>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Input Schema:
-                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <PlayIcon />}
+                    onClick={callTool}
+                    disabled={loading || !selectedTool}
+                    fullWidth
+                  >
+                    Execute
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Response */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
                   <Box
-                    component="pre"
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}
+                  >
+                    <Typography variant="h6">Response</Typography>
+                    {response && (
+                      <Tooltip title="Copy">
+                        <IconButton
+                          size="small"
+                          onClick={() => copyToClipboard(JSON.stringify(response, null, 2))}
+                        >
+                          <CopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+
+                  {/* Image Preview for output blobs */}
+                  <ImagePreview response={response} getOutputBlobFields={getOutputBlobFields} outputBlobUrls={outputBlobUrls} />
+
+                  <Box
                     sx={{
                       p: 2,
-                      bgcolor: '#f5f5f5',
+                      bgcolor: '#1e1e1e',
                       borderRadius: 1,
+                      minHeight: 200,
+                      maxHeight: 400,
                       overflow: 'auto',
-                      fontSize: 12,
                     }}
                   >
-                    {JSON.stringify(tool.inputSchema, null, 2)}
+                    <pre
+                      style={{
+                        margin: 0,
+                        color: '#d4d4d4',
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {response ? JSON.stringify(response, null, 2) : '// Response will appear here'}
+                    </pre>
                   </Box>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-          </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
 
-          {/* Available Skills */}
-          {Object.keys(skills).length > 0 && (
+            {/* Available Tools */}
             <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <SkillIcon color="primary" />
-                Available Skills
+              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                Available Tools
               </Typography>
-              {Object.entries(skills).map(([skillName, skill]) => (
-                <Accordion key={skillName}>
+              {tools.map((tool) => (
+                <Accordion key={tool.name}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                     <Stack direction="row" spacing={2} alignItems="center">
-                      <Typography fontWeight={500}>
-                        {skill.frontmatter?.name || skillName}
-                      </Typography>
-                      {skill.frontmatter?.version && (
-                        <Chip label={`v${skill.frontmatter.version}`} size="small" variant="outlined" />
-                      )}
+                      <Typography fontWeight={500}>{tool.name}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {skill.frontmatter?.description}
+                        {tool.description}
                       </Typography>
                     </Stack>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Stack spacing={2}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Skill URL:
-                          </Typography>
-                          <Chip
-                            label={skill.url}
-                            size="small"
-                            sx={{ fontFamily: 'monospace' }}
-                            onClick={() => copyToClipboard(skill.url)}
-                            icon={<CopyIcon fontSize="small" />}
-                          />
-                        </Box>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={<DownloadIcon />}
-                          href={`${API_BASE}/api/skills/${skill.url.replace('/skills/', '')}/download`}
-                          download
-                        >
-                          Download
-                        </Button>
-                      </Box>
-                      
-                      {skill.frontmatter?.['allowed-tools'] && skill.frontmatter['allowed-tools'].length > 0 && (
-                        <Box>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Allowed Tools:
-                          </Typography>
-                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                            {skill.frontmatter['allowed-tools'].map((toolName) => (
-                              <Chip
-                                key={toolName}
-                                label={toolName}
-                                size="small"
-                                color="primary"
-                                variant="outlined"
-                                onClick={() => {
-                                  const tool = tools.find(t => t.name === toolName);
-                                  if (tool) {
-                                    setSelectedTool(toolName);
-                                    updateDefaultArgs(tool);
-                                  }
-                                }}
-                                sx={{ cursor: 'pointer' }}
-                              />
-                            ))}
-                          </Stack>
-                        </Box>
-                      )}
-
-                      <Box>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Frontmatter:
-                        </Typography>
-                        <Box
-                          component="pre"
-                          sx={{
-                            p: 2,
-                            bgcolor: '#f5f5f5',
-                            borderRadius: 1,
-                            overflow: 'auto',
-                            fontSize: 12,
-                          }}
-                        >
-                          {JSON.stringify(skill.frontmatter, null, 2)}
-                        </Box>
-                      </Box>
-                    </Stack>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Input Schema:
+                    </Typography>
+                    <Box
+                      component="pre"
+                      sx={{
+                        p: 2,
+                        bgcolor: '#f5f5f5',
+                        borderRadius: 1,
+                        overflow: 'auto',
+                        fontSize: 12,
+                      }}
+                    >
+                      {JSON.stringify(tool.inputSchema, null, 2)}
+                    </Box>
                   </AccordionDetails>
                 </Accordion>
               ))}
             </Grid>
-          )}
-        </Grid>
+
+            {/* Available Skills */}
+            {Object.keys(skills).length > 0 && (
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <SkillIcon color="primary" />
+                  Available Skills
+                </Typography>
+                {Object.entries(skills).map(([skillName, skill]) => (
+                  <Accordion key={skillName}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <Typography fontWeight={500}>
+                          {skill.frontmatter?.name || skillName}
+                        </Typography>
+                        {skill.frontmatter?.version && (
+                          <Chip label={`v${skill.frontmatter.version}`} size="small" variant="outlined" />
+                        )}
+                        <Typography variant="body2" color="text.secondary">
+                          {skill.frontmatter?.description}
+                        </Typography>
+                      </Stack>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Stack spacing={2}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Skill URL:
+                            </Typography>
+                            <Chip
+                              label={skill.url}
+                              size="small"
+                              sx={{ fontFamily: 'monospace' }}
+                              onClick={() => copyToClipboard(skill.url)}
+                              icon={<CopyIcon fontSize="small" />}
+                            />
+                          </Box>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<DownloadIcon />}
+                            href={`${API_BASE}/api/skills/${skill.url.replace('/skills/', '')}/download`}
+                            download
+                          >
+                            Download
+                          </Button>
+                        </Box>
+
+                        {skill.frontmatter?.['allowed-tools'] && skill.frontmatter['allowed-tools'].length > 0 && (
+                          <Box>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Allowed Tools:
+                            </Typography>
+                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                              {skill.frontmatter['allowed-tools'].map((toolName) => (
+                                <Chip
+                                  key={toolName}
+                                  label={toolName}
+                                  size="small"
+                                  color="primary"
+                                  variant="outlined"
+                                  onClick={() => {
+                                    const tool = tools.find(t => t.name === toolName);
+                                    if (tool) {
+                                      setSelectedTool(toolName);
+                                      updateDefaultArgs(tool);
+                                    }
+                                  }}
+                                  sx={{ cursor: 'pointer' }}
+                                />
+                              ))}
+                            </Stack>
+                          </Box>
+                        )}
+
+                        <Box>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Frontmatter:
+                          </Typography>
+                          <Box
+                            component="pre"
+                            sx={{
+                              p: 2,
+                              bgcolor: '#f5f5f5',
+                              borderRadius: 1,
+                              overflow: 'auto',
+                              fontSize: 12,
+                            }}
+                          >
+                            {JSON.stringify(skill.frontmatter, null, 2)}
+                          </Box>
+                        </Box>
+                      </Stack>
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </Grid>
+            )}
+          </Grid>
         </>
       )}
 

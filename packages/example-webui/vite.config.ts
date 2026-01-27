@@ -27,11 +27,6 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": apiUrl,
-      "/auth": apiUrl,
-      "/basic": apiUrl,
-      "/ecommerce": apiUrl,
-      "/jsonata": apiUrl,
-      "/blob": apiUrl,
     },
   },
 });

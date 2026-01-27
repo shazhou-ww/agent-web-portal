@@ -3,7 +3,21 @@
  * Upload Skills to S3
  *
  * This script packages each skill folder into a zip file and uploads it to S3.
- * It also generates a skills-manifest.json with metadata from each SKILL.md frontmatter.
+ * It supports per-portal skill organization: skills/{portal}/{skill-name}
+ *
+ * Directory structure:
+ *   skills/
+ *     basic/              <- portal name
+ *       greeting/         <- skill name
+ *         SKILL.md
+ *         ...
+ *     ecommerce/
+ *       checkout/
+ *         SKILL.md
+ *
+ * S3 structure:
+ *   skills/{portal}/{skill-name}.zip
+ *   skills/{portal}/skills-manifest.json
  *
  * Usage:
  *   bun run scripts/upload-skills.ts              # Package only (no upload)
@@ -184,73 +198,188 @@ async function main() {
     mkdirSync(DIST_DIR, { recursive: true });
   }
 
-  // Get all skill directories
-  const skills = readdirSync(SKILLS_DIR).filter((name) => {
+  // Check if skills directory uses per-portal structure (portal/skill-name) or flat structure (skill-name)
+  const topLevelDirs = readdirSync(SKILLS_DIR).filter((name) => {
     const skillPath = join(SKILLS_DIR, name);
     return statSync(skillPath).isDirectory();
   });
 
-  console.log(`Found ${skills.length} skills to package:`);
-
-  const s3 = bucketName ? new S3Client(awsConfig) : null;
-  const manifest: SkillManifestEntry[] = [];
-
-  for (const skillName of skills) {
-    console.log(`  - ${skillName}`);
-
-    // Package skill to zip
-    const { zipContent, frontmatter } = await packageSkill(skillName);
-    const zipPath = join(DIST_DIR, `${skillName}.zip`);
-
-    // Save to dist/skills/
-    writeFileSync(zipPath, zipContent);
-    console.log(`    → Saved to ${zipPath} (${(zipContent.length / 1024).toFixed(2)} KB)`);
-
-    if (frontmatter) {
-      console.log(`    → Parsed frontmatter: ${frontmatter.name || skillName}`);
-    }
-
-    // Add to manifest
-    manifest.push({
-      id: skillName,
-      url: `/api/skills/${skillName}/download`,
-      frontmatter: frontmatter || { name: skillName },
-    });
-
-    // Upload to S3 if bucket provided
-    if (s3 && bucketName) {
-      const key = `skills/${skillName}.zip`;
-
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: bucketName,
-          Key: key,
-          Body: zipContent,
-          ContentType: "application/zip",
-        })
-      );
-
-      console.log(`    → Uploaded to s3://${bucketName}/${key}`);
+  // Detect structure: if any top-level dir has a SKILL.md, it's flat structure
+  // Otherwise, assume per-portal structure (portal/skill-name)
+  let isPerPortalStructure = true;
+  for (const dir of topLevelDirs) {
+    if (existsSync(join(SKILLS_DIR, dir, "SKILL.md"))) {
+      isPerPortalStructure = false;
+      break;
     }
   }
 
-  // Save manifest
-  const manifestPath = join(DIST_DIR, "skills-manifest.json");
-  const manifestContent = JSON.stringify(manifest, null, 2);
-  writeFileSync(manifestPath, manifestContent);
-  console.log(`\n📋 Generated manifest: ${manifestPath}`);
+  const s3 = bucketName ? new S3Client(awsConfig) : null;
 
-  // Upload manifest to S3
-  if (s3 && bucketName) {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucketName,
-        Key: "skills/skills-manifest.json",
-        Body: manifestContent,
-        ContentType: "application/json",
-      })
-    );
-    console.log(`    → Uploaded to s3://${bucketName}/skills/skills-manifest.json`);
+  if (isPerPortalStructure) {
+    // Per-portal structure: skills/{portal}/{skill-name}
+    console.log(`📂 Detected per-portal skills structure`);
+    console.log("");
+
+    for (const portalName of topLevelDirs) {
+      const portalDir = join(SKILLS_DIR, portalName);
+      const portalDistDir = join(DIST_DIR, portalName);
+
+      if (!existsSync(portalDistDir)) {
+        mkdirSync(portalDistDir, { recursive: true });
+      }
+
+      const skillDirs = readdirSync(portalDir).filter((name) => {
+        const skillPath = join(portalDir, name);
+        return statSync(skillPath).isDirectory();
+      });
+
+      if (skillDirs.length === 0) continue;
+
+      console.log(`📦 Portal: ${portalName} (${skillDirs.length} skills)`);
+      const manifest: SkillManifestEntry[] = [];
+
+      for (const skillName of skillDirs) {
+        const skillDir = join(portalDir, skillName);
+
+        // Package skill to zip
+        const zip = new JSZip();
+        let frontmatter: SkillFrontmatter | null = null;
+
+        function addFilesToZip(dir: string, zipPath: string = "") {
+          const files = readdirSync(dir);
+          for (const file of files) {
+            const fullPath = join(dir, file);
+            const stat = statSync(fullPath);
+            const relativePath = zipPath ? `${zipPath}/${file}` : file;
+
+            if (stat.isDirectory()) {
+              addFilesToZip(fullPath, relativePath);
+            } else {
+              const content = readFileSync(fullPath);
+              zip.file(relativePath, content);
+
+              if (file === "SKILL.md" && zipPath === "") {
+                frontmatter = parseFrontmatter(content.toString("utf-8"));
+              }
+            }
+          }
+        }
+
+        addFilesToZip(skillDir);
+        const zipContent = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+
+        const zipPath = join(portalDistDir, `${skillName}.zip`);
+        writeFileSync(zipPath, zipContent);
+        console.log(`  - ${skillName} → ${(zipContent.length / 1024).toFixed(2)} KB`);
+
+        // Add to portal manifest
+        manifest.push({
+          id: skillName,
+          url: `/portals/${portalName}/skills/${skillName}/download`,
+          frontmatter: frontmatter || { name: skillName },
+        });
+
+        // Upload to S3 if bucket provided
+        if (s3 && bucketName) {
+          const key = `skills/${portalName}/${skillName}.zip`;
+          await s3.send(
+            new PutObjectCommand({
+              Bucket: bucketName,
+              Key: key,
+              Body: zipContent,
+              ContentType: "application/zip",
+            })
+          );
+          console.log(`    → Uploaded to s3://${bucketName}/${key}`);
+        }
+      }
+
+      // Save portal manifest
+      const manifestPath = join(portalDistDir, "skills-manifest.json");
+      const manifestContent = JSON.stringify(manifest, null, 2);
+      writeFileSync(manifestPath, manifestContent);
+
+      // Upload manifest to S3
+      if (s3 && bucketName) {
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucketName,
+            Key: `skills/${portalName}/skills-manifest.json`,
+            Body: manifestContent,
+            ContentType: "application/json",
+          })
+        );
+        console.log(`  📋 Manifest uploaded`);
+      }
+    }
+  } else {
+    // Flat structure: skills/{skill-name} (legacy)
+    console.log(`📂 Detected flat skills structure (legacy)`);
+    console.log("");
+
+    const skills = topLevelDirs;
+    console.log(`Found ${skills.length} skills to package:`);
+
+    const manifest: SkillManifestEntry[] = [];
+
+    for (const skillName of skills) {
+      console.log(`  - ${skillName}`);
+
+      // Package skill to zip
+      const { zipContent, frontmatter } = await packageSkill(skillName);
+      const zipPath = join(DIST_DIR, `${skillName}.zip`);
+
+      // Save to dist/skills/
+      writeFileSync(zipPath, zipContent);
+      console.log(`    → Saved to ${zipPath} (${(zipContent.length / 1024).toFixed(2)} KB)`);
+
+      if (frontmatter) {
+        console.log(`    → Parsed frontmatter: ${frontmatter.name || skillName}`);
+      }
+
+      // Add to manifest (use generic /portals path - user can specify portal)
+      manifest.push({
+        id: skillName,
+        url: `/portals/{portal}/skills/${skillName}/download`,
+        frontmatter: frontmatter || { name: skillName },
+      });
+
+      // Upload to S3 if bucket provided (to a 'shared' folder)
+      if (s3 && bucketName) {
+        const key = `skills/shared/${skillName}.zip`;
+
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+            Body: zipContent,
+            ContentType: "application/zip",
+          })
+        );
+
+        console.log(`    → Uploaded to s3://${bucketName}/${key}`);
+      }
+    }
+
+    // Save manifest
+    const manifestPath = join(DIST_DIR, "skills-manifest.json");
+    const manifestContent = JSON.stringify(manifest, null, 2);
+    writeFileSync(manifestPath, manifestContent);
+    console.log(`\n📋 Generated manifest: ${manifestPath}`);
+
+    // Upload manifest to S3
+    if (s3 && bucketName) {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: bucketName,
+          Key: "skills/shared/skills-manifest.json",
+          Body: manifestContent,
+          ContentType: "application/json",
+        })
+      );
+      console.log(`    → Uploaded to s3://${bucketName}/skills/shared/skills-manifest.json`);
+    }
   }
 
   console.log("");
@@ -260,6 +389,7 @@ async function main() {
     console.log("");
     console.log("To upload to S3, run:");
     console.log("  bun run scripts/upload-skills.ts <your-bucket-name>");
+    console.log("  bun run scripts/upload-skills.ts --stack");
   }
 }
 

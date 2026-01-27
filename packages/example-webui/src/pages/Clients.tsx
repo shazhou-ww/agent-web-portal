@@ -87,7 +87,7 @@ export default function Clients() {
   const fetchClients = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/clients');
+      const response = await fetch('/api/auth/clients');
       if (response.ok) {
         const data = await response.json();
         setClients(data.clients);
@@ -116,7 +116,7 @@ export default function Clients() {
 
     setRevoking(true);
     try {
-      const response = await fetch(`/api/clients/${encodeURIComponent(clientToRevoke.pubkey)}`, {
+      const response = await fetch(`/api/auth/clients/${encodeURIComponent(clientToRevoke.pubkey)}`, {
         method: 'DELETE',
       });
 
@@ -144,7 +144,7 @@ export default function Clients() {
     setRenewing(true);
     try {
       const expiresIn = renewDuration ? parseInt(renewDuration, 10) : undefined;
-      const response = await fetch(`/api/clients/${encodeURIComponent(clientToRenew.pubkey)}`, {
+      const response = await fetch(`/api/auth/clients/${encodeURIComponent(clientToRenew.pubkey)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expiresIn }),
@@ -231,8 +231,8 @@ export default function Clients() {
                   borderLeft: expired
                     ? '4px solid #f44336'
                     : expiringSoon
-                    ? '4px solid #ff9800'
-                    : '4px solid #4caf50',
+                      ? '4px solid #ff9800'
+                      : '4px solid #4caf50',
                 }}
               >
                 <CardContent>

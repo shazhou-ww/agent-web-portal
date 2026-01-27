@@ -40,7 +40,7 @@ const portalItems = [
   { path: '/portals/basic', label: 'Basic Portal', icon: <CodeIcon /> },
   { path: '/portals/ecommerce', label: 'E-commerce', icon: <ShoppingCartIcon /> },
   { path: '/portals/jsonata', label: 'JSONata', icon: <FunctionsIcon /> },
-  { path: '/portals/auth', label: 'Auth Portal', icon: <LockIcon /> },
+  { path: '/portals/secure', label: 'Secure Portal', icon: <LockIcon /> },
   { path: '/portals/blob', label: 'Blob Portal', icon: <StorageIcon /> },
 ];
 

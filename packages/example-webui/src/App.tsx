@@ -32,7 +32,7 @@ function AppRoutes() {
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/auth/page" element={<AuthorizePage />} />
+        <Route path="/authorize" element={<AuthorizePage />} />
         <Route
           path="/"
           element={

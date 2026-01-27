@@ -249,38 +249,13 @@ Resources:
           Compress: true
         
         CacheBehaviors:
-          # Health check routes -> API Gateway
-          - PathPattern: "/health"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-          
-          - PathPattern: "/healthz"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-          
-          - PathPattern: "/ping"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-          
-          # API routes -> API Gateway
+          # All API routes -> API Gateway (/api/*)
+          # This includes:
+          #   - /api/awp/* (MCP portal endpoints)
+          #   - /api/auth/* (AWP auth endpoints)
+          #   - /api/blob/* (Blob storage APIs)
+          #   - /api/health (Health check)
+          #   - /api/skills/* (Skills API)
           - PathPattern: "/api/*"
             TargetOriginId: ApiOrigin
             ViewerProtocolPolicy: redirect-to-https
@@ -308,140 +283,6 @@ Resources:
               - POST
               - PATCH
               - DELETE
-          
-          # Auth routes -> API Gateway
-          - PathPattern: "/auth/*"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          - PathPattern: "/auth"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          # Portal routes -> API Gateway
-          - PathPattern: "/basic/*"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          - PathPattern: "/basic"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          - PathPattern: "/ecommerce/*"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          - PathPattern: "/ecommerce"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          - PathPattern: "/jsonata/*"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          - PathPattern: "/jsonata"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          - PathPattern: "/blob/*"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-              - PUT
-              - POST
-              - PATCH
-              - DELETE
-          
-          - PathPattern: "/blob"
-            TargetOriginId: ApiOrigin
-            ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
             AllowedMethods:
               - GET
               - HEAD
@@ -476,29 +317,26 @@ Outputs:
     Description: API Gateway endpoint URL
     Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
   
-  UiUrl:
-    Description: React UI URL
-    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/ui"
-  
+  # Portal MCP endpoints (/api/awp/* structure)
   BasicPortal:
     Description: Basic Portal MCP endpoint
-    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/basic"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/awp/basic"
   
   EcommercePortal:
     Description: E-commerce Portal MCP endpoint
-    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/ecommerce"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/awp/ecommerce"
   
   JsonataPortal:
     Description: JSONata Portal MCP endpoint
-    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/jsonata"
-  
-  AuthPortal:
-    Description: Auth Portal MCP endpoint
-    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/auth"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/awp/jsonata"
   
   BlobPortal:
     Description: Blob Portal MCP endpoint
-    Value: !Sub "https://${ExamplesApi}.execute-api.${AWS::Region}.amazonaws.com/prod/blob"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/awp/blob"
+  
+  SecurePortal:
+    Description: Secure Portal MCP endpoint (requires AWP auth)
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/awp/secure"
   
   FunctionArn:
     Description: Lambda Function ARN

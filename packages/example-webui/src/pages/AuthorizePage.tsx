@@ -50,8 +50,8 @@ export default function AuthorizePage() {
     async function fetchPendingAuth() {
       try {
         // We need to get the pending auth info
-        // For now, we'll use the auth/status endpoint
-        const response = await fetch(`/auth/status?pubkey=${encodeURIComponent(pubkey)}`);
+        // For now, we'll use the api/auth/status endpoint
+        const response = await fetch(`/api/auth/status?pubkey=${encodeURIComponent(pubkey)}`);
         const data = await response.json();
 
         if (data.authorized) {
@@ -96,7 +96,7 @@ export default function AuthorizePage() {
     setError('');
 
     try {
-      const response = await fetch('/auth/complete', {
+      const response = await fetch('/api/auth/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
