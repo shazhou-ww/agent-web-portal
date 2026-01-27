@@ -205,7 +205,7 @@ export function storeTempUpload(
 
   return {
     id,
-    readUrl: `/blob/temp/${id}`,
+    readUrl: `/api/blob/temp/${id}`,
     expiresAt: new Date(expiresAt).toISOString(),
   };
 }
@@ -273,8 +273,8 @@ export function createOutputBlobSlot(): {
 
   return {
     id,
-    writeUrl: `/blob/output/${id}`,
-    readUrl: `/blob/output/${id}`,
+    writeUrl: `/api/blob/output/${id}`,
+    readUrl: `/api/blob/output/${id}`,
     expiresAt: new Date(expiresAt).toISOString(),
   };
 }
@@ -372,9 +372,17 @@ export const blobPortal = createAgentWebPortal({
       });
 
       // Get the presigned GET URL for the input image
-      const inputUrl = context?.blobs.input.image;
+      let inputUrl = context?.blobs.input.image;
       if (!inputUrl) {
         throw new Error("No input image URL provided");
+      }
+
+      // Convert relative URL to absolute for server-side fetch
+      if (inputUrl.startsWith("/")) {
+        // For local development, use localhost:3400
+        // In production (Lambda), this would be the API Gateway URL
+        const baseUrl = process.env.API_BASE_URL || "http://localhost:3400";
+        inputUrl = `${baseUrl}${inputUrl}`;
       }
 
       // Fetch the image data from the presigned URL
@@ -436,19 +444,45 @@ export const blobPortal = createAgentWebPortal({
       const outputUrl = context?.blobs.output.image;
       if (outputUrl) {
         try {
-          // Extract the output blob ID from the presigned URL
-          // URL format: https://bucket.s3.region.amazonaws.com/output/{id}?...
-          const urlObj = new URL(outputUrl);
-          const pathParts = urlObj.pathname.split("/");
-          const outputIndex = pathParts.indexOf("output");
-          const outputId = outputIndex !== -1 ? pathParts[outputIndex + 1] : undefined;
+          // Check if we should use direct S3 write or fetch to presigned URL
+          if (isS3BlobStorageConfigured()) {
+            // Extract the output blob ID from the presigned URL
+            // URL format: https://bucket.s3.region.amazonaws.com/output/{id}?...
+            const urlObj = new URL(outputUrl);
+            const pathParts = urlObj.pathname.split("/");
+            const outputIndex = pathParts.indexOf("output");
+            const outputId = outputIndex !== -1 ? pathParts[outputIndex + 1] : undefined;
 
-          if (outputId) {
-            // Use direct S3 write (more reliable than fetch in Lambda)
-            await writeOutputBlobS3(outputId, storedImage.data, storedImage.contentType);
+            if (outputId) {
+              // Use direct S3 write (more reliable than fetch in Lambda)
+              await writeOutputBlobS3(outputId, storedImage.data, storedImage.contentType);
+            } else {
+              // Fallback to presigned URL if we can't extract the ID
+              const putResponse = await fetch(outputUrl, {
+                method: "PUT",
+                headers: {
+                  "Content-Type": storedImage.contentType,
+                },
+                body: new Uint8Array(storedImage.data),
+              });
+
+              if (!putResponse.ok) {
+                const errorText = await putResponse.text().catch(() => "");
+                throw new Error(
+                  `Failed to write image: ${putResponse.status} ${putResponse.statusText} - ${errorText}`
+                );
+              }
+            }
           } else {
-            // Fallback to presigned URL if we can't extract the ID
-            const putResponse = await fetch(outputUrl, {
+            // Local development: use fetch to local blob API
+            // Convert relative URL to absolute for server-side fetch
+            let absoluteOutputUrl = outputUrl;
+            if (outputUrl.startsWith("/")) {
+              const baseUrl = process.env.API_BASE_URL || "http://localhost:3400";
+              absoluteOutputUrl = `${baseUrl}${outputUrl}`;
+            }
+
+            const putResponse = await fetch(absoluteOutputUrl, {
               method: "PUT",
               headers: {
                 "Content-Type": storedImage.contentType,

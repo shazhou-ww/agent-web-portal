@@ -819,16 +819,19 @@ export default function PortalTest() {
         const outputUri: Record<string, string> = {};
 
         // Determine API origin for blob URLs
-        const apiOrigin = API_BASE || window.location.origin;
+        // For local dev, use the backend server origin directly
+        // API_BASE is empty in dev (proxied), so we need to use the current origin
+        // which is the Vite dev server - but blob URLs need to go through the proxy
+        const apiOrigin = API_BASE || '';
 
         // For input blob fields, get the presigned URL from args
         // The URL could be:
-        // 1. A relative path like /blob/temp/xxx (convert to full URL)
+        // 1. A relative path like /api/blob/temp/xxx (convert to full URL)
         // 2. A full S3 presigned URL (use as-is)
         for (const field of inputBlobs) {
           const value = args[field];
           if (typeof value === 'string') {
-            if (value.startsWith('/blob/')) {
+            if (value.startsWith('/api/blob/')) {
               // Convert relative path to full URL
               input[field] = `${apiOrigin}${value}`;
             } else if (value.startsWith('http://') || value.startsWith('https://')) {
@@ -936,14 +939,22 @@ export default function PortalTest() {
         [fieldName]: { key: result.readUrl, file },
       }));
 
-      // Update arguments with the presigned GET URL (this is what the tool will read from)
+      // Update arguments with the presigned GET URL and contentType
       try {
         const currentArgs = JSON.parse(arguments_);
         currentArgs[fieldName] = result.readUrl;
+        // Auto-set contentType from file if not already set
+        if (!currentArgs.contentType && file.type) {
+          currentArgs.contentType = file.type;
+        }
         setArguments(JSON.stringify(currentArgs, null, 2));
       } catch {
-        // If arguments is not valid JSON, just set it
-        setArguments(JSON.stringify({ [fieldName]: result.readUrl }, null, 2));
+        // If arguments is not valid JSON, create new object with both fields
+        const newArgs: Record<string, string> = { [fieldName]: result.readUrl };
+        if (file.type) {
+          newArgs.contentType = file.type;
+        }
+        setArguments(JSON.stringify(newArgs, null, 2));
       }
     } catch {
       setError('Failed to upload file');
