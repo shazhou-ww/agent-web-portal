@@ -20,4 +20,5 @@ export {
   writeOutputBlob,
 } from "./blob.ts";
 export { ecommercePortal } from "./ecommerce.ts";
+export { imageWorkshopPortal } from "./image-workshop/index.ts";
 export { jsonataPortal } from "./jsonata.ts";

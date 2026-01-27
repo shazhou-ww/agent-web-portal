@@ -56,6 +56,7 @@ import {
   basicPortal,
   blobPortal,
   ecommercePortal,
+  imageWorkshopPortal,
   jsonataPortal,
 } from "./portals/index.ts";
 import { serveStaticAssets } from "./static.ts";
@@ -698,6 +699,11 @@ export async function handler(
     // Blob portal MCP endpoint - /api/awp/blob
     if (path === "/api/awp/blob" || path === "/api/awp/blob/mcp") {
       return handlePortalMcpRequest(event, blobPortal, "blob", baseUrl, corsHeaders);
+    }
+
+    // Image Workshop portal - /api/awp/image-workshop
+    if (path === "/api/awp/image-workshop" || path === "/api/awp/image-workshop/mcp") {
+      return handlePortalMcpRequest(event, imageWorkshopPortal, "image-workshop", baseUrl, corsHeaders);
     }
 
     // =========================================================================

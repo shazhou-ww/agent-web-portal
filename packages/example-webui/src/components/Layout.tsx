@@ -25,6 +25,7 @@ import {
   Storage as StorageIcon,
   Devices as DevicesIcon,
   Logout as LogoutIcon,
+  Image as ImageIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -42,6 +43,7 @@ const portalItems = [
   { path: '/portals/jsonata', label: 'JSONata', icon: <FunctionsIcon /> },
   { path: '/portals/secure', label: 'Secure Portal', icon: <LockIcon /> },
   { path: '/portals/blob', label: 'Blob Portal', icon: <StorageIcon /> },
+  { path: '/portals/image-workshop', label: 'Image Workshop', icon: <ImageIcon /> },
 ];
 
 export default function Layout() {

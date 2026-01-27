@@ -42,6 +42,7 @@ import {
   basicPortal,
   blobPortal,
   ecommercePortal,
+  imageWorkshopPortal,
   jsonataPortal,
 } from "./src/portals/index.ts";
 
@@ -252,6 +253,11 @@ async function handleRequest(req: Request): Promise<Response> {
     return handlePortalRequest(req, blobPortal, "blob");
   }
 
+  // Image Workshop portal - /api/awp/image-workshop
+  if (pathname === "/api/awp/image-workshop" || pathname === "/api/awp/image-workshop/mcp") {
+    return handlePortalRequest(req, imageWorkshopPortal, "image-workshop");
+  }
+
   // ==========================================================================
   // Blob Storage API routes - /api/blob/*
   // ==========================================================================
@@ -275,7 +281,15 @@ async function handleRequest(req: Request): Promise<Response> {
         const data = await file.arrayBuffer();
         const result = storeTempUpload(data, file.type || "image/png");
 
-        return new Response(JSON.stringify(result), {
+        // Build absolute URLs using the request's Host header
+        const host = req.headers.get("host") || `localhost:${PORT}`;
+        const protocol = req.headers.get("x-forwarded-proto") || "http";
+        const baseUrl = `${protocol}://${host}`;
+
+        return new Response(JSON.stringify({
+          ...result,
+          readUrl: `${baseUrl}${result.readUrl}`,
+        }), {
           status: 200,
           headers: {
             "Content-Type": "application/json",
@@ -289,7 +303,15 @@ async function handleRequest(req: Request): Promise<Response> {
       const imageContentType = contentType.startsWith("image/") ? contentType : "image/png";
       const result = storeTempUpload(data, imageContentType);
 
-      return new Response(JSON.stringify(result), {
+      // Build absolute URLs using the request's Host header
+      const host = req.headers.get("host") || `localhost:${PORT}`;
+      const protocol = req.headers.get("x-forwarded-proto") || "http";
+      const baseUrl = `${protocol}://${host}`;
+
+      return new Response(JSON.stringify({
+        ...result,
+        readUrl: `${baseUrl}${result.readUrl}`,
+      }), {
         status: 200,
         headers: {
           "Content-Type": "application/json",
@@ -328,7 +350,15 @@ async function handleRequest(req: Request): Promise<Response> {
   // Prepare download - create output blob slot and get presigned URLs
   if (pathname === "/api/blob/prepare-download" && req.method === "POST") {
     const result = createOutputBlobSlot();
-    return new Response(JSON.stringify(result), {
+    // Build absolute URLs using the request's Host header
+    const host = req.headers.get("host") || `localhost:${PORT}`;
+    const protocol = req.headers.get("x-forwarded-proto") || "http";
+    const baseUrl = `${protocol}://${host}`;
+    return new Response(JSON.stringify({
+      ...result,
+      writeUrl: `${baseUrl}${result.writeUrl}`,
+      readUrl: `${baseUrl}${result.readUrl}`,
+    }), {
       status: 200,
       headers: {
         "Content-Type": "application/json",
@@ -1054,11 +1084,12 @@ console.log(`
    URL: http://localhost:${PORT}
 
 📡 Available Portals (MCP Endpoints):
-   - /api/awp/basic     - Basic greeting portal
-   - /api/awp/ecommerce - E-commerce portal  
-   - /api/awp/jsonata   - JSONata expression portal
-   - /api/awp/blob      - Blob portal
-   - /api/awp/secure    - Secure portal (requires AWP auth)
+   - /api/awp/basic         - Basic greeting portal
+   - /api/awp/ecommerce     - E-commerce portal  
+   - /api/awp/jsonata       - JSONata expression portal
+   - /api/awp/blob          - Blob portal
+   - /api/awp/secure        - Secure portal (requires AWP auth)
+   - /api/awp/image-workshop - Image generation & editing (Stability AI + FLUX)
 
 🔐 Auth Endpoints:
    - POST /api/auth/init     - Initialize AWP auth

@@ -15,6 +15,7 @@ import {
   Functions as FunctionsIcon,
   Lock as LockIcon,
   Storage as StorageIcon,
+  Image as ImageIcon,
 } from '@mui/icons-material';
 
 interface PortalInfo {
@@ -72,6 +73,15 @@ const portals: PortalInfo[] = [
     icon: <StorageIcon sx={{ fontSize: 40 }} />,
     tools: ['process_document', 'simple_tool'],
     color: '#9c27b0',
+  },
+  {
+    id: 'image-workshop',
+    name: 'Image Workshop',
+    description: 'AI image generation and editing with Stability AI & FLUX',
+    endpoint: '/api/awp/image-workshop',
+    icon: <ImageIcon sx={{ fontSize: 40 }} />,
+    tools: ['txt2img', 'flux_pro', 'inpaint', 'remove_bg'],
+    color: '#00bcd4',
   },
 ];
 

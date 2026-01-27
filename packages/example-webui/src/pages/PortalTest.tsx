@@ -99,6 +99,7 @@ const PORTAL_ENDPOINTS: Record<string, string> = {
   jsonata: `${API_BASE}/api/awp/jsonata`,
   secure: `${API_BASE}/api/awp/secure`,
   blob: `${API_BASE}/api/awp/blob`,
+  'image-workshop': `${API_BASE}/api/awp/image-workshop`,
 };
 
 // Image Preview Component for output blobs
@@ -819,24 +820,24 @@ export default function PortalTest() {
         const outputUri: Record<string, string> = {};
 
         // Determine API origin for blob URLs
-        // For local dev, use the backend server origin directly
-        // API_BASE is empty in dev (proxied), so we need to use the current origin
-        // which is the Vite dev server - but blob URLs need to go through the proxy
-        const apiOrigin = API_BASE || '';
+        // For local dev with Vite proxy, API_BASE is empty, but server-side fetch
+        // needs absolute URLs. Use window.location.origin as the base.
+        // For production with explicit API_BASE, use that instead.
+        const apiOrigin = API_BASE || window.location.origin;
 
         // For input blob fields, get the presigned URL from args
-        // The URL could be:
-        // 1. A relative path like /api/blob/temp/xxx (convert to full URL)
-        // 2. A full S3 presigned URL (use as-is)
+        // The URL should be:
+        // 1. A full URL returned from prepare-upload (use as-is)
+        // 2. A legacy relative path like /api/blob/temp/xxx (convert to full URL)
         for (const field of inputBlobs) {
           const value = args[field];
           if (typeof value === 'string') {
-            if (value.startsWith('/api/blob/')) {
-              // Convert relative path to full URL
-              input[field] = `${apiOrigin}${value}`;
-            } else if (value.startsWith('http://') || value.startsWith('https://')) {
-              // Already a full URL (S3 presigned URL)
+            if (value.startsWith('http://') || value.startsWith('https://')) {
+              // Already a full URL
               input[field] = value;
+            } else if (value.startsWith('/api/blob/')) {
+              // Legacy relative path - convert to full URL using apiOrigin
+              input[field] = `${apiOrigin}${value}`;
             }
           }
         }
@@ -847,8 +848,8 @@ export default function PortalTest() {
           const res = await fetch(`${API_BASE}/api/blob/prepare-download`, { method: 'POST' });
           if (res.ok) {
             const data = await res.json() as { id: string; writeUrl: string; readUrl: string };
-            // Convert to full URLs
-            output[field] = `${apiOrigin}${data.writeUrl}`;
+            // Server returns absolute URLs, use them directly
+            output[field] = data.writeUrl;
             outputUri[field] = data.id; // Use ID as the permanent URI
             // Save readUrl for displaying the image after the call
             newOutputBlobUrls[field] = data.readUrl;

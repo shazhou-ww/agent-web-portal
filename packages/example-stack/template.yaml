@@ -126,6 +126,8 @@ Resources:
             - !Ref SkillsS3Bucket
             - !Ref SkillsBucket
           NODE_OPTIONS: "--enable-source-maps"
+          # Image Workshop uses image-workshop/ prefix in BLOB_BUCKET
+          IMAGE_STORAGE_PREFIX: "image-workshop/"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref AuthTable
@@ -136,6 +138,17 @@ Resources:
               - CreateSkillsBucket
               - !Ref SkillsS3Bucket
               - !Ref SkillsBucket
+        # Secrets Manager access for Image Workshop (Stability API Key)
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:awp-examples/*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/awp-examples/*"
       Events:
         ProxyRoute:
           Type: Api
