@@ -46,6 +46,7 @@ const MIME_TYPES: Record<string, string> = {
 interface StackOutputs {
   uiBucket?: string;
   cloudFrontId?: string;
+  cloudFrontUrl?: string;
 }
 
 async function getStackOutputs(stackName: string): Promise<StackOutputs> {
@@ -58,6 +59,7 @@ async function getStackOutputs(stackName: string): Promise<StackOutputs> {
     return {
       uiBucket: outputs.find((o) => o.OutputKey === "UiBucketName")?.OutputValue,
       cloudFrontId: outputs.find((o) => o.OutputKey === "CloudFrontDistributionId")?.OutputValue,
+      cloudFrontUrl: outputs.find((o) => o.OutputKey === "CloudFrontUrl")?.OutputValue,
     };
   } catch (error) {
     console.error(`Failed to get stack ${stackName}:`, (error as Error).message);
@@ -86,7 +88,7 @@ async function main() {
   const stackName = process.argv[2] || DEFAULT_STACK_NAME;
 
   console.log(`🔍 Looking up UI bucket from CloudFormation stack: ${stackName}`);
-  const { uiBucket, cloudFrontId } = await getStackOutputs(stackName);
+  const { uiBucket, cloudFrontId, cloudFrontUrl } = await getStackOutputs(stackName);
 
   if (!uiBucket) {
     console.error("❌ Could not find UiBucketName in stack outputs.");
@@ -165,6 +167,9 @@ async function main() {
 
   console.log("");
   console.log("🎉 UI deployment complete!");
+  if (cloudFrontUrl) {
+    console.log(`🌐 URL: ${cloudFrontUrl}`);
+  }
 }
 
 main().catch((error) => {
