@@ -168,6 +168,7 @@ Resources:
         - "font/*"
         - "application/octet-stream"
         - "application/zip"
+        - "multipart/form-data"
 
   # ==========================================================================
   # S3 Bucket for UI Static Files
