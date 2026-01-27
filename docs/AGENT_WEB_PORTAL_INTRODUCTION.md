@@ -8,7 +8,8 @@
 
 ### What is MCP?
 
-**Model Context Protocol (MCP)** is an open standard that enables AI agents to interact with external systems through well-defined **Tools**. Each tool is an atomic function with typed inputs and outputs.
+**Model Context Protocol (MCP)** is an open standard that enables AI agents to interact with external systems
+through well-defined **Tools**. Each tool is an atomic function with typed inputs and outputs.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -36,7 +37,8 @@
 
 ### What are Skills?
 
-**Skills** (like Anthropic's Claude Code Skills) are contextual documents that guide AI agents on *how* to accomplish specific tasks. They are typically Markdown files containing:
+**Skills** (like Anthropic's Claude Code Skills) are contextual documents that guide AI agents on *how* to
+accomplish specific tasks. They are typically Markdown files containing:
 
 - **Scenario descriptions**: What task can be accomplished
 - **Step-by-step instructions**: How to use tools effectively
@@ -185,7 +187,8 @@ Including binary data in JSON payloads is problematic:
 
 ### The Goal
 
-**Agent Web Portal (AWP)** aims to provide **complete knowledge** of a website's capabilities to AI agents, enabling them to extend their abilities **without code changes**.
+**Agent Web Portal (AWP)** aims to provide **complete knowledge** of a website's capabilities to AI agents,
+enabling them to extend their abilities **without code changes**.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
