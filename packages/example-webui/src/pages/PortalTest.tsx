@@ -960,13 +960,20 @@ export default function PortalTest() {
 
       if (descriptor.kind === 'input') {
         // Input blobs: change url -> uri
-        const prop = schema.properties[fieldName] as { properties?: Record<string, unknown> };
+        const prop = schema.properties[fieldName] as {
+          properties?: Record<string, unknown>;
+          required?: string[];
+        };
         if (prop.properties?.url) {
           prop.properties.uri = {
             type: 'string',
             description: 'Permanent URI for the blob (e.g., awp://portal/blob/id)',
           };
           delete prop.properties.url;
+          // Also update the required array: url -> uri
+          if (prop.required) {
+            prop.required = prop.required.map((r) => (r === 'url' ? 'uri' : r));
+          }
         }
       } else if (descriptor.kind === 'output') {
         // Output blobs: remove entirely from input schema (LLM doesn't provide output URLs)
