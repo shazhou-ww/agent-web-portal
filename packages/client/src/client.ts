@@ -21,7 +21,7 @@
  */
 
 import type {
-  BlobFieldDescriptor,
+  BlobDescriptors,
   LlmBlobOutputResultValue,
   McpToolAwpExtension,
   McpToolSchema,
@@ -247,14 +247,8 @@ export class AwpClient {
       return [];
     }
 
-    // New format: _awp.blob is Record<string, { kind: 'input' | 'output', description: string }>
-    const fields: string[] = [];
-    for (const [fieldName, descriptor] of Object.entries(awp.blob)) {
-      if (descriptor.kind === type) {
-        fields.push(fieldName);
-      }
-    }
-    return fields;
+    // New format: _awp.blob is { input: Record<string, string>, output: Record<string, string> }
+    return Object.keys(awp.blob[type] ?? {});
   }
 
   /**
@@ -263,8 +257,8 @@ export class AwpClient {
    */
   private extractBlobDescriptorsFromAwp(
     awp: McpToolAwpExtension | undefined
-  ): Record<string, BlobFieldDescriptor> {
-    return awp?.blob ?? {};
+  ): BlobDescriptors {
+    return awp?.blob ?? { input: {}, output: {} };
   }
 
   /**
@@ -488,10 +482,10 @@ export class AwpClient {
       for (const field of blobSchema.inputBlobs) {
         const prop = newProperties[field] as Record<string, unknown> | undefined;
         if (prop && typeof prop === "object") {
-          const descriptor = blobSchema.blobDescriptors?.[field];
+          const description = blobSchema.blobDescriptors?.input?.[field];
           newProperties[field] = {
             type: "object",
-            description: descriptor?.description ?? `Input blob: ${field}`,
+            description: description ?? `Input blob: ${field}`,
             properties: {
               uri: {
                 type: "string",
@@ -512,10 +506,10 @@ export class AwpClient {
       for (const field of blobSchema.outputBlobs) {
         const prop = newProperties[field] as Record<string, unknown> | undefined;
         if (prop && typeof prop === "object") {
-          const descriptor = blobSchema.blobDescriptors?.[field];
+          const description = blobSchema.blobDescriptors?.output?.[field];
           newProperties[field] = {
             type: "object",
-            description: descriptor?.description ?? `Output blob: ${field}`,
+            description: description ?? `Output blob: ${field}`,
             properties: {
               accept: {
                 type: "string",

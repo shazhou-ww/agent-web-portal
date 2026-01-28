@@ -126,7 +126,7 @@ describe("ToolRegistry", () => {
       expect(schema!.inputSchema.required).toContain("result");
     });
 
-    test("includes _awp.blob extension with correct kind", () => {
+    test("includes _awp.blob extension with correct structure", () => {
       const registry = new ToolRegistry();
 
       registry.registerTool("image_edit", {
@@ -144,13 +144,11 @@ describe("ToolRegistry", () => {
 
       expect(schema!._awp).toBeDefined();
       expect(schema!._awp!.blob).toBeDefined();
-      expect(schema!._awp!.blob!.source).toEqual({
-        kind: "input",
-        description: "Source image",
+      expect(schema!._awp!.blob!.input).toEqual({
+        source: "Source image",
       });
-      expect(schema!._awp!.blob!.result).toEqual({
-        kind: "output",
-        description: "Result image",
+      expect(schema!._awp!.blob!.output).toEqual({
+        result: "Result image",
       });
     });
   });

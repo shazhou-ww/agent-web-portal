@@ -268,7 +268,7 @@ describe("extractToolBlobInfo()", () => {
 });
 
 describe("extractBlobDescriptors()", () => {
-  test("extracts descriptors with kind and description from input blobs", () => {
+  test("extracts input blob descriptions grouped by direction", () => {
     const schema = z.object({
       document: inputBlob({ description: "Input PDF document", mimeType: "application/pdf" }),
       name: z.string(),
@@ -276,13 +276,12 @@ describe("extractBlobDescriptors()", () => {
 
     const descriptors = extractBlobDescriptors(schema);
 
-    expect(descriptors.document).toBeDefined();
-    expect(descriptors.document!.kind).toBe("input");
-    expect(descriptors.document!.description).toBe("Input PDF document");
-    expect(descriptors.name).toBeUndefined();
+    expect(descriptors.input.document).toBe("Input PDF document");
+    expect(descriptors.output.document).toBeUndefined();
+    expect(descriptors.input.name).toBeUndefined();
   });
 
-  test("extracts descriptors with kind and description from output blobs", () => {
+  test("extracts output blob descriptions grouped by direction", () => {
     const schema = z.object({
       thumbnail: outputBlob({ description: "Generated thumbnail", accept: "image/png" }),
       name: z.string(),
@@ -290,10 +289,9 @@ describe("extractBlobDescriptors()", () => {
 
     const descriptors = extractBlobDescriptors(schema);
 
-    expect(descriptors.thumbnail).toBeDefined();
-    expect(descriptors.thumbnail!.kind).toBe("output");
-    expect(descriptors.thumbnail!.description).toBe("Generated thumbnail");
-    expect(descriptors.name).toBeUndefined();
+    expect(descriptors.output.thumbnail).toBe("Generated thumbnail");
+    expect(descriptors.input.thumbnail).toBeUndefined();
+    expect(descriptors.output.name).toBeUndefined();
   });
 
   test("handles mixed input and output blobs", () => {
@@ -304,8 +302,8 @@ describe("extractBlobDescriptors()", () => {
 
     const descriptors = extractBlobDescriptors(schema);
 
-    expect(descriptors.source!.kind).toBe("input");
-    expect(descriptors.result!.kind).toBe("output");
+    expect(descriptors.input.source).toBe("Source image");
+    expect(descriptors.output.result).toBe("Result image");
   });
 });
 
@@ -365,24 +363,20 @@ describe("extractCombinedBlobDescriptors()", () => {
 
     const combined = extractCombinedBlobDescriptors(inputSchema, outputSchema);
 
-    expect(combined.source).toBeDefined();
-    expect(combined.source!.kind).toBe("input");
-    expect(combined.source!.description).toBe("Source image");
+    expect(combined.input.source).toBe("Source image");
+    expect(combined.output.result).toBe("Result image");
 
-    expect(combined.result).toBeDefined();
-    expect(combined.result!.kind).toBe("output");
-    expect(combined.result!.description).toBe("Result image");
-
-    expect(combined.options).toBeUndefined();
-    expect(combined.metadata).toBeUndefined();
+    expect(combined.input.options).toBeUndefined();
+    expect(combined.output.metadata).toBeUndefined();
   });
 
-  test("returns empty object for schemas without blobs", () => {
+  test("returns empty input/output for schemas without blobs", () => {
     const inputSchema = z.object({ name: z.string() });
     const outputSchema = z.object({ result: z.string() });
 
     const combined = extractCombinedBlobDescriptors(inputSchema, outputSchema);
 
-    expect(Object.keys(combined).length).toBe(0);
+    expect(Object.keys(combined.input).length).toBe(0);
+    expect(Object.keys(combined.output).length).toBe(0);
   });
 });

@@ -151,14 +151,14 @@ export interface JsonRpcErrorResponse {
 export type JsonRpcResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse;
 
 /**
- * Blob field descriptor for the AWP extension
- * Describes whether a field is an input or output blob and its purpose
+ * Blob descriptors for the AWP extension
+ * Maps property names to their descriptions, grouped by direction
  */
-export interface BlobFieldDescriptor {
-  /** Whether this is an input blob (read) or output blob (write) */
-  kind: "input" | "output";
-  /** Human-readable description of the blob field */
-  description: string;
+export interface BlobDescriptors {
+  /** Input blob fields - property name to description */
+  input: Record<string, string>;
+  /** Output blob fields - property name to description */
+  output: Record<string, string>;
 }
 
 /**
@@ -183,10 +183,11 @@ export interface BlobFieldDescriptor {
  */
 export interface McpToolAwpExtension {
   /**
-   * Blob field descriptors - maps property names to their blob metadata
-   * Key is the property name in the schema
+   * Blob field descriptors grouped by direction
+   * - input: fields the tool reads from
+   * - output: fields the tool writes to
    */
-  blob?: Record<string, BlobFieldDescriptor>;
+  blob?: BlobDescriptors;
 }
 
 /**

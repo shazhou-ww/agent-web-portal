@@ -303,12 +303,11 @@ export interface ToolBlobInfo {
 
 /**
  * Detailed blob descriptor map (for _awp.blob extension)
+ * Grouped by direction (input/output) with field names mapped to descriptions
  */
 export interface BlobDescriptorMap {
-  [fieldName: string]: {
-    kind: "input" | "output";
-    description: string;
-  };
+  input: Record<string, string>;
+  output: Record<string, string>;
 }
 
 /**
@@ -332,36 +331,35 @@ function getUnwrappedBlobSchema(value: unknown): BlobSchema | null {
 
 /**
  * Extract blob descriptors from a Zod object schema
- * Returns a map of field names to their blob type and description
+ * Returns descriptors grouped by direction (input/output)
  *
  * @param schema - A Zod object schema
- * @returns Object mapping field names to { type, description }
+ * @returns Object with input/output maps of field names to descriptions
  */
 export function extractBlobDescriptors(schema: ZodTypeAny): BlobDescriptorMap {
   const def = (schema as any)._def;
+  const descriptors: BlobDescriptorMap = { input: {}, output: {} };
 
   // Handle ZodObject
   if (def?.typeName === "ZodObject") {
     const shape = def.shape();
-    const descriptors: BlobDescriptorMap = {};
 
     for (const [key, value] of Object.entries(shape)) {
       const blobSchema = getUnwrappedBlobSchema(value);
       if (blobSchema) {
         const metadata = getBlobMetadata(blobSchema);
         if (metadata) {
-          descriptors[key] = {
-            kind: metadata.direction,
-            description: metadata.description,
-          };
+          if (metadata.direction === "input") {
+            descriptors.input[key] = metadata.description;
+          } else {
+            descriptors.output[key] = metadata.description;
+          }
         }
       }
     }
-
-    return descriptors;
   }
 
-  return {};
+  return descriptors;
 }
 
 /**
@@ -421,20 +419,20 @@ export function extractToolBlobInfo(
  *
  * @param inputSchema - The input Zod schema
  * @param outputSchema - The output Zod schema
- * @returns Combined blob descriptor map
+ * @returns Combined blob descriptor map with input/output separated
  */
 export function extractCombinedBlobDescriptors(
   inputSchema: ZodTypeAny,
   outputSchema: ZodTypeAny
 ): BlobDescriptorMap {
-  // Start with input blobs from input schema
-  const inputBlobs = extractBlobDescriptors(inputSchema);
+  // Extract from both schemas
+  const inputDescriptors = extractBlobDescriptors(inputSchema);
+  const outputDescriptors = extractBlobDescriptors(outputSchema);
 
-  // Get output blobs from output schema
-  const outputBlobs = extractBlobDescriptors(outputSchema);
-
-  // In the output schema, blobs should be marked as 'output' direction
-  // (using outputBlob() or having direction: 'output')
-  // We need to merge them, with output schema descriptors overriding
-  return { ...inputBlobs, ...outputBlobs };
+  // Merge input fields from both schemas
+  // and output fields from both schemas
+  return {
+    input: { ...inputDescriptors.input, ...outputDescriptors.input },
+    output: { ...inputDescriptors.output, ...outputDescriptors.output },
+  };
 }

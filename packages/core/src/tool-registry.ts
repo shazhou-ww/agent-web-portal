@@ -330,10 +330,10 @@ export class ToolRegistry {
 
     // Transform input blob fields to the tool-facing format: { url: string, contentType?: string }
     for (const blobField of tool.inputBlobs) {
-      const descriptor = tool.blobDescriptors[blobField];
+      const description = tool.blobDescriptors.input[blobField];
       inputSchema.properties[blobField] = {
         type: "object",
-        description: descriptor?.description ?? `Input blob: ${blobField}`,
+        description: description ?? `Input blob: ${blobField}`,
         properties: {
           url: {
             type: "string",
@@ -352,10 +352,10 @@ export class ToolRegistry {
     // For output blobs, add them to inputSchema as parameters
     // Tool-facing format: { url: string, accept?: string }
     for (const blobField of tool.outputBlobs) {
-      const descriptor = tool.blobDescriptors[blobField];
+      const description = tool.blobDescriptors.output[blobField];
       inputSchema.properties[blobField] = {
         type: "object",
-        description: descriptor?.description ?? `Output blob: ${blobField}`,
+        description: description ?? `Output blob: ${blobField}`,
         properties: {
           url: {
             type: "string",
@@ -388,11 +388,12 @@ export class ToolRegistry {
       inputSchema,
     };
 
-    // Add _awp.blob extension with the new format: Record<string, { type, description }>
-    const hasBlobs = Object.keys(tool.blobDescriptors).length > 0;
-    if (hasBlobs) {
+    // Add _awp.blob extension with format: { input: Record<string, string>, output: Record<string, string> }
+    const hasInputBlobs = Object.keys(tool.blobDescriptors.input).length > 0;
+    const hasOutputBlobs = Object.keys(tool.blobDescriptors.output).length > 0;
+    if (hasInputBlobs || hasOutputBlobs) {
       const awp: McpToolAwpExtension = {
-        blob: { ...tool.blobDescriptors },
+        blob: tool.blobDescriptors,
       };
       schema._awp = awp;
     }

@@ -17,7 +17,7 @@
 
 import type {
   BlobContext,
-  BlobFieldDescriptor,
+  BlobDescriptors,
   LlmBlobInputValue,
   LlmBlobOutputInputValue,
   LlmBlobOutputResultValue,
@@ -36,7 +36,7 @@ export interface ToolBlobSchema {
   /** Output blob field names */
   outputBlobs: string[];
   /** Blob descriptors from _awp.blob (optional, for enhanced handling) */
-  blobDescriptors?: Record<string, BlobFieldDescriptor>;
+  blobDescriptors?: BlobDescriptors;
 }
 
 /**

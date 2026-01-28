@@ -1,39 +1,42 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { blob } from "../blob.ts";
+import { blob, inputBlob, outputBlob } from "../blob.ts";
 import { zodToJsonSchema } from "./zod-to-json-schema.ts";
 
 describe("zodToJsonSchema with blob support", () => {
-  test("converts blob schema to plain JSON Schema (no x-awp-blob extension)", () => {
-    const schema = blob({ mimeType: "application/pdf" });
+  test("converts input blob schema to object with url and contentType", () => {
+    const schema = inputBlob({ description: "PDF document", mimeType: "application/pdf" });
     const jsonSchema = zodToJsonSchema(schema);
 
-    // Blob fields are converted to plain URI strings
-    // Blob metadata is provided separately in _awp extension
+    // Input blobs are objects with { url: string, contentType?: string }
     expect(jsonSchema).toEqual({
-      type: "string",
-      format: "uri",
+      type: "object",
+      properties: {
+        url: { type: "string", minLength: undefined, maxLength: undefined },
+        contentType: { type: "string", minLength: undefined, maxLength: undefined },
+      },
+      required: ["url"],
     });
   });
 
-  test("blob with all options still generates plain JSON Schema", () => {
-    const schema = blob({
-      mimeType: "image/png",
-      maxSize: 10 * 1024 * 1024,
-      description: "Thumbnail image",
-    });
+  test("converts output blob schema to object with url and accept", () => {
+    const schema = outputBlob({ description: "Generated image", accept: "image/png" });
     const jsonSchema = zodToJsonSchema(schema);
 
-    // Options are not included in JSON Schema - they go to _awp.blob
+    // Output blobs are objects with { url: string, accept?: string }
     expect(jsonSchema).toEqual({
-      type: "string",
-      format: "uri",
+      type: "object",
+      properties: {
+        url: { type: "string", minLength: undefined, maxLength: undefined },
+        accept: { type: "string", minLength: undefined, maxLength: undefined },
+      },
+      required: ["url"],
     });
   });
 
-  test("handles object schema with blob fields", () => {
+  test("handles object schema with input blob fields", () => {
     const schema = z.object({
-      document: blob({ mimeType: "application/pdf" }),
+      document: inputBlob({ description: "PDF document", mimeType: "application/pdf" }),
       name: z.string(),
       count: z.number(),
     });
@@ -44,10 +47,14 @@ describe("zodToJsonSchema with blob support", () => {
       type: "object",
       properties: {
         document: {
-          type: "string",
-          format: "uri",
+          type: "object",
+          properties: {
+            url: { type: "string", minLength: undefined, maxLength: undefined },
+            contentType: { type: "string", minLength: undefined, maxLength: undefined },
+          },
+          required: ["url"],
         },
-        name: { type: "string" },
+        name: { type: "string", minLength: undefined, maxLength: undefined },
         count: { type: "number" },
       },
       required: ["document", "name", "count"],
@@ -56,7 +63,7 @@ describe("zodToJsonSchema with blob support", () => {
 
   test("handles optional blob fields", () => {
     const schema = z.object({
-      document: blob({ mimeType: "application/pdf" }).optional(),
+      document: inputBlob({ description: "PDF document", mimeType: "application/pdf" }).optional(),
       name: z.string(),
     });
 
@@ -66,10 +73,14 @@ describe("zodToJsonSchema with blob support", () => {
       type: "object",
       properties: {
         document: {
-          type: "string",
-          format: "uri",
+          type: "object",
+          properties: {
+            url: { type: "string", minLength: undefined, maxLength: undefined },
+            contentType: { type: "string", minLength: undefined, maxLength: undefined },
+          },
+          required: ["url"],
         },
-        name: { type: "string" },
+        name: { type: "string", minLength: undefined, maxLength: undefined },
       },
       required: ["name"],
     });
@@ -77,7 +88,7 @@ describe("zodToJsonSchema with blob support", () => {
 
   test("handles array of blobs", () => {
     const schema = z.object({
-      images: z.array(blob({ mimeType: "image/*" })),
+      images: z.array(inputBlob({ description: "Image", mimeType: "image/*" })),
     });
 
     const jsonSchema = zodToJsonSchema(schema);
@@ -88,8 +99,12 @@ describe("zodToJsonSchema with blob support", () => {
         images: {
           type: "array",
           items: {
-            type: "string",
-            format: "uri",
+            type: "object",
+            properties: {
+              url: { type: "string", minLength: undefined, maxLength: undefined },
+              contentType: { type: "string", minLength: undefined, maxLength: undefined },
+            },
+            required: ["url"],
           },
         },
       },
@@ -97,13 +112,18 @@ describe("zodToJsonSchema with blob support", () => {
     });
   });
 
-  test("blob without options generates plain JSON Schema", () => {
+  test("legacy blob() generates input blob format", () => {
     const schema = blob();
     const jsonSchema = zodToJsonSchema(schema);
 
+    // Legacy blob() defaults to input blob format
     expect(jsonSchema).toEqual({
-      type: "string",
-      format: "uri",
+      type: "object",
+      properties: {
+        url: { type: "string", minLength: undefined, maxLength: undefined },
+        contentType: { type: "string", minLength: undefined, maxLength: undefined },
+      },
+      required: ["url"],
     });
   });
 });

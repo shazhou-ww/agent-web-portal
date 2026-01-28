@@ -82,7 +82,7 @@ export type {
   AgentWebPortalInstance,
   // Blob types
   BlobContext,
-  BlobFieldDescriptor,
+  BlobDescriptors,
   BlobFieldMetadata,
   // HTTP types
   HttpRequest,

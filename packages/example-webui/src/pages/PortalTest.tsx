@@ -43,15 +43,15 @@ import {
   AutoAwesome as SkillIcon,
 } from '@mui/icons-material';
 
-/** Blob field descriptor with direction and description */
-interface BlobFieldDescriptor {
-  kind: 'input' | 'output';
-  description: string;
+/** Blob descriptors grouped by direction */
+interface BlobDescriptors {
+  input: Record<string, string>;
+  output: Record<string, string>;
 }
 
 interface AwpExtension {
-  /** Blob field descriptors - maps field names to their metadata */
-  blob?: Record<string, BlobFieldDescriptor>;
+  /** Blob field descriptors grouped by direction */
+  blob?: BlobDescriptors;
 }
 
 interface Tool {
@@ -959,21 +959,17 @@ export default function PortalTest() {
   // Get input blob fields for current tool
   const getInputBlobFields = useCallback((): string[] => {
     const tool = tools.find((t) => t.name === selectedTool);
-    if (!tool?._awp?.blob) return [];
-    // New format: blob is Record<string, { kind, description }>
-    return Object.entries(tool._awp.blob)
-      .filter(([_, descriptor]) => descriptor.kind === 'input')
-      .map(([fieldName]) => fieldName);
+    if (!tool?._awp?.blob?.input) return [];
+    // New format: blob.input is Record<string, string>
+    return Object.keys(tool._awp.blob.input);
   }, [tools, selectedTool]);
 
   // Get output blob fields for current tool
   const getOutputBlobFields = useCallback((): string[] => {
     const tool = tools.find((t) => t.name === selectedTool);
-    if (!tool?._awp?.blob) return [];
-    // New format: blob is Record<string, { kind, description }>
-    return Object.entries(tool._awp.blob)
-      .filter(([_, descriptor]) => descriptor.kind === 'output')
-      .map(([fieldName]) => fieldName);
+    if (!tool?._awp?.blob?.output) return [];
+    // New format: blob.output is Record<string, string>
+    return Object.keys(tool._awp.blob.output);
   }, [tools, selectedTool]);
 
   /**
