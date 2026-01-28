@@ -43,6 +43,7 @@ import {
   Download as DownloadIcon,
   AutoAwesome as SkillIcon,
 } from '@mui/icons-material';
+import { SchemaViewer } from '../components/SchemaViewer';
 
 /** Blob descriptors grouped by direction */
 interface BlobDescriptors {
@@ -1381,27 +1382,10 @@ export default function PortalTest() {
                   </AccordionSummary>
                   <AccordionDetails>
                     <Stack spacing={2}>
-                      <Box>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Input Schema {showLlmFacing && <Chip label="LLM-facing" size="small" color="primary" sx={{ ml: 1 }} />}
-                        </Typography>
-                        <Box
-                          component="pre"
-                          sx={{
-                            p: 2,
-                            bgcolor: '#f5f5f5',
-                            borderRadius: 1,
-                            overflow: 'auto',
-                            fontSize: 12,
-                          }}
-                        >
-                          {JSON.stringify(
-                            showLlmFacing ? toLlmFacingSchema(tool) : tool.inputSchema,
-                            null,
-                            2
-                          )}
-                        </Box>
-                      </Box>
+                      <SchemaViewer
+                        schema={showLlmFacing ? toLlmFacingSchema(tool) : tool.inputSchema}
+                        title={`Input Schema ${showLlmFacing ? '(LLM-facing)' : '(Tool-facing)'}`}
+                      />
                       {tool._awp && (
                         <Box>
                           <Typography variant="subtitle2" gutterBottom>
