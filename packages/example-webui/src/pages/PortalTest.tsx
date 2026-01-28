@@ -1056,21 +1056,16 @@ export default function PortalTest() {
         [fieldName]: { key: result.readUrl, file },
       }));
 
-      // Update arguments with the presigned GET URL and contentType
+      // Update arguments with the uploaded blob in LLM-facing format: { uri: string }
       try {
         const currentArgs = JSON.parse(arguments_);
-        currentArgs[fieldName] = result.readUrl;
-        // Auto-set contentType from file if not already set
-        if (!currentArgs.contentType && file.type) {
-          currentArgs.contentType = file.type;
-        }
+        currentArgs[fieldName] = { uri: result.readUrl };
         setArguments(JSON.stringify(currentArgs, null, 2));
       } catch {
-        // If arguments is not valid JSON, create new object with both fields
-        const newArgs: Record<string, string> = { [fieldName]: result.readUrl };
-        if (file.type) {
-          newArgs.contentType = file.type;
-        }
+        // If arguments is not valid JSON, create new object
+        const newArgs: Record<string, unknown> = { 
+          [fieldName]: { uri: result.readUrl }
+        };
         setArguments(JSON.stringify(newArgs, null, 2));
       }
     } catch {
