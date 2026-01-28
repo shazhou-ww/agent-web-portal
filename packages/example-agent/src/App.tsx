@@ -27,7 +27,7 @@ import {
 } from '@mui/icons-material';
 import { theme } from './theme';
 import {
-  LlmConfigDialog,
+  LlmConfigPanel,
   EndpointManager,
   SkillSidebar,
   ChatPanel,
@@ -41,14 +41,13 @@ const LEFT_DRAWER_WIDTH = 280;
 const RIGHT_DRAWER_WIDTH = 300;
 const MOBILE_DRAWER_WIDTH = '85vw';
 
-type RightTab = 'skills' | 'endpoints';
+type RightTab = 'skills' | 'endpoints' | 'config';
 
 export function App() {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
-  const [rightTab, setRightTab] = useState<RightTab>('skills');
-  const [llmConfigOpen, setLlmConfigOpen] = useState(false);
+  const [rightTab, setRightTab] = useState<RightTab>('config');
 
   // On desktop, open drawers by default
   useEffect(() => {
@@ -152,10 +151,10 @@ export function App() {
 
   // Drawer content for right side
   const rightDrawerContent = (
-    <>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {isMobile && (
-        <Toolbar sx={{ justifyContent: 'space-between' }}>
-          <Typography variant="h6">Skills & Endpoints</Typography>
+        <Toolbar sx={{ justifyContent: 'space-between', flexShrink: 0 }}>
+          <Typography variant="h6">Settings</Typography>
           <IconButton onClick={() => setRightDrawerOpen(false)}>
             <CloseIcon />
           </IconButton>
@@ -166,33 +165,44 @@ export function App() {
         value={rightTab}
         onChange={(_, value) => setRightTab(value)}
         variant="fullWidth"
+        sx={{ flexShrink: 0 }}
       >
-        <Tab icon={<Extension />} label="Skills" value="skills" />
-        <Tab icon={<LinkIcon />} label="Endpoints" value="endpoints" />
+        <Tab icon={<Settings />} label="Config" value="config" sx={{ minWidth: 0, px: 1 }} />
+        <Tab icon={<Extension />} label="Skills" value="skills" sx={{ minWidth: 0, px: 1 }} />
+        <Tab icon={<LinkIcon />} label="AWP" value="endpoints" sx={{ minWidth: 0, px: 1 }} />
       </Tabs>
       <Divider />
 
-      {rightTab === 'skills' && (
-        <SkillSidebar
-          availableSkills={availableSkills.length > 0 ? availableSkills : skills}
-          activeSkillIds={activeSkillIds}
-          onLoadSkill={loadSkill}
-          onUnloadSkill={unloadSkill}
-        />
-      )}
-
-      {rightTab === 'endpoints' && (
-        <Box sx={{ p: 2 }}>
-          <EndpointManager
-            endpoints={endpoints}
-            isLoading={endpointsLoading}
-            onRegister={registerEndpoint}
-            onUnregister={unregisterEndpoint}
-            onRefresh={refresh}
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        {rightTab === 'config' && (
+          <LlmConfigPanel
+            onSave={saveConfig}
+            currentConfig={config}
           />
-        </Box>
-      )}
-    </>
+        )}
+
+        {rightTab === 'skills' && (
+          <SkillSidebar
+            availableSkills={availableSkills.length > 0 ? availableSkills : skills}
+            activeSkillIds={activeSkillIds}
+            onLoadSkill={loadSkill}
+            onUnloadSkill={unloadSkill}
+          />
+        )}
+
+        {rightTab === 'endpoints' && (
+          <Box sx={{ p: 2 }}>
+            <EndpointManager
+              endpoints={endpoints}
+              isLoading={endpointsLoading}
+              onRegister={registerEndpoint}
+              onUnregister={unregisterEndpoint}
+              onRefresh={refresh}
+            />
+          </Box>
+        )}
+      </Box>
+    </Box>
   );
 
   const drawerWidth = isMobile ? MOBILE_DRAWER_WIDTH : LEFT_DRAWER_WIDTH;
@@ -241,8 +251,11 @@ export function App() {
                 label={isMobile ? "Configure" : "LLM not configured"}
                 color="warning"
                 size="small"
-                sx={{ mr: 1, display: { xs: 'none', sm: 'flex' } }}
-                onClick={() => setLlmConfigOpen(true)}
+                sx={{ mr: 1 }}
+                onClick={() => {
+                  setRightTab('config');
+                  setRightDrawerOpen(true);
+                }}
               />
             )}
             {isConfigured && config && !isMobile && (
@@ -250,23 +263,31 @@ export function App() {
                 label={config.model}
                 size="small"
                 variant="outlined"
-                sx={{ mr: 1 }}
+                sx={{ mr: 1, cursor: 'pointer' }}
+                onClick={() => {
+                  setRightTab('config');
+                  setRightDrawerOpen(true);
+                }}
               />
             )}
             {endpoints.length > 0 && !isMobile && (
               <Chip
-                label={`${endpoints.length} endpoint${endpoints.length > 1 ? 's' : ''}`}
+                label={`${endpoints.length} AWP`}
                 size="small"
                 variant="outlined"
-                sx={{ mr: 1 }}
+                sx={{ mr: 1, cursor: 'pointer' }}
+                onClick={() => {
+                  setRightTab('endpoints');
+                  setRightDrawerOpen(true);
+                }}
               />
             )}
 
-            <IconButton onClick={() => setLlmConfigOpen(true)} title="Settings">
+            <IconButton 
+              onClick={() => setRightDrawerOpen(!rightDrawerOpen)}
+              title="Settings"
+            >
               <Settings />
-            </IconButton>
-            <IconButton onClick={() => setRightDrawerOpen(!rightDrawerOpen)}>
-              <Extension />
             </IconButton>
           </Toolbar>
         </AppBar>
@@ -348,7 +369,10 @@ export function App() {
               <Button
                 variant="contained"
                 size="large"
-                onClick={() => setLlmConfigOpen(true)}
+                onClick={() => {
+                  setRightTab('config');
+                  setRightDrawerOpen(true);
+                }}
               >
                 Configure LLM
               </Button>
@@ -435,13 +459,6 @@ export function App() {
           </Drawer>
         )}
 
-        {/* LLM Config Dialog */}
-        <LlmConfigDialog
-          open={llmConfigOpen}
-          onClose={() => setLlmConfigOpen(false)}
-          onSave={saveConfig}
-          currentConfig={config}
-        />
       </Box>
       </StorageContextProvider>
     </ThemeProvider>
