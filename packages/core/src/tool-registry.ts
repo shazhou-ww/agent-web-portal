@@ -92,6 +92,16 @@ export class ToolRegistry {
     const inputBlobs = extractBlobFields(options.inputSchema);
     const outputBlobs = extractBlobFields(options.outputSchema);
 
+    // Validate no collision between input and output blob field names
+    // This is required because both are exposed as parameters in MCP inputSchema
+    const collisions = inputBlobs.filter((field) => outputBlobs.includes(field));
+    if (collisions.length > 0) {
+      throw new Error(
+        `Tool "${name}" has blob field name collision between input and output: ${collisions.join(", ")}. ` +
+          `Use distinct names (e.g., 'source' for input, 'result' for output).`
+      );
+    }
+
     // Extract combined blob descriptors for _awp.blob extension
     const blobDescriptors = extractCombinedBlobDescriptors(
       options.inputSchema,

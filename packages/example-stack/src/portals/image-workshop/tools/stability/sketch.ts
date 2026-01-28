@@ -31,7 +31,7 @@ export const sketchTool = defineTool({
   },
 
   output: {
-    image: outputBlob({ accept: "image/png", description: "Generated image from sketch" }),
+    result: outputBlob({ accept: "image/png", description: "Generated image from sketch" }),
     metadata: z.object({
       seed: z.number().describe("Seed used for generation"),
       finish_reason: z.string().describe("Reason generation finished"),
@@ -64,7 +64,7 @@ export const sketchTool = defineTool({
     const outputBuffer = Buffer.from(response.image, "base64");
     const contentType = getContentType(args.output_format);
 
-    await fetch(context.blobs.output.image, {
+    await fetch(context.blobs.output.result, {
       method: "PUT",
       body: outputBuffer,
       headers: { "Content-Type": contentType },

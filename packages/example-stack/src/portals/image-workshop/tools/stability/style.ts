@@ -28,7 +28,7 @@ export const styleTool = defineTool({
   },
 
   output: {
-    image: outputBlob({ accept: "image/png", description: "Generated image with applied style" }),
+    result: outputBlob({ accept: "image/png", description: "Generated image with applied style" }),
     metadata: z.object({
       seed: z.number().describe("Seed used for generation"),
       finish_reason: z.string().describe("Reason generation finished"),
@@ -61,7 +61,7 @@ export const styleTool = defineTool({
     const outputBuffer = Buffer.from(response.image, "base64");
     const contentType = getContentType(args.output_format);
 
-    await fetch(context.blobs.output.image, {
+    await fetch(context.blobs.output.result, {
       method: "PUT",
       body: outputBuffer,
       headers: { "Content-Type": contentType },

@@ -22,7 +22,7 @@ export const removeBgTool = defineTool({
   },
 
   output: {
-    image: outputBlob({ accept: "image/png", description: "Image with background removed" }),
+    result: outputBlob({ accept: "image/png", description: "Image with background removed" }),
     metadata: z.object({
       finish_reason: z.string().describe("Reason generation finished"),
     }),
@@ -49,7 +49,7 @@ export const removeBgTool = defineTool({
     const outputBuffer = Buffer.from(response.image, "base64");
     const contentType = getContentType(args.output_format);
 
-    await fetch(context.blobs.output.image, {
+    await fetch(context.blobs.output.result, {
       method: "PUT",
       body: outputBuffer,
       headers: { "Content-Type": contentType },

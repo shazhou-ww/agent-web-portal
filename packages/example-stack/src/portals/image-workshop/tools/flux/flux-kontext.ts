@@ -35,7 +35,7 @@ export const fluxKontextTool = defineTool({
   },
 
   output: {
-    image: outputBlob({ accept: "image/png", description: "Edited image" }),
+    result: outputBlob({ accept: "image/png", description: "Edited image" }),
     metadata: z.object({
       id: z.string().describe("Task ID from BFL API"),
       seed: z.number().optional().describe("Seed used for generation"),
@@ -65,7 +65,7 @@ export const fluxKontextTool = defineTool({
     const outputBuffer = Buffer.from(await resultResponse.arrayBuffer());
     const contentType = getContentType(args.output_format);
 
-    await fetch(context.blobs.output.image, {
+    await fetch(context.blobs.output.result, {
       method: "PUT",
       body: outputBuffer,
       headers: { "Content-Type": contentType },

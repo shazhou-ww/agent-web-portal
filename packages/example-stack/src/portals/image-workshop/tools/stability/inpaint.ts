@@ -27,7 +27,7 @@ export const inpaintTool = defineTool({
   },
 
   output: {
-    image: outputBlob({ accept: "image/png", description: "Result image with inpainted content" }),
+    result: outputBlob({ accept: "image/png", description: "Result image with inpainted content" }),
     metadata: z.object({
       seed: z.number().describe("Seed used for generation"),
       finish_reason: z.string().describe("Reason generation finished"),
@@ -66,7 +66,7 @@ export const inpaintTool = defineTool({
     const outputBuffer = Buffer.from(response.image, "base64");
     const contentType = getContentType(args.output_format);
 
-    await fetch(context.blobs.output.image, {
+    await fetch(context.blobs.output.result, {
       method: "PUT",
       body: outputBuffer,
       headers: { "Content-Type": contentType },

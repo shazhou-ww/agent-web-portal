@@ -35,7 +35,7 @@ export const fluxFillTool = defineTool({
   },
 
   output: {
-    image: outputBlob({ accept: "image/png", description: "Image with filled regions" }),
+    result: outputBlob({ accept: "image/png", description: "Image with filled regions" }),
     metadata: z.object({
       id: z.string().describe("Task ID from BFL API"),
       seed: z.number().optional().describe("Seed used for generation"),
@@ -72,7 +72,7 @@ export const fluxFillTool = defineTool({
     const outputBuffer = Buffer.from(await resultResponse.arrayBuffer());
     const contentType = getContentType(args.output_format);
 
-    await fetch(context.blobs.output.image, {
+    await fetch(context.blobs.output.result, {
       method: "PUT",
       body: outputBuffer,
       headers: { "Content-Type": contentType },
