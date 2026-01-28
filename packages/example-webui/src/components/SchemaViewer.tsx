@@ -114,6 +114,51 @@ function formatDefault(value: unknown): string {
 }
 
 /**
+ * Render enum values as a list of chips
+ */
+function EnumList({ values }: { values: string[] }) {
+  return (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+      {values.map((value) => (
+        <Chip
+          key={value}
+          label={value}
+          size="small"
+          variant="outlined"
+          sx={{ 
+            height: 20, 
+            fontSize: 11, 
+            fontFamily: 'monospace',
+            '& .MuiChip-label': { px: 1 }
+          }}
+        />
+      ))}
+    </Box>
+  );
+}
+
+/**
+ * Render the type cell content
+ */
+function TypeCell({ prop }: { prop: SchemaProperty }) {
+  if (prop.enum && prop.enum.length > 0) {
+    return <EnumList values={prop.enum} />;
+  }
+  
+  return (
+    <Typography 
+      variant="body2" 
+      sx={{ 
+        fontFamily: 'monospace', 
+        fontSize: 12,
+      }}
+    >
+      {formatType(prop)}
+    </Typography>
+  );
+}
+
+/**
  * Render properties as table rows (supports nested objects)
  */
 function renderPropertyRows(
@@ -143,19 +188,7 @@ function renderPropertyRows(
           )}
         </TableCell>
         <TableCell>
-          <Tooltip title={prop.enum ? prop.enum.join(', ') : ''} arrow>
-            <Typography 
-              variant="body2" 
-              sx={{ 
-                fontFamily: 'monospace', 
-                fontSize: 12,
-                color: prop.enum ? 'primary.main' : 'text.primary',
-                cursor: prop.enum ? 'help' : 'default',
-              }}
-            >
-              {formatType(prop)}
-            </Typography>
-          </Tooltip>
+          <TypeCell prop={prop} />
         </TableCell>
         <TableCell sx={{ fontSize: 12, color: 'text.secondary' }}>
           {prop.description || '-'}
