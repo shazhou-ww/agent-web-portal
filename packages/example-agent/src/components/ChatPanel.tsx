@@ -88,6 +88,7 @@ export function ChatPanel({
         flex: 1, 
         overflow: 'auto', 
         minHeight: 0,
+        px: { xs: 0, sm: 2 }, // Padding for scroll area to align with input
       }}>
         {/* Centered container */}
         <Box sx={{
@@ -149,6 +150,7 @@ export function ChatPanel({
         borderTop: 1, 
         borderColor: 'divider',
         flexShrink: 0,
+        px: { xs: 0, sm: 2 }, // Match scroll area padding
       }}>
         <Paper 
           sx={{ 

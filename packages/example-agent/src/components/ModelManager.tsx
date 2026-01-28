@@ -380,7 +380,7 @@ export function ModelManager({
                             </Box>
                           }
                           secondary={
-                            <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                            <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} component="span">
                               <Chip size="small" label={model.type} variant="outlined" />
                               <Chip size="small" label={`${(model.contextLength / 1000).toFixed(0)}k`} variant="outlined" />
                               {model.tags.map((tag) => {
@@ -397,6 +397,7 @@ export function ModelManager({
                               })}
                             </Stack>
                           }
+                          secondaryTypographyProps={{ component: "div" }}
                         />
                         <ListItemSecondaryAction>
                           <IconButton size="small" onClick={() => handleEditModel(model)}>
