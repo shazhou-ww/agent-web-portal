@@ -1083,9 +1083,10 @@ export default function PortalTest() {
       return newFiles;
     });
 
+    // Reset the field to empty LLM-facing format: { uri: "" }
     try {
       const currentArgs = JSON.parse(arguments_);
-      delete currentArgs[fieldName];
+      currentArgs[fieldName] = { uri: '' };
       setArguments(JSON.stringify(currentArgs, null, 2));
     } catch {
       // Ignore
