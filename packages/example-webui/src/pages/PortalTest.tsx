@@ -741,6 +741,10 @@ export default function PortalTest() {
 
   // Default example values for specific tools
   const TOOL_EXAMPLES: Record<string, Record<string, unknown>> = {
+    txt2img: {
+      prompt: 'a boy with his dog',
+      style: 'anime',
+    },
     jsonata_eval: {
       expression: '$sum(items.price)',
       input: {
@@ -772,14 +776,10 @@ export default function PortalTest() {
       return;
     }
 
-    // Get blob fields from _awp.blob extension
-    const blobInfo = tool._awp?.blob || {};
-    const inputBlobFields = Object.entries(blobInfo)
-      .filter(([_, descriptor]) => descriptor.kind === 'input')
-      .map(([fieldName]) => fieldName);
-    const outputBlobFields = Object.entries(blobInfo)
-      .filter(([_, descriptor]) => descriptor.kind === 'output')
-      .map(([fieldName]) => fieldName);
+    // Get blob fields from _awp.blob extension (new format: { input: {...}, output: {...} })
+    const blobInfo = tool._awp?.blob;
+    const inputBlobFields = Object.keys(blobInfo?.input || {});
+    const outputBlobFields = Object.keys(blobInfo?.output || {});
 
     // Generate default arguments from schema
     const schema = tool.inputSchema;
