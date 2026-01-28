@@ -134,7 +134,6 @@ interface CachedToolSchema {
  */
 export class AwpClient {
   private endpoint: string;
-  private storage: StorageProvider | null;
   private auth: AwpAuth | null;
   private blobInterceptor: BlobInterceptor | null;
   private fetchFn: typeof fetch;
@@ -145,7 +144,6 @@ export class AwpClient {
 
   constructor(options: AwpClientOptions) {
     this.endpoint = options.endpoint.replace(/\/$/, ""); // Remove trailing slash
-    this.storage = options.storage ?? null;
     this.auth = options.auth ?? null;
     this.fetchFn = options.fetch ?? fetch;
     this.headers = options.headers ?? {};
@@ -153,9 +151,9 @@ export class AwpClient {
     // Only create blob interceptor if storage is provided
     this.blobInterceptor = options.storage
       ? new BlobInterceptor({
-        storage: options.storage,
-        outputPrefix: options.outputPrefix,
-      })
+          storage: options.storage,
+          outputPrefix: options.outputPrefix,
+        })
       : null;
   }
 
@@ -255,9 +253,7 @@ export class AwpClient {
    * Extract blob descriptors from the _awp extension
    * @param awp - The _awp extension object from the tool schema
    */
-  private extractBlobDescriptorsFromAwp(
-    awp: McpToolAwpExtension | undefined
-  ): BlobDescriptors {
+  private extractBlobDescriptorsFromAwp(awp: McpToolAwpExtension | undefined): BlobDescriptors {
     return awp?.blob ?? { input: {}, output: {} };
   }
 

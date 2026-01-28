@@ -74,8 +74,7 @@ export function transformSchemaToLlmFacing(
           uri: {
             type: "string",
             format: "uri",
-            description:
-              "Resource identifier for the blob (e.g., s3://bucket/key)",
+            description: "Resource identifier for the blob (e.g., s3://bucket/key)",
           },
           contentType: {
             type: "string",
@@ -99,8 +98,7 @@ export function transformSchemaToLlmFacing(
           },
           prefix: {
             type: "string",
-            description:
-              "Storage prefix/path hint for where to allocate the blob (optional)",
+            description: "Storage prefix/path hint for where to allocate the blob (optional)",
           },
         },
       };
@@ -126,9 +124,7 @@ export function transformSchemaToLlmFacing(
  * @param tool - The Tool-facing McpToolSchema
  * @returns The LLM-facing schema object
  */
-export function transformToolToLlmFacing(
-  tool: McpToolSchema
-): Record<string, unknown> {
+export function transformToolToLlmFacing(tool: McpToolSchema): Record<string, unknown> {
   const blobInfo = extractBlobSchemaInfo(tool);
   return transformSchemaToLlmFacing(tool.inputSchema, blobInfo);
 }

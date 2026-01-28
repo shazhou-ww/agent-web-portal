@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { inputBlob, outputBlob } from "./blob.ts";
 import { ToolRegistry } from "./tool-registry.ts";
-import type { ToolRegistrationOptions } from "./types.ts";
 
 describe("ToolRegistry", () => {
   describe("registerTool()", () => {

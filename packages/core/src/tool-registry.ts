@@ -98,7 +98,7 @@ export class ToolRegistry {
     if (collisions.length > 0) {
       throw new Error(
         `Tool "${name}" has blob field name collision between input and output: ${collisions.join(", ")}. ` +
-        `Use distinct names (e.g., 'source' for input, 'result' for output).`
+          `Use distinct names (e.g., 'source' for input, 'result' for output).`
       );
     }
 
@@ -183,7 +183,7 @@ export class ToolRegistry {
         throw new BlobContextError(
           name,
           `Tool requires blob context but none was provided. ` +
-          `Required _blobContext fields: ${requiredFields.join(", ")}`
+            `Required _blobContext fields: ${requiredFields.join(", ")}`
         );
       }
 
@@ -217,7 +217,7 @@ export class ToolRegistry {
     // Prepare args for validation
     // Blob fields are passed via blobContext, not args. For validation purposes,
     // we need to provide the { url: string } object structure that matches the
-    // Zod schema (inputBlob returns z.object({ url, contentType? }), 
+    // Zod schema (inputBlob returns z.object({ url, contentType? }),
     // outputBlob returns z.object({ url, accept? })).
     let argsForValidation = args;
     if (hasInputBlobs || hasOutputBlobs) {

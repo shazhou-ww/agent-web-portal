@@ -161,7 +161,7 @@ async function handleSingleRequest(
 function handleInitialize(
   id: string | number,
   portal: AgentWebPortalInstance,
-  params?: Record<string, unknown>
+  _params?: Record<string, unknown>
 ): JsonRpcSuccessResponse {
   // Get server info from portal (need to cast to access internal method)
   const serverInfo = (portal as any).getServerInfo?.() ?? {

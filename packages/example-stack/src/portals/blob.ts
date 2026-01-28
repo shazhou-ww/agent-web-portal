@@ -513,13 +513,13 @@ export const blobPortal = createAgentWebPortal({
         }
       }
 
+      // Return metadata - the framework auto-fills the `image` output blob field
+      // using the presigned URL from context.blobs.output.image
       return {
-        // Return the key as the image identifier
-        image: key,
         contentType: storedImage.contentType,
         uploadedAt: storedImage.uploadedAt,
         expiresAt: storedImage.expiresAt,
-      };
+      } as z.infer<typeof GetImageOutputSchema>;
     },
   })
   .registerTool("list_images", {

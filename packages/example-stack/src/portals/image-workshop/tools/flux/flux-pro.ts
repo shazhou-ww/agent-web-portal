@@ -32,7 +32,8 @@ export const fluxProTool = defineTool({
   },
 
   output: {
-    image: outputBlob({ accept: "image/png", description: "Generated image" }),
+    // Note: output_format can be png or jpeg
+    image: outputBlob({ accept: "image/*", description: "Generated image" }),
     metadata: z.object({
       id: z.string().describe("Task ID from BFL API"),
       seed: z.number().optional().describe("Seed used for generation"),
@@ -52,16 +53,42 @@ export const fluxProTool = defineTool({
       output_format: args.output_format,
     });
 
-    // Fetch the generated image from URL
-    const imageResponse = await fetch(result.imageUrl);
+    // Fetch the generated image from the BFL delivery URL
+    let imageResponse: Response;
+    try {
+      imageResponse = await fetch(result.imageUrl);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Unable to download generated image from BFL delivery URL: ${result.imageUrl} (${msg}). ` +
+          "If you are behind a firewall/proxy, ensure the BFL delivery domains are allow-listed."
+      );
+    }
+
+    if (!imageResponse.ok) {
+      const errorText = await imageResponse.text().catch(() => "");
+      throw new Error(
+        `BFL delivery download failed: ${imageResponse.status} ${imageResponse.statusText} - ${result.imageUrl}` +
+          (errorText ? ` - ${errorText}` : "")
+      );
+    }
+
     const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
     const contentType = getContentType(args.output_format);
 
-    await fetch(context.blobs.output.image, {
+    const putResponse = await fetch(context.blobs.output.image, {
       method: "PUT",
       body: imageBuffer,
       headers: { "Content-Type": contentType },
     });
+
+    if (!putResponse.ok) {
+      const errorText = await putResponse.text().catch(() => "");
+      throw new Error(
+        `Blob upload failed: ${putResponse.status} ${putResponse.statusText}` +
+          (errorText ? ` - ${errorText}` : "")
+      );
+    }
 
     return {
       metadata: {

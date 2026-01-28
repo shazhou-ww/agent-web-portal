@@ -110,7 +110,7 @@ export async function pollAuthStatus(
     }
 
     // Wait before next poll
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve) => {
       const timeoutId = setTimeout(resolve, interval);
       signal?.addEventListener("abort", () => {
         clearTimeout(timeoutId);

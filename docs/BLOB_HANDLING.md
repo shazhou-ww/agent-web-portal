@@ -4,7 +4,9 @@ This document describes how binary data (blobs) flows between LLM, Agent Runtime
 
 ## Overview
 
-AWP provides a seamless blob handling mechanism that abstracts away the complexity of binary data transfer. The system uses presigned URLs for secure, temporary access to blob storage, while presenting a clean URI-based interface to LLMs.
+AWP provides a seamless blob handling mechanism that abstracts away the complexity of binary data
+transfer. The system uses presigned URLs for secure, temporary access to blob storage, while presenting
+a clean URI-based interface to LLMs.
 
 ```
 ┌─────────┐     URI-based      ┌─────────────┐    URL-based     ┌─────────────┐
@@ -84,6 +86,7 @@ AWP extends the MCP tool schema with an `_awp` field that describes blob metadat
 ```
 
 The `_awp.blob` structure groups blob fields by direction:
+
 - `input`: Fields the tool reads from (input blobs)
 - `output`: Fields the tool writes to (output blobs)
 
@@ -105,6 +108,7 @@ AWP Server                    AWP Client                      LLM
 ```
 
 **Transformation (Tool → LLM):**
+
 - Input blobs: `url` → `uri`
 - Output blobs: Remove from input schema (LLM doesn't provide output URLs)
 
@@ -157,7 +161,8 @@ LLM Request 2: remove_bg
   └─► result: { uri: "awp://output/no-bg-image" }
 ```
 
-The AWP Client automatically resolves `awp://output/...` URIs to presigned read URLs, enabling seamless chaining without the LLM needing to manage storage.
+The AWP Client automatically resolves `awp://output/...` URIs to presigned read URLs, enabling
+seamless chaining without the LLM needing to manage storage.
 
 ## Implementation Details
 
@@ -210,12 +215,14 @@ const removeBackground = defineTool({
 The AWP Client performs bidirectional translation:
 
 **Request Translation (LLM → Tool):**
+
 1. Extract input blob URIs from LLM arguments
 2. Resolve URIs to presigned GET URLs via storage provider
 3. Generate output blob slots with presigned PUT URLs
 4. Replace `uri` with `url` in arguments
 
 **Response Translation (Tool → LLM):**
+
 1. Extract output blob results from tool response
 2. Inject generated `uri` into each output blob
 3. Return enriched response to LLM

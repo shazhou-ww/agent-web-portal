@@ -1,4 +1,5 @@
-import type { ZodObject, ZodRawShape, z } from "zod";
+import type { ZodObject, ZodRawShape } from "zod";
+import { z } from "zod";
 import { type BlobSchema, extractToolBlobInfo } from "./blob.ts";
 
 // ============================================================================
@@ -185,9 +186,6 @@ export interface DefinedTool<TInputShape extends ZodRawShape, TOutputShape exten
 export function defineTool<TInputShape extends ZodRawShape, TOutputShape extends ZodRawShape>(
   options: DefineToolOptions<TInputShape, TOutputShape>
 ): DefinedTool<TInputShape, TOutputShape> {
-  // Import z dynamically to avoid circular dependencies
-  const { z } = require("zod");
-
   // Build the full schemas from the shapes
   const inputSchema = z.object(options.input) as ZodObject<TInputShape>;
   const outputSchema = z.object(options.output) as ZodObject<TOutputShape>;

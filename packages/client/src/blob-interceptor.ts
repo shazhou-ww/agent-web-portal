@@ -138,10 +138,9 @@ export class BlobInterceptor {
       const storagePrefix = llmValue?.prefix ?? `${this.outputPrefix}/${field}`;
 
       // Generate presigned PUT URL for output
-      const { uri, presignedUrl } = await this.storage.generatePresignedPutUrl(
-        storagePrefix,
-        { contentType: acceptType }
-      );
+      const { uri, presignedUrl } = await this.storage.generatePresignedPutUrl(storagePrefix, {
+        contentType: acceptType,
+      });
       outputPresigned[field] = presignedUrl;
       outputUri[field] = uri;
       outputAcceptTypes[field] = acceptType;
