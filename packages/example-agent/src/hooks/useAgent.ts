@@ -386,7 +386,7 @@ export function useAgent(options: UseAgentOptions): UseAgentResult {
                   console.log(`[AWP] Tool output:`, awpResult.output);
                   console.log(`[AWP] Tool blobs:`, awpResult.blobs);
                   console.log(`[AWP] Tool blobs JSON:`, JSON.stringify(awpResult.blobs, null, 2));
-                  
+
                   // Combine output and blobs in the result
                   // Blobs contain { uri, contentType? } for each output blob field
                   const output = awpResult.output as Record<string, unknown> | undefined;
@@ -396,7 +396,10 @@ export function useAgent(options: UseAgentOptions): UseAgentResult {
                     ...(blobs ?? {}),
                   };
                   console.log(`[AWP] Combined result for LLM:`, combinedResult);
-                  console.log(`[AWP] Combined result JSON:`, JSON.stringify(combinedResult, null, 2));
+                  console.log(
+                    `[AWP] Combined result JSON:`,
+                    JSON.stringify(combinedResult, null, 2)
+                  );
                   result = JSON.stringify(combinedResult, null, 2);
                   isError = awpResult.isError ?? false;
                 } catch (toolErr) {

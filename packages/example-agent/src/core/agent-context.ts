@@ -7,7 +7,7 @@
  * - Message building with skill prompt injection
  */
 
-import type { AwpToolSchema, AwpManager, SkillInfo } from "@agent-web-portal/client";
+import type { AwpManager, AwpToolSchema, SkillInfo } from "@agent-web-portal/client";
 import { skillCache } from "../storage";
 import type { LlmMessage, LlmToolSchema } from "./llm";
 

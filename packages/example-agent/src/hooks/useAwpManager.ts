@@ -4,7 +4,6 @@
  * Manages AWP endpoints and provides access to skills/tools
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AwpManager,
   type PrefixedTool,
@@ -12,6 +11,7 @@ import {
   type SkillInfo,
 } from "@agent-web-portal/client";
 import { HttpStorageProvider, IndexedDBKeyStorage } from "@agent-web-portal/client-browser";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 /**
  * Stored endpoint for persistence
@@ -66,7 +66,7 @@ export function useAwpManager(): UseAwpManagerResult {
   const manager = useMemo(() => {
     const apiBaseUrl = getApiBaseUrl();
     console.log(`[useAwpManager] Using API base URL: ${apiBaseUrl}`);
-    
+
     return new AwpManager({
       clientName: "AWP Agent",
       keyStorage: new IndexedDBKeyStorage(),

@@ -1,4 +1,3 @@
-export { AgentContext, type LoadedSkill, type TrackedMessage } from "./agent-context";
 // Re-export AwpManager from client package
 export {
   AwpManager,
@@ -8,6 +7,7 @@ export {
   type SkillFrontmatter,
   type SkillInfo,
 } from "@agent-web-portal/client";
+export { AgentContext, type LoadedSkill, type TrackedMessage } from "./agent-context";
 export * from "./llm";
 export {
   type DiscoverSkillsResult,

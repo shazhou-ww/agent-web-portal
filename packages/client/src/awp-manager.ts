@@ -8,8 +8,8 @@
  */
 
 import { AwpAuth } from "./auth/index.ts";
-import { AwpClient, type AwpToolSchema, type ToolCallResult } from "./client.ts";
 import type { KeyStorage } from "./auth/types.ts";
+import { AwpClient, type AwpToolSchema, type ToolCallResult } from "./client.ts";
 import type { StorageProvider } from "./storage/types.ts";
 import { HashRegistry } from "./utils/hash.ts";
 

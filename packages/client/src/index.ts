@@ -62,6 +62,15 @@ export {
   type StoredKeyData,
   signRequest,
 } from "./auth/index.ts";
+// AWP Manager exports
+export {
+  AwpManager,
+  type AwpManagerOptions,
+  type PrefixedTool,
+  type RegisteredEndpoint,
+  type SkillFrontmatter,
+  type SkillInfo,
+} from "./awp-manager.ts";
 // Blob interceptor exports
 export {
   BlobInterceptor,
@@ -86,14 +95,5 @@ export {
 export { S3StorageProvider, type S3StorageProviderOptions } from "./storage/s3.ts";
 // Storage provider exports
 export type { PresignedUrlOptions, PresignedUrlPair, StorageProvider } from "./storage/types.ts";
-// AWP Manager exports
-export {
-  AwpManager,
-  type AwpManagerOptions,
-  type PrefixedTool,
-  type RegisteredEndpoint,
-  type SkillFrontmatter,
-  type SkillInfo,
-} from "./awp-manager.ts";
 // Hash utility exports
 export { HashRegistry, shortHash } from "./utils/hash.ts";

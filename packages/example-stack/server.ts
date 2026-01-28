@@ -375,7 +375,10 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // Prepare download - create output blob slot and get presigned URLs
   // Also accepts /api/blob/prepare-output as an alias
-  if ((pathname === "/api/blob/prepare-download" || pathname === "/api/blob/prepare-output") && req.method === "POST") {
+  if (
+    (pathname === "/api/blob/prepare-download" || pathname === "/api/blob/prepare-output") &&
+    req.method === "POST"
+  ) {
     const result = createOutputBlobSlot();
     // Build absolute URLs using the request's Host header
     const host = req.headers.get("host") || `localhost:${PORT}`;
@@ -403,7 +406,9 @@ async function handleRequest(req: Request): Promise<Response> {
     const contentType = req.headers.get("content-type") ?? "application/octet-stream";
     const data = await req.arrayBuffer();
 
-    console.log(`[Blob] Writing output blob: ${id}, contentType: ${contentType}, size: ${data.byteLength} bytes`);
+    console.log(
+      `[Blob] Writing output blob: ${id}, contentType: ${contentType}, size: ${data.byteLength} bytes`
+    );
 
     const success = writeOutputBlob(id, data, contentType);
 
