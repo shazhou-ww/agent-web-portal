@@ -9,15 +9,12 @@ import {
 } from "@aws-sdk/client-cognito-identity-provider";
 import type {
   CasConfig,
-  CreateAgentTokenRequest,
-  CreateAgentTokenResponse,
   CreateTicketRequest,
   CreateTicketResponse,
   LoginRequest,
   LoginResponse,
   RefreshRequest,
   RefreshResponse,
-  AgentTokenInfo,
   AuthContext,
 } from "../types.ts";
 import { TokensDb } from "../db/index.ts";
@@ -133,65 +130,6 @@ export class AuthService {
       userToken: tokenId,
       expiresAt: new Date(userToken.expiresAt).toISOString(),
     };
-  }
-
-  /**
-   * Create agent token
-   */
-  async createAgentToken(
-    auth: AuthContext,
-    request: CreateAgentTokenRequest
-  ): Promise<CreateAgentTokenResponse> {
-    const expiresIn = request.expiresIn ?? 30 * 24 * 3600; // 30 days default
-
-    const agentToken = await this.tokensDb.createAgentToken(
-      auth.userId,
-      request.name,
-      request.permissions,
-      expiresIn
-    );
-
-    const tokenId = TokensDb.extractTokenId(agentToken.pk);
-
-    return {
-      id: tokenId,
-      token: tokenId, // In production, might want to add a signature
-      name: agentToken.name,
-      permissions: agentToken.permissions,
-      createdAt: new Date(agentToken.createdAt).toISOString(),
-      expiresAt: new Date(agentToken.expiresAt).toISOString(),
-    };
-  }
-
-  /**
-   * List agent tokens for current user
-   */
-  async listAgentTokens(auth: AuthContext): Promise<AgentTokenInfo[]> {
-    const tokens = await this.tokensDb.listAgentTokens(auth.userId);
-
-    return tokens.map((token) => ({
-      id: TokensDb.extractTokenId(token.pk),
-      name: token.name,
-      permissions: token.permissions,
-      createdAt: new Date(token.createdAt).toISOString(),
-      expiresAt: new Date(token.expiresAt).toISOString(),
-    }));
-  }
-
-  /**
-   * Revoke agent token
-   */
-  async revokeAgentToken(auth: AuthContext, tokenId: string): Promise<void> {
-    // Verify ownership
-    const isOwner = await this.tokensDb.verifyTokenOwnership(
-      tokenId,
-      auth.userId
-    );
-    if (!isOwner) {
-      throw new Error("Token not found or access denied");
-    }
-
-    await this.tokensDb.deleteToken(tokenId);
   }
 
   /**

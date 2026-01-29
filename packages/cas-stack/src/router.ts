@@ -6,7 +6,8 @@ import type { HttpRequest, HttpResponse, CasConfig, AuthContext } from "./types.
 import { AuthMiddleware } from "./middleware/auth.ts";
 import { AuthService } from "./auth/service.ts";
 import { CasStorage } from "./cas/storage.ts";
-import { TokensDb, OwnershipDb, DagDb } from "./db/index.ts";
+import { TokensDb, OwnershipDb, DagDb, AwpPendingAuthStore, AwpPubkeyStore } from "./db/index.ts";
+import { handleAuthInit, handleAuthStatus, generateVerificationCode } from "@agent-web-portal/auth";
 import { z } from "zod";
 
 // ============================================================================
@@ -22,14 +23,14 @@ const RefreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 
-const CreateAgentTokenSchema = z.object({
-  name: z.string().min(1),
-  expiresIn: z.number().positive().optional(),
-  permissions: z.object({
-    read: z.boolean(),
-    write: z.boolean(),
-    issueTicket: z.boolean(),
-  }),
+const AwpAuthInitSchema = z.object({
+  pubkey: z.string().min(1),
+  client_name: z.string().min(1),
+});
+
+const AwpAuthCompleteSchema = z.object({
+  pubkey: z.string().min(1),
+  verification_code: z.string().min(1),
 });
 
 const CreateTicketSchema = z.object({
@@ -49,7 +50,7 @@ const ResolveSchema = z.object({
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
 };
 
@@ -98,13 +99,17 @@ export class Router {
   private tokensDb: TokensDb;
   private ownershipDb: OwnershipDb;
   private dagDb: DagDb;
+  private awpPendingStore: AwpPendingAuthStore;
+  private awpPubkeyStore: AwpPubkeyStore;
 
   constructor(config: CasConfig) {
     this.config = config;
     this.tokensDb = new TokensDb(config);
     this.ownershipDb = new OwnershipDb(config);
     this.dagDb = new DagDb(config);
-    this.authMiddleware = new AuthMiddleware(config, this.tokensDb);
+    this.awpPendingStore = new AwpPendingAuthStore(config);
+    this.awpPubkeyStore = new AwpPubkeyStore(config);
+    this.authMiddleware = new AuthMiddleware(config, this.tokensDb, this.awpPubkeyStore);
     this.authService = new AuthService(config, this.tokensDb);
     this.casStorage = new CasStorage(config);
   }
@@ -183,40 +188,157 @@ export class Router {
       }
     }
 
+    // ========================================================================
+    // AWP Auth Routes (agent-tokens namespace)
+    // ========================================================================
+
+    // POST /auth/agent-tokens/init - Start AWP auth flow
+    if (req.method === "POST" && path === "/agent-tokens/init") {
+      const body = this.parseJson(req);
+      const parsed = AwpAuthInitSchema.safeParse(body);
+      if (!parsed.success) {
+        return errorResponse(400, "Invalid request", parsed.error.issues);
+      }
+
+      try {
+        const verificationCode = generateVerificationCode();
+        const now = Date.now();
+        const expiresIn = 600; // 10 minutes
+
+        await this.awpPendingStore.create({
+          pubkey: parsed.data.pubkey,
+          clientName: parsed.data.client_name,
+          verificationCode,
+          createdAt: now,
+          expiresAt: now + expiresIn * 1000,
+        });
+
+        // Build auth URL (points to cas-webui)
+        const baseUrl = req.headers.origin ?? req.headers.Origin ?? "";
+        const authUrl = `${baseUrl}/auth/awp?pubkey=${encodeURIComponent(parsed.data.pubkey)}`;
+
+        return jsonResponse(200, {
+          auth_url: authUrl,
+          verification_code: verificationCode,
+          expires_in: expiresIn,
+          poll_interval: 5,
+        });
+      } catch (error: any) {
+        return errorResponse(500, error.message ?? "Failed to initiate auth");
+      }
+    }
+
+    // GET /auth/agent-tokens/status - Poll for auth completion
+    if (req.method === "GET" && path === "/agent-tokens/status") {
+      const pubkey = req.query.pubkey;
+      if (!pubkey) {
+        return errorResponse(400, "Missing pubkey parameter");
+      }
+
+      const authorized = await this.awpPubkeyStore.lookup(pubkey);
+      if (authorized) {
+        return jsonResponse(200, {
+          authorized: true,
+          expires_at: authorized.expiresAt,
+        });
+      }
+
+      // Check if pending auth exists
+      const pending = await this.awpPendingStore.get(pubkey);
+      if (!pending) {
+        return jsonResponse(200, {
+          authorized: false,
+          error: "No pending authorization found",
+        });
+      }
+
+      return jsonResponse(200, {
+        authorized: false,
+      });
+    }
+
+    // POST /auth/agent-tokens/complete - Complete authorization (requires user auth)
+    if (req.method === "POST" && path === "/agent-tokens/complete") {
+      // This endpoint requires user authentication
+      const auth = await this.authMiddleware.authenticate(req);
+      if (!auth) {
+        return errorResponse(401, "User authentication required");
+      }
+
+      const body = this.parseJson(req);
+      const parsed = AwpAuthCompleteSchema.safeParse(body);
+      if (!parsed.success) {
+        return errorResponse(400, "Invalid request", parsed.error.issues);
+      }
+
+      // Validate verification code
+      const isValid = await this.awpPendingStore.validateCode(
+        parsed.data.pubkey,
+        parsed.data.verification_code
+      );
+      if (!isValid) {
+        return errorResponse(400, "Invalid or expired verification code");
+      }
+
+      // Get pending auth to retrieve client name
+      const pending = await this.awpPendingStore.get(parsed.data.pubkey);
+      if (!pending) {
+        return errorResponse(400, "Pending authorization not found");
+      }
+
+      // Store authorized pubkey
+      const now = Date.now();
+      const expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 days
+
+      await this.awpPubkeyStore.store({
+        pubkey: parsed.data.pubkey,
+        userId: auth.userId,
+        clientName: pending.clientName,
+        createdAt: now,
+        expiresAt,
+      });
+
+      // Clean up pending auth
+      await this.awpPendingStore.delete(parsed.data.pubkey);
+
+      return jsonResponse(200, {
+        success: true,
+        expires_at: expiresAt,
+      });
+    }
+
     // Routes requiring auth
     const auth = await this.authMiddleware.authenticate(req);
     if (!auth) {
       return errorResponse(401, "Unauthorized");
     }
 
-    // POST /auth/agent-token
-    if (req.method === "POST" && path === "/agent-token") {
-      const body = this.parseJson(req);
-      const parsed = CreateAgentTokenSchema.safeParse(body);
-      if (!parsed.success) {
-        return errorResponse(400, "Invalid request", parsed.error.issues);
-      }
-
-      const result = await this.authService.createAgentToken(auth, parsed.data);
-      return jsonResponse(201, result);
+    // GET /auth/agent-tokens/clients - List authorized AWP clients
+    if (req.method === "GET" && path === "/agent-tokens/clients") {
+      const clients = await this.awpPubkeyStore.listByUser(auth.userId);
+      return jsonResponse(200, {
+        clients: clients.map((c) => ({
+          pubkey: c.pubkey,
+          clientName: c.clientName,
+          createdAt: new Date(c.createdAt).toISOString(),
+          expiresAt: c.expiresAt ? new Date(c.expiresAt).toISOString() : null,
+        })),
+      });
     }
 
-    // GET /auth/agent-tokens
-    if (req.method === "GET" && path === "/agent-tokens") {
-      const result = await this.authService.listAgentTokens(auth);
-      return jsonResponse(200, { tokens: result });
-    }
+    // DELETE /auth/agent-tokens/clients/:pubkey - Revoke AWP client
+    const clientRevokeMatch = path.match(/^\/agent-tokens\/clients\/(.+)$/);
+    if (req.method === "DELETE" && clientRevokeMatch) {
+      const pubkey = decodeURIComponent(clientRevokeMatch[1]!);
 
-    // DELETE /auth/agent-token/:id
-    const agentTokenMatch = path.match(/^\/agent-token\/([^\/]+)$/);
-    if (req.method === "DELETE" && agentTokenMatch) {
-      const tokenId = agentTokenMatch[1]!;
-      try {
-        await this.authService.revokeAgentToken(auth, tokenId);
-        return jsonResponse(200, { success: true });
-      } catch (error: any) {
-        return errorResponse(404, error.message ?? "Token not found");
+      // Verify ownership
+      const client = await this.awpPubkeyStore.lookup(pubkey);
+      if (!client || client.userId !== auth.userId) {
+        return errorResponse(404, "Client not found or access denied");
       }
+
+      await this.awpPubkeyStore.revoke(pubkey);
+      return jsonResponse(200, { success: true });
     }
 
     // POST /auth/ticket

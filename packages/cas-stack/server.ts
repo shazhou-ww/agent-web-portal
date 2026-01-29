@@ -13,12 +13,13 @@ import type {
   HttpResponse,
   Token,
   UserToken,
-  AgentToken,
   Ticket,
   CasOwnership,
   CasDagNode,
-  TokenPermissions,
 } from "./src/types.ts";
+import type { PendingAuth, AuthorizedPubkey, PendingAuthStore, PubkeyStore } from "@agent-web-portal/auth";
+import { generateVerificationCode, verifySignature, validateTimestamp, AWP_AUTH_HEADERS } from "@agent-web-portal/auth";
+import { createHash as cryptoCreateHash } from "crypto";
 
 // ============================================================================
 // In-Memory Storage
@@ -55,26 +56,6 @@ class MemoryTokensDb {
     return token;
   }
 
-  async createAgentToken(
-    userId: string,
-    name: string,
-    permissions: TokenPermissions,
-    expiresIn: number = 30 * 24 * 3600
-  ): Promise<AgentToken> {
-    const tokenId = `agt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const token: AgentToken = {
-      pk: `token#${tokenId}`,
-      type: "agent",
-      userId,
-      name,
-      permissions,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + expiresIn * 1000,
-    };
-    this.tokens.set(token.pk, token);
-    return token;
-  }
-
   async createTicket(
     scope: string,
     issuerId: string,
@@ -98,14 +79,6 @@ class MemoryTokensDb {
     return ticket;
   }
 
-  async listAgentTokens(userId: string): Promise<AgentToken[]> {
-    const now = Date.now();
-    return Array.from(this.tokens.values()).filter(
-      (t): t is AgentToken =>
-        t.type === "agent" && t.userId === userId && t.expiresAt > now
-    );
-  }
-
   async deleteToken(tokenId: string): Promise<void> {
     this.tokens.delete(`token#${tokenId}`);
   }
@@ -113,13 +86,13 @@ class MemoryTokensDb {
   async verifyTokenOwnership(tokenId: string, userId: string): Promise<boolean> {
     const token = await this.getToken(tokenId);
     if (!token) return false;
-    if (token.type === "user" || token.type === "agent") {
+    if (token.type === "user") {
       return token.userId === userId;
     }
     if (token.type === "ticket") {
       const issuer = await this.getToken(token.issuerId);
       if (!issuer) return false;
-      if (issuer.type === "user" || issuer.type === "agent") {
+      if (issuer.type === "user") {
         return issuer.userId === userId;
       }
     }
@@ -307,6 +280,67 @@ class MemoryCasStorage {
 }
 
 // ============================================================================
+// AWP Auth Stores (In-Memory for development)
+// ============================================================================
+
+class MemoryAwpPendingAuthStore implements PendingAuthStore {
+  private pending = new Map<string, PendingAuth>();
+
+  async create(auth: PendingAuth): Promise<void> {
+    this.pending.set(auth.pubkey, auth);
+  }
+
+  async get(pubkey: string): Promise<PendingAuth | null> {
+    const auth = this.pending.get(pubkey);
+    if (!auth) return null;
+    if (auth.expiresAt < Date.now()) {
+      this.pending.delete(pubkey);
+      return null;
+    }
+    return auth;
+  }
+
+  async delete(pubkey: string): Promise<void> {
+    this.pending.delete(pubkey);
+  }
+
+  async validateCode(pubkey: string, code: string): Promise<boolean> {
+    const auth = await this.get(pubkey);
+    if (!auth) return false;
+    return auth.verificationCode === code;
+  }
+}
+
+class MemoryAwpPubkeyStore implements PubkeyStore {
+  private pubkeys = new Map<string, AuthorizedPubkey>();
+
+  async lookup(pubkey: string): Promise<AuthorizedPubkey | null> {
+    const auth = this.pubkeys.get(pubkey);
+    if (!auth) return null;
+    if (auth.expiresAt && auth.expiresAt < Date.now()) {
+      this.pubkeys.delete(pubkey);
+      return null;
+    }
+    return auth;
+  }
+
+  async store(auth: AuthorizedPubkey): Promise<void> {
+    this.pubkeys.set(auth.pubkey, auth);
+  }
+
+  async revoke(pubkey: string): Promise<void> {
+    this.pubkeys.delete(pubkey);
+  }
+
+  async listByUser(userId: string): Promise<AuthorizedPubkey[]> {
+    const now = Date.now();
+    return Array.from(this.pubkeys.values()).filter(
+      (a) => a.userId === userId && (!a.expiresAt || a.expiresAt > now)
+    );
+  }
+}
+
+// ============================================================================
 // Cognito JWT Verifier (for cas-webui integration)
 // ============================================================================
 
@@ -354,10 +388,12 @@ const tokensDb = new MemoryTokensDb();
 const ownershipDb = new MemoryOwnershipDb();
 const dagDb = new MemoryDagDb();
 const casStorage = new MemoryCasStorage();
+const pendingAuthStore = new MemoryAwpPendingAuthStore();
+const pubkeyStore = new MemoryAwpPubkeyStore();
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
 };
 
@@ -394,6 +430,12 @@ interface AuthContext {
 }
 
 async function authenticate(req: Request): Promise<AuthContext | null> {
+  // First check for AWP signed request
+  const awpPubkey = req.headers.get(AWP_AUTH_HEADERS.pubkey);
+  if (awpPubkey) {
+    return authenticateAwp(req);
+  }
+
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return null;
 
@@ -426,7 +468,7 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
     // If JWT verification failed, fall through to try as internal token
   }
 
-  // Try as internal token (user token, agent token, or ticket)
+  // Try as internal token (user token or ticket)
   const token = await tokensDb.getToken(tokenValue);
   if (!token) return null;
 
@@ -439,17 +481,6 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
       canRead: true,
       canWrite: true,
       canIssueTicket: true,
-      tokenId: id,
-    };
-  }
-
-  if (token.type === "agent") {
-    return {
-      userId: token.userId,
-      scope: `usr_${token.userId}`,
-      canRead: token.permissions.read,
-      canWrite: token.permissions.write,
-      canIssueTicket: token.permissions.issueTicket,
       tokenId: id,
     };
   }
@@ -469,58 +500,206 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
   return null;
 }
 
+async function authenticateAwp(req: Request): Promise<AuthContext | null> {
+  const pubkey = req.headers.get(AWP_AUTH_HEADERS.pubkey);
+  const timestamp = req.headers.get(AWP_AUTH_HEADERS.timestamp);
+  const signature = req.headers.get(AWP_AUTH_HEADERS.signature);
+
+  if (!pubkey || !timestamp || !signature) {
+    return null;
+  }
+
+  // Look up the pubkey
+  const authorizedPubkey = await pubkeyStore.lookup(pubkey);
+  if (!authorizedPubkey) {
+    return null;
+  }
+
+  // Verify timestamp
+  if (!validateTimestamp(timestamp, 300)) { // 5 minute max clock skew
+    console.log(`[AWP] Timestamp validation failed for pubkey: ${pubkey.slice(0, 20)}...`);
+    return null;
+  }
+
+  // Verify the signature
+  const url = new URL(req.url);
+  const body = req.method === "GET" || req.method === "HEAD" ? "" : await req.clone().text();
+  
+  // Build signature payload: timestamp.METHOD.path.bodyHash
+  const bodyHash = cryptoCreateHash("sha256").update(body).digest("hex");
+  const signaturePayload = `${timestamp}.${req.method.toUpperCase()}.${url.pathname + url.search}.${bodyHash}`;
+
+  const isValid = await verifySignature(pubkey, signaturePayload, signature);
+
+  if (!isValid) {
+    console.log(`[AWP] Signature verification failed for pubkey: ${pubkey.slice(0, 20)}...`);
+    return null;
+  }
+
+  console.log(`[AWP] Authenticated client: ${authorizedPubkey.clientName}`);
+
+  return {
+    userId: authorizedPubkey.userId,
+    scope: `usr_${authorizedPubkey.userId}`,
+    canRead: true,
+    canWrite: true,
+    canIssueTicket: true,
+    tokenId: `awp_${pubkey.slice(0, 16)}`,
+  };
+}
+
 // ============================================================================
 // Request Handlers
 // ============================================================================
 
 async function handleAuth(req: Request, path: string): Promise<Response> {
-  // Authenticated routes only - login is handled by Cognito via cas-webui
+  // ========================================================================
+  // AWP Auth Routes (no auth required for init/status)
+  // ========================================================================
+
+  // POST /auth/agent-tokens/init - Start AWP auth flow
+  if (req.method === "POST" && path === "/agent-tokens/init") {
+    const body = await req.json() as { pubkey?: string; client_name?: string };
+    if (!body.pubkey || !body.client_name) {
+      return errorResponse(400, "Missing pubkey or client_name");
+    }
+
+    const verificationCode = generateVerificationCode();
+    const now = Date.now();
+    const expiresIn = 600; // 10 minutes
+
+    await pendingAuthStore.create({
+      pubkey: body.pubkey,
+      clientName: body.client_name,
+      verificationCode,
+      createdAt: now,
+      expiresAt: now + expiresIn * 1000,
+    });
+
+    // Build auth URL
+    const url = new URL(req.url);
+    const authUrl = `${url.origin}/auth/awp?pubkey=${encodeURIComponent(body.pubkey)}`;
+
+    console.log(`[AWP] Auth initiated for client: ${body.client_name}`);
+    console.log(`[AWP] Verification code: ${verificationCode}`);
+
+    return jsonResponse(200, {
+      auth_url: authUrl,
+      verification_code: verificationCode,
+      expires_in: expiresIn,
+      poll_interval: 5,
+    });
+  }
+
+  // GET /auth/agent-tokens/status - Poll for auth completion
+  if (req.method === "GET" && path === "/agent-tokens/status") {
+    const url = new URL(req.url);
+    const pubkey = url.searchParams.get("pubkey");
+    if (!pubkey) {
+      return errorResponse(400, "Missing pubkey parameter");
+    }
+
+    const authorized = await pubkeyStore.lookup(pubkey);
+    if (authorized) {
+      return jsonResponse(200, {
+        authorized: true,
+        expires_at: authorized.expiresAt,
+      });
+    }
+
+    // Check if pending auth exists
+    const pending = await pendingAuthStore.get(pubkey);
+    if (!pending) {
+      return jsonResponse(200, {
+        authorized: false,
+        error: "No pending authorization found",
+      });
+    }
+
+    return jsonResponse(200, {
+      authorized: false,
+    });
+  }
+
+  // POST /auth/agent-tokens/complete - Complete authorization (requires user auth)
+  if (req.method === "POST" && path === "/agent-tokens/complete") {
+    const auth = await authenticate(req);
+    if (!auth) {
+      return errorResponse(401, "User authentication required");
+    }
+
+    const body = await req.json() as { pubkey?: string; verification_code?: string };
+    if (!body.pubkey || !body.verification_code) {
+      return errorResponse(400, "Missing pubkey or verification_code");
+    }
+
+    // Validate verification code
+    const isValid = await pendingAuthStore.validateCode(body.pubkey, body.verification_code);
+    if (!isValid) {
+      return errorResponse(400, "Invalid or expired verification code");
+    }
+
+    // Get pending auth to retrieve client name
+    const pending = await pendingAuthStore.get(body.pubkey);
+    if (!pending) {
+      return errorResponse(400, "Pending authorization not found");
+    }
+
+    // Store authorized pubkey
+    const now = Date.now();
+    const expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 days
+
+    await pubkeyStore.store({
+      pubkey: body.pubkey,
+      userId: auth.userId,
+      clientName: pending.clientName,
+      createdAt: now,
+      expiresAt,
+    });
+
+    // Clean up pending auth
+    await pendingAuthStore.delete(body.pubkey);
+
+    console.log(`[AWP] Client authorized: ${pending.clientName} for user: ${auth.userId}`);
+
+    return jsonResponse(200, {
+      success: true,
+      expires_at: expiresAt,
+    });
+  }
+
+  // Routes requiring auth
   const auth = await authenticate(req);
   if (!auth) {
     return errorResponse(401, "Unauthorized - use Cognito via cas-webui to login");
   }
 
-  // POST /auth/agent-token
-  if (req.method === "POST" && path === "/agent-token") {
-    const body = await req.json() as { name?: string; permissions?: TokenPermissions };
-    if (!body.name || !body.permissions) {
-      return errorResponse(400, "Missing name or permissions");
-    }
-    const token = await tokensDb.createAgentToken(auth.userId, body.name, body.permissions);
-    const tokenId = MemoryTokensDb.extractTokenId(token.pk);
-    return jsonResponse(201, {
-      id: tokenId,
-      token: tokenId,
-      name: body.name,
-      permissions: body.permissions,
-      createdAt: new Date(token.createdAt).toISOString(),
-      expiresAt: new Date(token.expiresAt).toISOString(),
-    });
-  }
-
-  // GET /auth/agent-tokens
-  if (req.method === "GET" && path === "/agent-tokens") {
-    const tokens = await tokensDb.listAgentTokens(auth.userId);
+  // GET /auth/agent-tokens/clients - List authorized AWP clients
+  if (req.method === "GET" && path === "/agent-tokens/clients") {
+    const clients = await pubkeyStore.listByUser(auth.userId);
     return jsonResponse(200, {
-      tokens: tokens.map((t) => ({
-        id: MemoryTokensDb.extractTokenId(t.pk),
-        name: t.name,
-        permissions: t.permissions,
-        createdAt: new Date(t.createdAt).toISOString(),
-        expiresAt: new Date(t.expiresAt).toISOString(),
+      clients: clients.map((c) => ({
+        pubkey: c.pubkey,
+        clientName: c.clientName,
+        createdAt: new Date(c.createdAt).toISOString(),
+        expiresAt: c.expiresAt ? new Date(c.expiresAt).toISOString() : null,
       })),
     });
   }
 
-  // DELETE /auth/agent-token/:id
-  const agentTokenMatch = path.match(/^\/agent-token\/([^\/]+)$/);
-  if (req.method === "DELETE" && agentTokenMatch) {
-    const tokenId = agentTokenMatch[1]!;
-    const isOwner = await tokensDb.verifyTokenOwnership(tokenId, auth.userId);
-    if (!isOwner) {
-      return errorResponse(404, "Token not found");
+  // DELETE /auth/agent-tokens/clients/:pubkey - Revoke AWP client
+  const clientRevokeMatch = path.match(/^\/agent-tokens\/clients\/(.+)$/);
+  if (req.method === "DELETE" && clientRevokeMatch) {
+    const pubkey = decodeURIComponent(clientRevokeMatch[1]!);
+
+    // Verify ownership
+    const client = await pubkeyStore.lookup(pubkey);
+    if (!client || client.userId !== auth.userId) {
+      return errorResponse(404, "Client not found or access denied");
     }
-    await tokensDb.deleteToken(tokenId);
+
+    await pubkeyStore.revoke(pubkey);
+    console.log(`[AWP] Client revoked: ${client.clientName}`);
     return jsonResponse(200, { success: true });
   }
 

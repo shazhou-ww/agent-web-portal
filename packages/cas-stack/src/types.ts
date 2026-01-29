@@ -6,7 +6,7 @@
 // Token Types
 // ============================================================================
 
-export type TokenType = "user" | "agent" | "ticket";
+export type TokenType = "user" | "ticket";
 
 export interface BaseToken {
   pk: string; // token#{id}
@@ -21,13 +21,6 @@ export interface UserToken extends BaseToken {
   refreshToken?: string;
 }
 
-export interface AgentToken extends BaseToken {
-  type: "agent";
-  userId: string;
-  name: string;
-  permissions: TokenPermissions;
-}
-
 export interface Ticket extends BaseToken {
   type: "ticket";
   scope: string;
@@ -36,7 +29,7 @@ export interface Ticket extends BaseToken {
   key?: string; // For read tickets, the specific key allowed
 }
 
-export type Token = UserToken | AgentToken | Ticket;
+export type Token = UserToken | Ticket;
 
 export interface TokenPermissions {
   read: boolean;
@@ -70,29 +63,6 @@ export interface RefreshRequest {
 
 export interface RefreshResponse {
   userToken: string;
-  expiresAt: string;
-}
-
-export interface CreateAgentTokenRequest {
-  name: string;
-  expiresIn?: number; // seconds, default 30 days
-  permissions: TokenPermissions;
-}
-
-export interface CreateAgentTokenResponse {
-  id: string;
-  token: string; // Full token, only returned once
-  name: string;
-  permissions: TokenPermissions;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface AgentTokenInfo {
-  id: string;
-  name: string;
-  permissions: TokenPermissions;
-  createdAt: string;
   expiresAt: string;
 }
 

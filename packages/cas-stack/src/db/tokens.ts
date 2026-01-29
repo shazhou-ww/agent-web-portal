@@ -11,11 +11,9 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type {
-  AgentToken,
   CasConfig,
   Ticket,
   Token,
-  TokenPermissions,
   UserToken,
 } from "../types.ts";
 
@@ -31,10 +29,6 @@ function generateId(prefix: string): string {
 
 export function generateUserTokenId(): string {
   return generateId("usr");
-}
-
-export function generateAgentTokenId(): string {
-  return generateId("agt");
 }
 
 export function generateTicketId(): string {
@@ -113,39 +107,6 @@ export class TokensDb {
   }
 
   /**
-   * Create an agent token
-   */
-  async createAgentToken(
-    userId: string,
-    name: string,
-    permissions: TokenPermissions,
-    expiresIn: number = 30 * 24 * 3600 // 30 days default
-  ): Promise<AgentToken> {
-    const tokenId = generateAgentTokenId();
-    const now = Date.now();
-    const expiresAt = now + expiresIn * 1000;
-
-    const token: AgentToken = {
-      pk: `token#${tokenId}`,
-      type: "agent",
-      userId,
-      name,
-      permissions,
-      createdAt: now,
-      expiresAt,
-    };
-
-    await this.client.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: token,
-      })
-    );
-
-    return token;
-  }
-
-  /**
    * Create a ticket
    */
   async createTicket(
@@ -183,30 +144,6 @@ export class TokensDb {
   }
 
   /**
-   * List agent tokens for a user
-   */
-  async listAgentTokens(userId: string): Promise<AgentToken[]> {
-    const result = await this.client.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        IndexName: "by-user",
-        KeyConditionExpression: "userId = :userId",
-        FilterExpression: "#type = :type AND expiresAt > :now",
-        ExpressionAttributeNames: {
-          "#type": "type",
-        },
-        ExpressionAttributeValues: {
-          ":userId": userId,
-          ":type": "agent",
-          ":now": Date.now(),
-        },
-      })
-    );
-
-    return (result.Items ?? []) as AgentToken[];
-  }
-
-  /**
    * Delete a token
    */
   async deleteToken(tokenId: string): Promise<void> {
@@ -228,15 +165,15 @@ export class TokensDb {
     const token = await this.getToken(tokenId);
     if (!token) return false;
 
-    if (token.type === "user" || token.type === "agent") {
+    if (token.type === "user") {
       return token.userId === userId;
     }
 
     if (token.type === "ticket") {
-      // Check if the ticket was issued by this user or their agent
+      // Check if the ticket was issued by this user
       const issuer = await this.getToken(token.issuerId);
       if (!issuer) return false;
-      if (issuer.type === "user" || issuer.type === "agent") {
+      if (issuer.type === "user") {
         return issuer.userId === userId;
       }
     }

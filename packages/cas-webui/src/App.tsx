@@ -4,8 +4,9 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
-import AgentTokens from "./pages/AgentTokens";
+import Clients from "./pages/Clients";
 import Nodes from "./pages/Nodes";
+import AwpAuth from "./pages/AwpAuth";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -40,6 +41,7 @@ function AppRoutes() {
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/awp" element={<AwpAuth />} />
         <Route
           path="/"
           element={
@@ -49,7 +51,7 @@ function AppRoutes() {
           }
         >
           <Route index element={<Dashboard />} />
-          <Route path="agents" element={<AgentTokens />} />
+          <Route path="agents" element={<Clients />} />
           <Route path="nodes" element={<Nodes />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
