@@ -604,3 +604,149 @@ sequenceDiagram
 - CAS 存储实现：`packages/cas-stack/src/cas/storage.ts`
 - Ticket 类型定义：`packages/cas-stack/src/types.ts`
 - 认证中间件：`packages/cas-stack/src/middleware/auth.ts`
+
+---
+
+## CAS Blob 交换机制
+
+### 设计目标
+
+解决 MCP 兼容性问题：AWP Client 可以优化 blob 传输，同时传统 MCP Client 也能正常工作。
+
+### Blob 引用格式
+
+Tool 参数中的 blob 引用使用统一格式：
+
+```typescript
+interface CasBlobRef {
+  "#cas-endpoint": string;  // CAS 端点 + Ticket
+  "cas-node": string;       // DAG 根节点 key
+  [pathKey: string]: string; // 路径字段，如 "path", "file", "image" 等
+}
+```
+
+**路径语法：**
+- `.` - 表示节点本身（适用于单文件）
+- `./path/to/file` - 相对于 cas-node 的路径（适用于 collection）
+
+**#cas-endpoint 格式：**
+```
+https://cas.example.com/api/cas/{shard}/ticket/{ticketId}
+```
+
+### 两种客户端模式
+
+#### 1. 传统 MCP Client
+
+传统 MCP Client 不认识 `#cas-endpoint`，需要通过 CAS MCP Tool 获取：
+
+```
+User -> MCP Client -> LLM -> call cas_get_ticket tool
+                          -> LLM fills #cas-endpoint in tool params
+                          -> call actual tool with blob ref
+```
+
+**工作流程：**
+1. Agent 预先注入 CAS MCP（包含 `cas_get_ticket`、`cas_upload` 等 tool）
+2. Agent Token 绑定到 CAS MCP，拥有创建 Ticket 的权限
+3. LLM 需要传输 blob 时，先调用 `cas_get_ticket` 获取 ticket
+4. LLM 将返回的 endpoint 填入 tool 参数的 `#cas-endpoint` 字段
+5. Tool 使用 cas-client 通过 ticket 访问 CAS
+
+#### 2. AWP Client
+
+AWP Client 自动注入 `#cas-endpoint`，对 LLM 透明：
+
+```
+User -> AWP Client -> (auto inject #cas-endpoint) -> Tool
+```
+
+**工作流程：**
+1. AWP Client 预先绑定 CAS 服务
+2. 通过 auth 接口获取用户的 P256 key pairs
+3. 发送请求时自动为 blob 参数生成 Ticket 并注入 `#cas-endpoint`
+4. Tool 无感知地使用 cas-client 访问 CAS
+
+### Tool 实现示例
+
+```typescript
+import { CasClient } from '@anthropic/cas-client';
+
+interface ImageProcessInput {
+  "#cas-endpoint"?: string;
+  "cas-node": string;
+  "image": string;  // "." 或 "./path/to/image.png"
+}
+
+interface ImageProcessOutput {
+  "cas-node": string;
+  "result": string;  // ".""
+}
+
+async function processImage(
+  input: ImageProcessInput,
+  ticketEndpoint: string  // 来自 #cas-endpoint 或 context
+): Promise<ImageProcessOutput> {
+  // 创建 client
+  const client = new CasClient({ baseUrl: ticketEndpoint });
+  
+  // 读取输入 blob
+  const inputNode = await client.getNode(input["cas-node"]);
+  const imageData = input.image === "."
+    ? await client.openFile(input["cas-node"])
+    : await client.openFile(inputNode.children[input.image.slice(2)]);
+  
+  // 处理图片...
+  const resultBuffer = await processImageData(imageData);
+  
+  // 写入输出 blob
+  const resultKey = await client.putFile(
+    new Blob([resultBuffer], { type: "image/png" })
+  );
+  
+  return {
+    "cas-node": resultKey,
+    "result": "."
+  };
+}
+```
+
+### CAS MCP Tool 定义
+
+为传统 MCP Client 提供的 Tool：
+
+```typescript
+// cas_get_ticket - 获取 CAS 访问 ticket
+{
+  name: "cas_get_ticket",
+  description: "获取 CAS blob 存储的访问凭证",
+  inputSchema: {
+    type: "object",
+    properties: {
+      scope: {
+        type: "string",
+        description: "访问范围，通常是 DAG 根节点 key"
+      },
+      writable: {
+        type: "boolean",
+        description: "是否需要写入权限"
+      }
+    },
+    required: ["scope", "writable"]
+  }
+}
+
+// 返回格式
+{
+  endpoint: "https://cas.example.com/api/cas/user123/ticket/abc123",
+  scope: "sha256-xxxx",
+  expiresAt: "2024-01-01T00:00:00Z"
+}
+```
+
+### 设计优势
+
+1. **向后兼容**：传统 MCP Client 通过 CAS MCP 获取 ticket，无需修改协议
+2. **AWP 优化**：AWP Client 自动注入，LLM 无需感知 CAS 细节
+3. **统一格式**：所有 Tool 使用相同的 blob 引用格式
+4. **安全隔离**：每个 Ticket 限定 scope，Tool 只能访问授权的 DAG
