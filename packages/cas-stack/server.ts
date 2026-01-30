@@ -892,6 +892,11 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     return errorResponse(401, "Unauthorized - use Cognito via cas-webui to login");
   }
 
+  // Ensure user record exists so admins can see and authorize them
+  if (userRolesDb && auth.userId) {
+    await userRolesDb.ensureUser(auth.userId);
+  }
+
   // GET /auth/me - Current user info and role (for UI)
   if (req.method === "GET" && path === "/me") {
     const role = userRolesDb ? await userRolesDb.getRole(auth.userId) : "authorized";

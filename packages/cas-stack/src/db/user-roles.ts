@@ -3,7 +3,7 @@
  * Reuses tokens table with pk = user#${userId}.
  */
 
-import { DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { createDynamoDBClient } from "./client.ts";
 import type { CasConfig, UserRole } from "../types.ts";
 
@@ -21,7 +21,7 @@ export interface UserRoleRecord {
   pk: string;
   type: "user_role";
   userId: string;
-  role: "authorized" | "admin";
+  role: "unauthorized" | "authorized" | "admin";
   createdAt: number;
   updatedAt: number;
 }
@@ -41,7 +41,7 @@ export class UserRolesDb {
 
   /**
    * Resolve user role: DB first, then CAS_ADMIN_USER_IDS env.
-   * Returns null for "unauthorized" (no record and not in admin list).
+   * Returns "unauthorized" if no record and not in admin list.
    */
   async getRole(userId: string): Promise<UserRole> {
     const pk = `${USER_PK_PREFIX}${userId}`;
@@ -54,7 +54,7 @@ export class UserRolesDb {
 
     if (result.Item) {
       const r = result.Item as UserRoleRecord;
-      if (r.type === "user_role" && (r.role === "authorized" || r.role === "admin")) {
+      if (r.type === "user_role") {
         return r.role;
       }
     }
@@ -65,6 +65,46 @@ export class UserRolesDb {
     }
 
     return "unauthorized";
+  }
+
+  /**
+   * Ensure user exists in DB. If no record, create one with "unauthorized" role.
+   * Called on successful login so admins can see all users who have logged in.
+   */
+  async ensureUser(userId: string): Promise<void> {
+    const pk = `${USER_PK_PREFIX}${userId}`;
+    const result = await this.client.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: { pk },
+      })
+    );
+
+    if (result.Item) {
+      // User already exists, nothing to do
+      return;
+    }
+
+    // Check if user is in bootstrap admin list
+    const adminIds = parseAdminUserIds();
+    const role = adminIds.includes(userId) ? "admin" : "unauthorized";
+
+    const now = Date.now();
+    const record: UserRoleRecord = {
+      pk,
+      type: "user_role",
+      userId,
+      role,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.client.send(
+      new PutCommand({
+        TableName: this.tableName,
+        Item: record,
+      })
+    );
   }
 
   /**
@@ -90,19 +130,29 @@ export class UserRolesDb {
   }
 
   /**
-   * Revoke user (remove role record → user becomes unauthorized).
+   * Revoke user (set role to unauthorized).
    */
   async revoke(userId: string): Promise<void> {
+    const now = Date.now();
+    const record: UserRoleRecord = {
+      pk: `${USER_PK_PREFIX}${userId}`,
+      type: "user_role",
+      userId,
+      role: "unauthorized",
+      createdAt: now,
+      updatedAt: now,
+    };
+
     await this.client.send(
-      new DeleteCommand({
+      new PutCommand({
         TableName: this.tableName,
-        Key: { pk: `${USER_PK_PREFIX}${userId}` },
+        Item: record,
       })
     );
   }
 
   /**
-   * List all users with a role record (authorized or admin). Used by admin UI.
+   * List all users with a role record. Used by admin UI.
    */
   async listRoles(): Promise<{ userId: string; role: string }[]> {
     const result = await this.client.send(

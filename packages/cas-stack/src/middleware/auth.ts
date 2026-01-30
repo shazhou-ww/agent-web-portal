@@ -34,6 +34,7 @@ export class AuthMiddleware {
 
   /**
    * Apply user role to auth context (for user/agent/AWP). Tickets are unchanged.
+   * Also ensures user exists in DB so admins can see and authorize them.
    */
   private async applyUserRole(auth: AuthContext): Promise<AuthContext> {
     if (!auth.userId) return auth; // ticket or similar
@@ -44,6 +45,8 @@ export class AuthMiddleware {
       auth.canManageUsers = false;
       return auth;
     }
+    // Ensure user record exists (so admin can see all logged-in users)
+    await userRolesDb.ensureUser(auth.userId);
     const role: UserRole = await userRolesDb.getRole(auth.userId);
     auth.role = role;
     if (role === "unauthorized") {
