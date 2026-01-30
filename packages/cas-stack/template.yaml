@@ -551,11 +551,23 @@ Resources:
             Path: /{proxy+}
             Method: ANY
             RestApiId: !Ref CasApi
+        ProxyOptionsRoute:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: OPTIONS
+            RestApiId: !Ref CasApi
         RootRoute:
           Type: Api
           Properties:
             Path: /
             Method: ANY
+            RestApiId: !Ref CasApi
+        RootOptionsRoute:
+          Type: Api
+          Properties:
+            Path: /
+            Method: OPTIONS
             RestApiId: !Ref CasApi
 
   # ============================================================================
@@ -566,10 +578,7 @@ Resources:
     Properties:
       Name: !Sub "${AWS::StackName}-api"
       StageName: prod
-      Cors:
-        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature'"
-        AllowOrigin: "'*'"
+      # CORS is handled by Lambda directly, not by API Gateway
       BinaryMediaTypes:
         - "application/octet-stream"
         - "multipart/form-data"
