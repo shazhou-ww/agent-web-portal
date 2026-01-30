@@ -1357,9 +1357,7 @@ export async function handler(
         const skillName = skillPath.slice(0, -".zip".length);
 
         try {
-          const { GetObjectCommand, HeadObjectCommand } = await import(
-            "@aws-sdk/client-s3"
-          );
+          const { GetObjectCommand, HeadObjectCommand } = await import("@aws-sdk/client-s3");
           const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
           const s3 = await createS3Client();
           const key = `skills/${portalName}/${skillName}.zip`;

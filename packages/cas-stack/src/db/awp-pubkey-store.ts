@@ -5,6 +5,8 @@
  * for storing authorized public keys.
  */
 
+import type { AuthorizedPubkey, PubkeyStore } from "@agent-web-portal/auth";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
@@ -12,8 +14,6 @@ import {
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type { AuthorizedPubkey, PubkeyStore } from "@agent-web-portal/auth";
 import type { CasConfig } from "../types.ts";
 
 /**

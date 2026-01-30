@@ -1,272 +1,528 @@
-# core-cas 和 client-cas 包开发计划
+# CAS 存储系统设计
 
-> 创建 `core-cas` 和 `client-cas` 两个新包，适配 CAS（内容寻址存储）模式。
-> 核心变化在于输出 blob 流程：从"预分配槽位-写入"改为"生成内容-计算hash-上传-返回key"，并使用 Ticket 机制进行访问控制。
+> 基于内容寻址存储（CAS）的 Blob 处理系统，使用 Ticket 机制进行访问控制。
+> 核心特性：单一 Ticket 授权、contentType 内置于节点、Client 端分片、流式读写、本地缓存。
 
 ## 待办事项
 
-- [ ] 创建 packages/core-cas 包结构（package.json, tsconfig.json, index.ts）
-- [ ] 定义 CAS 专用类型（CasInputBlobValue, CasOutputBlobValue, CasBlobContext, TicketContext 等）
-- [ ] 实现 CAS 版本的 inputBlob() / outputBlob() 函数
-- [ ] 实现 CAS 版 ToolRegistry，支持 ticket-based 访问
-- [ ] 实现 CAS 版 AgentWebPortalBuilder 和 HttpHandler
-- [ ] 创建 packages/client-cas 包结构
-- [ ] 实现 CasStorageProvider（基于 CAS API + Ticket）
-- [ ] 实现 CasBlobInterceptor（生成 ticket、输入读取、输出上传逻辑）
-- [ ] 实现 CAS 版 AwpClient
-- [ ] 添加测试用例和更新文档
+### 阶段一：更新 cas-stack 后端
+- [ ] 更新类型定义：scope → shard 重命名，Ticket 新字段
+- [ ] 实现 CAS 三级节点结构（collection/file/chunk）
+- [ ] 更新数据库层支持新 Ticket 结构
+- [ ] 更新认证中间件
+- [ ] 更新 API 端点（路径 scope → shard）
+- [ ] 新增配置查询 API
+
+### 阶段二：创建 cas-client 包
+- [ ] 创建包结构（package.json, tsconfig.json）
+- [ ] 实现 CasClient（三种鉴权模式）
+- [ ] 实现 Client 端分片逻辑
+- [ ] 实现 CasFileHandle（流式读取）
+- [ ] 实现 LocalStorageProvider（本地缓存）
+
+### 阶段三：更新 cas-webui
+- [ ] 更新 API 调用路径
+- [ ] 更新 Ticket 创建表单
 
 ---
 
-## 认证流程：Ticket 机制
+## 术语说明
 
-CAS 使用三层认证体系，Agent runtime 通过 ticket 授权 Tool 访问 CAS：
+| 术语 | 含义 |
+|------|------|
+| **shard** | 用户命名空间（如 `usr_{userId}`），数据存储的分区 |
+| **scope** | Ticket 中的权限边界，CAS key 或 key 数组，代表可访问的 DAG 根节点 |
+
+---
+
+## 认证体系
+
+### 三层认证
 
 ```
 OAuth/Cognito → User Token → Agent Token → Ticket
 ```
 
-**Ticket 类型**：
+### 三种鉴权模式
 
-- `read` ticket：只读访问，需指定 `key`，有效期 1 小时
-- `write` ticket：写入访问，有效期 5 分钟
-
-**使用方式**：`Authorization: Ticket ${ticketId}`
+| 模式 | Header 格式 | 用途 |
+|------|-------------|------|
+| User Token | `Bearer ${token}` | 完整权限，用户直接操作 |
+| Agent Token | `Agent ${token}` | 可签发 Ticket，Agent Runtime 使用 |
+| Ticket | `Ticket ${id}` | 受限权限，Tool 使用 |
 
 ---
 
-## 核心设计决策
+## Ticket 设计
 
-### 现有流程 vs CAS 流程对比
+### Ticket 结构（DynamoDB Record）
 
-| 方面 | 现有（S3 Presigned URL） | CAS + Ticket |
-|------|--------------------------|--------------|
-| **认证方式** | Client 直接生成 presigned URL | Agent Runtime 生成 Ticket，Tool 使用 Ticket |
-| **输入读取** | presigned GET URL | read ticket（指定 key，1小时有效） |
-| **输出写入** | 预分配 presigned PUT URL | write ticket（5分钟有效），Tool 自行上传 |
-| **输出 URI 生成时机** | 调用前（预分配） | 调用后（Tool 上传后返回 key） |
-| **权限粒度** | URL 级别 | Ticket 级别（read/write 分离） |
+```typescript
+interface Ticket {
+  pk: string;              // "ticket#{id}"
+  type: "ticket";
+  createdAt: number;
+  expiresAt: number;
+  issuerId: string;        // 签发者 ID
+  shard: string;           // 用户命名空间（如 "usr_{userId}"）
+  
+  // 读权限：以这些 key 为根的 DAG 所有节点都可访问
+  scope: string | string[];  // 单个 key 或 key 数组
+  
+  // 写权限（单次写入，保证原子性）
+  writable?: boolean | {
+    quota?: number;        // 字节数限制
+    accept?: string[];     // root 节点允许的 MIME types
+  };
+  
+  // 写入结果（确保只写一次 + 记录结果）
+  written?: string;        // 已写入的 root key（写入失败时 revert）
+  
+  // Server 配置信息（只读，由 Server 填充）
+  config: {
+    chunkThreshold: number;  // 分片阈值（字节），Client 必须遵守
+  };
+}
+```
 
-### 输入 Blob 流程
+### 设计要点
 
-1. LLM 提供 `{ key: "sha256:...", contentType?: string }`
-2. Agent runtime（client-cas）生成 **read ticket**（指定 key）
-3. 将 ticket + CAS endpoint 传给 Tool
-4. Tool 使用 ticket 从 `GET /cas/{scope}/node/{key}` 读取内容
+1. **shard 是存储分区**：用户命名空间，数据物理存储的位置
+2. **scope 是权限边界**：CAS key 或 key 数组，代表可访问的 DAG 根节点
+3. **writable 表达写权限**：存在即有写权限，值可以是 `true` 或带配置的对象
+4. **written 保证原子性**：一个 Ticket 只能完成一次写操作，写入后记录 root key
+5. **写入失败时 revert**：如果上传过程失败，`written` 字段会被清除，Ticket 可重新使用
+6. **config 包含 Server 配置**：Client 从 Ticket 获取分片阈值等配置信息
 
-### 输出 Blob 流程
+---
 
-由于 CAS 的 key = hash(content)，**无法预分配 URL**。采用新模式：
+## CAS Server 配置
 
-1. Agent runtime 生成 **write ticket**
-2. 将 ticket + scope + endpoint 传给 Tool
-3. Tool 生成内容 → 计算 hash → 使用 ticket 上传到 CAS
-4. Tool 返回 `{ key: "sha256:...", contentType: string }`
-5. Agent runtime 返回 key 给 LLM
+### 配置类型
 
-**CAS API 端点**：
+```typescript
+interface CasServerConfig {
+  // 分片阈值（默认 1MB），Client 必须遵守
+  chunkThreshold: number;   // CAS_CHUNK_THRESHOLD=1048576
+  
+  // Collection children 上限（默认 10000）
+  maxCollectionChildren: number;  // CAS_MAX_COLLECTION_CHILDREN=10000
+  
+  // 单次请求最大 payload（默认 10MB）
+  maxPayloadSize: number;   // CAS_MAX_PAYLOAD_SIZE=10485760
+}
+```
 
-- `PUT /cas/{scope}/node/{key}` - 上传（需验证 hash 匹配）
-- `GET /cas/{scope}/node/{key}` - 读取
+### 配置查询 API
+
+```typescript
+// GET /cas/config - 获取 Server 配置（无需认证）
+interface CasConfigResponse {
+  chunkThreshold: number;      // 分片阈值（字节）
+  maxCollectionChildren: number;
+  maxPayloadSize: number;
+}
+```
+
+---
+
+## CAS 节点结构
+
+### 三级节点类型
+
+```typescript
+type NodeKind = "collection" | "file" | "chunk";
+```
+
+| 类型 | 说明 | 特点 |
+|------|------|------|
+| collection | 类似文件夹，命名结构 | 可递归，children 是 name → key 映射 |
+| file | 有 contentType 的内容节点 | 小文件直接存储，大文件引用 chunks |
+| chunk | B-tree 结构分片 | 可递归，确保每个节点不过大 |
+
+### 存储层视图：CasRawNode
+
+```typescript
+type CasRawNode = CasRawCollectionNode | CasRawFileNode | CasRawChunkNode;
+
+interface CasRawCollectionNode {
+  kind: "collection";
+  key: string;
+  size: number;
+  children: Record<string, string>;  // name → key（不展开）
+}
+
+interface CasRawFileNode {
+  kind: "file";
+  key: string;
+  size: number;
+  contentType: string;
+  chunks: string[];  // chunk keys（不合并）
+}
+
+interface CasRawChunkNode {
+  kind: "chunk";
+  key: string;
+  size: number;
+  parts?: string[];  // 子 chunks（B-tree 递归）
+}
+```
+
+### 应用层视图：CasNode
+
+```typescript
+type CasNode = CasCollectionNode | CasFileNode;
+
+interface CasCollectionNode {
+  kind: "collection";
+  key: string;
+  size: number;
+  children: Record<string, CasNode>;  // 递归展开
+}
+
+interface CasFileNode {
+  kind: "file";
+  key: string;
+  size: number;
+  contentType: string;
+  // 注意：没有 content 字段！通过 openFile() 流式读取
+}
+```
+
+### 设计优势
+
+- **contentType 内置**：无需参数传递，GET 时自动返回
+- **无需 blob 标记**：Tool schema 中直接使用 `z.string()` 表示 CAS key
+- **大文件友好**：Client 端分片，流式读写
+
+---
+
+## 分片策略
+
+### Client 端分片
+
+**重要**：分片由 Client 端完成，Server 不自动分片。
+
+```typescript
+// Client 分片逻辑
+class CasClient {
+  async putFile(content: Buffer | Readable, contentType: string): Promise<string> {
+    const threshold = this.config.chunkThreshold;  // 从 Ticket 获取
+    
+    if (content.length <= threshold) {
+      // 小文件：直接上传
+      return this.uploadSingleChunk(content, contentType);
+    } else {
+      // 大文件：分片后上传
+      const chunks = await this.splitIntoChunks(content, threshold);
+      const chunkKeys = await Promise.all(
+        chunks.map(chunk => this.uploadChunk(chunk))
+      );
+      return this.uploadFileNode(chunkKeys, contentType);
+    }
+  }
+}
+```
+
+### 分片阈值来源
+
+1. **Ticket 中包含**：创建 Ticket 时，Server 自动填充 `config.chunkThreshold`
+2. **配置 API 查询**：Client 也可以通过 `GET /cas/config` 获取
+3. **默认值**：1MB (1048576 bytes)
+
+---
+
+## CAS Client
+
+### 配置与构造
+
+```typescript
+type CasAuth = 
+  | { type: "user"; token: string }
+  | { type: "agent"; token: string }
+  | { type: "ticket"; id: string };
+
+interface CasClientConfig {
+  endpoint: string;
+  auth: CasAuth;
+  storage?: LocalStorageProvider;  // 本地缓存（可选）
+  chunkThreshold?: number;         // 可覆盖，默认从 Server 获取
+}
+
+class CasClient {
+  constructor(config: CasClientConfig);
+  
+  // 便捷构造方法
+  static fromUserToken(endpoint: string, token: string): CasClient;
+  static fromAgentToken(endpoint: string, token: string): CasClient;
+  static fromTicket(endpoint: string, ticketId: string): CasClient;
+  static fromContext(context: CasBlobContext, storage?: LocalStorageProvider): CasClient;
+}
+```
+
+### 读取 API
+
+```typescript
+class CasClient {
+  // 获取节点结构（应用层视图，不含内容）
+  getNode(key: string): Promise<CasNode>;
+  
+  // 获取原始节点（存储层视图，暴露 chunks）
+  getRawNode(key: string): Promise<CasRawNode>;
+  
+  // 打开文件，获取 handle（用于流式读取）
+  openFile(key: string): Promise<CasFileHandle>;
+  
+  // 获取 chunk 数据流（带缓存）
+  getChunkStream(key: string): Promise<Readable>;
+}
+```
+
+### 文件 Handle（流式读取）
+
+```typescript
+interface CasFileHandle {
+  readonly key: string;
+  readonly size: number;
+  readonly contentType: string;
+
+  // 流式读取完整内容
+  stream(): Promise<Readable>;
+
+  // 读取完整内容到 Buffer（小文件便捷方法）
+  buffer(): Promise<Buffer>;
+
+  // 范围读取（支持 seek，适用于视频等）
+  slice(start: number, end: number): Promise<Readable>;
+}
+```
+
+### 写入 API
+
+```typescript
+class CasClient {
+  // 上传单个文件（支持 Buffer 或 Readable）
+  putFile(content: Buffer | Readable, contentType: string): Promise<string>;
+  
+  // 上传 Collection（通过 callback 遍历虚拟文件系统）
+  putCollection(resolver: PathResolver): Promise<string>;
+}
+
+// 路径解析结果
+type PathResolution = 
+  | { type: "file"; content: Buffer | Readable | (() => Readable); contentType: string }
+  | { type: "collection"; children: string[] }
+  | { type: "link"; target: string }  // hard link 到已有 key
+  | null;
+
+// 路径解析器
+type PathResolver = (path: string) => Promise<PathResolution>;
+```
+
+---
+
+## 本地缓存 Provider
+
+```typescript
+interface LocalStorageProvider {
+  // 检查节点是否已缓存
+  has(key: string): Promise<boolean>;
+  
+  // 获取缓存的原始节点元数据
+  getMeta(key: string): Promise<CasRawNode | null>;
+  
+  // 获取 chunk 数据（流式）
+  getChunkStream(key: string): Promise<Readable | null>;
+  
+  // 写入节点元数据
+  putMeta(key: string, node: CasRawNode): Promise<void>;
+  
+  // 写入 chunk 数据（流式）
+  putChunkStream(key: string): Writable;
+  
+  // 清理缓存（可选）
+  prune?(options?: { maxSize?: number; maxAge?: number }): Promise<void>;
+}
+
+// 文件系统实现
+class FileSystemStorageProvider implements LocalStorageProvider {
+  constructor(cacheDir: string);
+}
+```
+
+---
+
+## Tool Context
+
+```typescript
+// _casBlobContext 结构，与 Ticket 权限一致
+interface CasBlobContext {
+  ticket: string;           // Ticket ID
+  endpoint: string;         // CAS API endpoint
+  expiresAt: string;        // ISO 8601
+  shard: string;            // 用户命名空间
+  
+  // 权限信息（镜像 Ticket）
+  scope: string | string[];
+  writable: false | true | {
+    quota?: number;
+    accept?: string[];
+  };
+  
+  // Server 配置
+  config: {
+    chunkThreshold: number;
+  };
+}
+```
+
+---
+
+## CAS API 端点
+
+### 配置端点
+
+```typescript
+// GET /cas/config - 获取 Server 配置（无需认证）
+// Response: CasConfigResponse
+```
+
+### 认证端点
+
+```typescript
+// POST /auth/ticket - 创建 Ticket（需要 User/Agent Token）
+interface CreateTicketRequest {
+  scope: string | string[];  // 可访问的 DAG 根节点
+  writable?: boolean | {
+    quota?: number;
+    accept?: string[];
+  };
+  expiresIn?: number;        // 秒，默认 3600
+}
+
+interface CreateTicketResponse {
+  id: string;
+  expiresAt: string;
+  shard: string;
+  scope: string | string[];
+  writable: boolean | { quota?: number; accept?: string[] };
+  config: {
+    chunkThreshold: number;
+  };
+}
+```
+
+### 节点端点
+
+```typescript
+// GET /cas/{shard}/node/{key} - 获取应用层节点
+// Response: CasNode（collection 展开 children，file 不含 content）
+
+// GET /cas/{shard}/raw/{key} - 获取存储层节点
+// Response: CasRawNode（暴露 chunks 结构）
+
+// GET /cas/{shard}/chunk/{key} - 获取 chunk 原始数据
+// Response: Binary data（流式）
+
+// PUT /cas/{shard}/chunk/{key} - 上传 chunk（Client 分片后调用）
+// Request: Binary data
+// Response: { key: string, size: number }
+
+// PUT /cas/{shard}/file - 上传 file 节点（引用已上传的 chunks）
+// Request: { chunks: string[], contentType: string }
+// Response: { key: string }
+
+// PUT /cas/{shard}/collection - 上传 collection 节点
+// Request: { children: Record<string, string> }
+// Response: { key: string }
+```
+
+---
+
+## 使用示例
+
+### Tool 中处理图片
+
+```typescript
+const imageProcessor = defineTool({
+  input: z.object({ image: z.string() }),  // CAS key，无需特殊标记
+  output: z.object({ result: z.string() }), // CAS key
+  handler: async (input, context) => {
+    const cas = CasClient.fromContext(context.cas);
+    
+    // 流式读取（自动合并 chunks）
+    const handle = await cas.openFile(input.image);
+    const inputStream = await handle.stream();
+    
+    // 流式处理
+    const outputStream = inputStream.pipe(sharp().resize(800, 600));
+    
+    // 流式上传
+    const resultKey = await cas.putFile(outputStream, "image/png");
+    
+    return { result: resultKey };
+  },
+});
+```
+
+### 上传多文件结果
+
+```typescript
+const resultKey = await cas.putCollection(async (path) => {
+  if (path === "/") {
+    return { type: "collection", children: ["image.png", "metadata.json"] };
+  }
+  if (path === "/image.png") {
+    return { type: "file", content: imageBuffer, contentType: "image/png" };
+  }
+  if (path === "/metadata.json") {
+    return { type: "file", content: jsonBuffer, contentType: "application/json" };
+  }
+  return null;
+});
+```
+
+### 使用 Hard Link
+
+```typescript
+const resultKey = await cas.putCollection(async (path) => {
+  if (path === "/") {
+    return { type: "collection", children: ["original.png", "copy.png"] };
+  }
+  if (path === "/original.png") {
+    return { type: "file", content: buffer, contentType: "image/png" };
+  }
+  if (path === "/copy.png") {
+    // Hard link 到已有节点，避免重复存储
+    return { type: "link", target: "sha256:abc123..." };
+  }
+  return null;
+});
+```
 
 ---
 
 ## 包结构
 
-### `packages/core-cas/`
-
 ```
-core-cas/
-├── package.json
-├── index.ts
-└── src/
-    ├── types.ts              # CAS 专用类型
-    ├── blob.ts               # CAS blob 定义函数
-    ├── tool-registry.ts      # 支持 CAS blob 的注册表
-    ├── http-handler.ts       # MCP 处理器
-    └── agent-web-portal.ts   # Portal 构建器
+packages/
+├── cas-stack/              # CAS Server（更新）
+│   └── src/
+│       ├── types.ts        # 更新 Ticket 结构，scope → shard
+│       ├── cas/
+│       │   └── storage.ts  # 节点存储
+│       └── router.ts       # API 端点
+│
+├── cas-client/             # 新包：CAS Client
+│   ├── package.json
+│   ├── index.ts
+│   └── src/
+│       ├── client.ts       # CasClient 类
+│       ├── chunker.ts      # Client 端分片逻辑
+│       ├── file-handle.ts  # CasFileHandle 实现
+│       ├── storage.ts      # LocalStorageProvider
+│       └── types.ts
 ```
-
-### `packages/client-cas/`
-
-```
-client-cas/
-├── package.json
-├── index.ts
-└── src/
-    ├── client.ts             # CAS 版 AwpClient
-    ├── cas-interceptor.ts    # CAS blob 转换拦截器
-    ├── cas-provider.ts       # CAS 存储提供者
-    └── types.ts              # 客户端类型
-```
-
----
-
-## 关键类型定义
-
-### LLM-facing 类型（LLM 看到的格式）
-
-```typescript
-// 输入 blob 值（LLM 提供）
-interface LlmCasInputBlobValue {
-  key: string;           // "sha256:..."
-  contentType?: string;
-}
-
-// 输出 blob 参数（LLM 提供，可选）
-interface LlmCasOutputBlobInput {
-  accept?: string;       // 期望的 MIME 类型
-}
-
-// 输出 blob 结果（LLM 收到）
-interface LlmCasOutputBlobResult {
-  key: string;           // "sha256:..." (上传后的 CAS key)
-  contentType?: string;
-}
-```
-
-### Tool-facing 类型（Tool 看到的格式）
-
-```typescript
-// Ticket 信息
-interface TicketInfo {
-  id: string;            // ticket ID
-  type: "read" | "write";
-  expiresAt: string;     // ISO 时间
-}
-
-// 输入 blob 值（Tool 接收）
-interface ToolCasInputBlobValue {
-  key: string;           // CAS key
-  ticket: TicketInfo;    // read ticket
-  endpoint: string;      // CAS API endpoint
-  scope: string;
-  contentType?: string;
-}
-
-// 输出 blob 上下文（Tool 接收）
-interface ToolCasOutputBlobContext {
-  ticket: TicketInfo;    // write ticket
-  endpoint: string;      // CAS API endpoint
-  scope: string;
-  accept?: string;
-}
-
-// 输出 blob 结果（Tool 返回）
-interface ToolCasOutputBlobResult {
-  key: string;           // 上传后的 CAS key
-  contentType: string;
-}
-
-// Tool Handler 接收的完整 context
-interface CasBlobHandlerContext {
-  blobs: {
-    input: Record<string, ToolCasInputBlobValue>;
-    output: Record<string, ToolCasOutputBlobContext>;
-  };
-}
-```
-
-### client-cas 类型
-
-```typescript
-// CAS 客户端配置
-interface CasClientConfig {
-  endpoint: string;      // CAS API base URL
-  scope: string;         // 用户 scope (如 "usr_{userId}")
-  token: string;         // Agent token (用于生成 ticket)
-}
-
-// CAS 存储提供者接口
-interface CasStorageProvider {
-  // 生成 read ticket
-  createReadTicket(key: string): Promise<TicketInfo>;
-  
-  // 生成 write ticket  
-  createWriteTicket(): Promise<TicketInfo>;
-  
-  // 使用 ticket 读取 blob
-  getWithTicket(key: string, ticket: TicketInfo): Promise<{ content: Buffer; contentType: string }>;
-  
-  // 使用 ticket 上传 blob（计算 hash 并上传）
-  uploadWithTicket(content: Buffer, contentType: string, ticket: TicketInfo): Promise<string>;
-}
-```
-
----
-
-## 实现步骤
-
-### 第一阶段：core-cas 包
-
-1. **创建包结构**
-   - `package.json`（依赖 zod）
-   - `tsconfig.json`
-   - `index.ts`（导出入口）
-
-2. **定义类型**（参考 `packages/core/src/types.ts`）
-   - LLM-facing 类型：`LlmCasInputBlobValue`, `LlmCasOutputBlobResult`
-   - Tool-facing 类型：`ToolCasInputBlobValue`, `ToolCasOutputBlobContext`, `ToolCasOutputBlobResult`
-   - Handler context：`CasBlobHandlerContext`
-
-3. **实现 blob 函数**（参考 `packages/core/src/blob.ts`）
-   - `inputBlob(options)` - 创建输入 blob schema
-   - `outputBlob(options)` - 创建输出 blob schema
-   - 提取和解析函数
-
-4. **实现 ToolRegistry**
-   - 注册工具时提取 blob 字段
-   - 调用时验证 `_casBlobContext` 存在
-   - 将 ticket 信息注入 handler context
-
-5. **实现 HttpHandler 和 Portal Builder**
-   - 支持 `_casBlobContext` 参数
-   - MCP 协议兼容
-
-### 第二阶段：client-cas 包
-
-1. **创建包结构**
-   - `package.json`
-   - `tsconfig.json`
-   - `index.ts`
-
-2. **实现 CasStorageProvider**（参考 CAS API：`packages/cas-stack/src/router.ts`）
-   - `createReadTicket(key)` - 调用 `POST /auth/ticket { type: "read", key }`
-   - `createWriteTicket()` - 调用 `POST /auth/ticket { type: "write" }`
-   - `getWithTicket(key, ticket)` - 调用 `GET /cas/{scope}/node/{key}`
-   - `uploadWithTicket(content, contentType, ticket)` - 计算 hash + 调用 `PUT /cas/{scope}/node/{key}`
-
-3. **实现 CasBlobInterceptor**
-   - **输入转换**：
-     - LLM 提供 `{ key, contentType? }`
-     - 生成 read ticket
-     - 构建 `ToolCasInputBlobValue`
-   - **输出处理**：
-     - 生成 write ticket
-     - 构建 `ToolCasOutputBlobContext`
-     - Tool 返回 `{ key, contentType }` 后直接透传给 LLM
-
-4. **实现 AwpClient（CAS 版本）**
-   - 初始化时接收 `CasClientConfig`
-   - `callTool()` 时自动处理 blob ticket 生成
-
-### 第三阶段：测试和文档
-
-1. 添加单元测试（blob 解析、ticket 生成、上传流程）
-2. 创建示例 Portal（处理图片的工具）
-3. 更新文档
-
----
-
-## 关键实现参考
-
-- 现有 blob 处理：`packages/core/src/blob.ts`
-- 现有 interceptor：`packages/client/src/blob-interceptor.ts`
-- CAS API 路由：`packages/cas-stack/src/router.ts`
-- CAS 存储实现：`packages/cas-stack/src/cas/storage.ts`
-- Ticket 类型定义：`packages/cas-stack/src/types.ts`
-- Ticket 数据库：`packages/cas-stack/src/db/tokens.ts`
-- 认证中间件：`packages/cas-stack/src/middleware/auth.ts`
 
 ---
 
@@ -275,39 +531,76 @@ interface CasStorageProvider {
 ```mermaid
 sequenceDiagram
     participant LLM
-    participant AgentRuntime as Agent Runtime<br/>(client-cas)
+    participant Runtime as Agent Runtime
     participant Tool
-    participant CAS as CAS API
+    participant CAS
 
-    Note over AgentRuntime: 预先已获得用户授权的 Agent Token
-
-    LLM->>AgentRuntime: callTool(input_blob: {key: "sha256:abc"})
+    LLM->>Runtime: callTool({image: "sha256:abc"})
     
-    rect rgb(240, 248, 255)
-        Note over AgentRuntime: 输入 Blob 处理
-        AgentRuntime->>CAS: POST /auth/ticket {type: "read", key: "sha256:abc"}
-        CAS-->>AgentRuntime: {id: "tkt_xxx", expiresAt: ...}
-    end
+    Note over Runtime: 分析参数，生成单一 Ticket
+    Runtime->>CAS: POST /auth/ticket<br/>{scope: "sha256:abc", writable: {accept: ["image/*"]}}
+    CAS-->>Runtime: {id: "tkt_xxx", shard: "usr_123", config: {chunkThreshold: 1048576}, ...}
 
-    rect rgb(255, 248, 240)
-        Note over AgentRuntime: 输出 Blob 处理
-        AgentRuntime->>CAS: POST /auth/ticket {type: "write"}
-        CAS-->>AgentRuntime: {id: "tkt_yyy", expiresAt: ...}
-    end
+    Runtime->>Tool: args: {image: "sha256:abc"}<br/>_casBlobContext: {ticket, endpoint, shard, scope, writable, config}
 
-    AgentRuntime->>Tool: tools/call + _casBlobContext
-    Note over Tool: context.blobs.input.image = {key, ticket, endpoint, scope}
-    Note over Tool: context.blobs.output.result = {ticket, endpoint, scope}
+    Note over Tool: const cas = CasClient.fromContext(context.cas)
+    Note over Tool: const handle = await cas.openFile(input.image)
+    
+    Tool->>CAS: GET /cas/usr_123/raw/sha256:abc
+    CAS-->>Tool: {kind: "file", contentType: "image/png", chunks: [...]}
+    
+    Tool->>CAS: GET /cas/usr_123/chunk/sha256:chunk1 (流式)
+    CAS-->>Tool: [streaming data]
+    
+    Note over Tool: 流式处理图片...
+    Note over Tool: Client 端分片（如果超过 chunkThreshold）
 
-    Tool->>CAS: GET /cas/{scope}/node/sha256:abc<br/>Authorization: Ticket tkt_xxx
-    CAS-->>Tool: [binary content]
+    Tool->>CAS: PUT /cas/usr_123/chunk/sha256:c1 (分片1)
+    Tool->>CAS: PUT /cas/usr_123/chunk/sha256:c2 (分片2)
+    Tool->>CAS: PUT /cas/usr_123/file {chunks: [...], contentType: "image/png"}
+    Note over CAS: 标记 ticket.written = "sha256:def"
+    CAS-->>Tool: {key: "sha256:def"}
 
-    Note over Tool: 处理内容，生成结果
-
-    Tool->>Tool: computeHash(result) → sha256:def
-    Tool->>CAS: PUT /cas/{scope}/node/sha256:def<br/>Authorization: Ticket tkt_yyy
-    CAS-->>Tool: {key: "sha256:def", size: ...}
-
-    Tool-->>AgentRuntime: {result: {key: "sha256:def", contentType: "image/png"}}
-    AgentRuntime-->>LLM: {result: {key: "sha256:def", contentType: "image/png"}}
+    Tool-->>Runtime: {result: "sha256:def"}
+    Runtime-->>LLM: {result: "sha256:def"}
 ```
+
+---
+
+## 写入原子性
+
+### 成功流程
+1. Client 上传所有 chunks
+2. Client 上传 file/collection 节点
+3. Server 标记 `ticket.written = rootKey`
+4. 返回成功
+
+### 失败处理
+1. 如果任何步骤失败，Client 可以重试
+2. `ticket.written` 只有在最终节点成功后才设置
+3. 孤立的 chunks 可以通过 GC 清理（基于 ownership 追踪）
+
+---
+
+## 设计总结
+
+| 方面 | 设计 |
+|------|------|
+| **术语** | shard = 用户命名空间，scope = 权限边界（DAG 根） |
+| **Ticket** | 包含 shard + scope + writable + config，written 保证原子性 |
+| **分片** | **Client 端分片**，阈值从 Ticket/API 获取 |
+| **节点结构** | collection/file/chunk 三级，contentType 内置 |
+| **Schema** | 无需 blob 标记，直接用 string 表示 CAS key |
+| **读取** | getNode() + getRawNode() + openFile()，流式读取 |
+| **写入** | putFile() + putCollection(callback)，Client 分片后上传 |
+| **缓存** | LocalStorageProvider，基于 hash 天然去重 |
+| **失败恢复** | 写入失败可重试，Ticket 不消费 |
+
+---
+
+## 关键实现参考
+
+- CAS API 路由：`packages/cas-stack/src/router.ts`
+- CAS 存储实现：`packages/cas-stack/src/cas/storage.ts`
+- Ticket 类型定义：`packages/cas-stack/src/types.ts`
+- 认证中间件：`packages/cas-stack/src/middleware/auth.ts`

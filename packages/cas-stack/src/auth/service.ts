@@ -3,11 +3,12 @@
  */
 
 import {
-  AdminInitiateAuthCommand,
   CognitoIdentityProviderClient,
   InitiateAuthCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
+import { TokensDb } from "../db/index.ts";
 import type {
+  AuthContext,
   CasConfig,
   CreateTicketRequest,
   CreateTicketResponse,
@@ -15,25 +16,18 @@ import type {
   LoginResponse,
   RefreshRequest,
   RefreshResponse,
-  AuthContext,
 } from "../types.ts";
-import { TokensDb } from "../db/index.ts";
+import { loadServerConfig } from "../types.ts";
 
 export class AuthService {
   private cognito: CognitoIdentityProviderClient;
   private tokensDb: TokensDb;
   private config: CasConfig;
 
-  constructor(
-    config: CasConfig,
-    tokensDb?: TokensDb,
-    cognito?: CognitoIdentityProviderClient
-  ) {
+  constructor(config: CasConfig, tokensDb?: TokensDb, cognito?: CognitoIdentityProviderClient) {
     this.config = config;
     this.tokensDb = tokensDb ?? new TokensDb(config);
-    this.cognito =
-      cognito ??
-      new CognitoIdentityProviderClient({ region: config.cognitoRegion });
+    this.cognito = cognito ?? new CognitoIdentityProviderClient({ region: config.cognitoRegion });
   }
 
   /**
@@ -55,8 +49,7 @@ export class AuthService {
       throw new Error("Authentication failed");
     }
 
-    const { AccessToken, RefreshToken, ExpiresIn } =
-      authResult.AuthenticationResult;
+    const { AccessToken, RefreshToken, ExpiresIn } = authResult.AuthenticationResult;
 
     if (!AccessToken || !RefreshToken) {
       throw new Error("Missing tokens in auth response");
@@ -69,11 +62,7 @@ export class AuthService {
     const name = payload.name as string | undefined;
 
     // Create our own user token for API access
-    const userToken = await this.tokensDb.createUserToken(
-      userId,
-      RefreshToken,
-      ExpiresIn ?? 3600
-    );
+    const userToken = await this.tokensDb.createUserToken(userId, RefreshToken, ExpiresIn ?? 3600);
 
     const tokenId = TokensDb.extractTokenId(userToken.pk);
 
@@ -143,28 +132,29 @@ export class AuthService {
       throw new Error("Not authorized to issue tickets");
     }
 
-    // Read tickets require a key
-    if (request.type === "read" && !request.key) {
-      throw new Error("Read tickets require a key");
-    }
-
     const issuerId = TokensDb.extractTokenId(auth.token.pk);
+    const serverConfig = loadServerConfig();
 
     const ticket = await this.tokensDb.createTicket(
-      auth.scope,
+      auth.shard,
       issuerId,
-      request.type,
-      request.key,
-      request.expiresIn
+      request.scope,
+      serverConfig,
+      {
+        writable: request.writable,
+        expiresIn: request.expiresIn,
+      }
     );
 
     const ticketId = TokensDb.extractTokenId(ticket.pk);
 
     return {
       id: ticketId,
-      type: ticket.ticketType,
-      key: ticket.key,
       expiresAt: new Date(ticket.expiresAt).toISOString(),
+      shard: ticket.shard,
+      scope: ticket.scope,
+      writable: ticket.writable ?? false,
+      config: ticket.config,
     };
   }
 
@@ -173,10 +163,7 @@ export class AuthService {
    */
   async revokeTicket(auth: AuthContext, ticketId: string): Promise<void> {
     // Verify the ticket was issued by this user or their agent
-    const isOwner = await this.tokensDb.verifyTokenOwnership(
-      ticketId,
-      auth.userId
-    );
+    const isOwner = await this.tokensDb.verifyTokenOwnership(ticketId, auth.userId);
     if (!isOwner) {
       throw new Error("Ticket not found or access denied");
     }

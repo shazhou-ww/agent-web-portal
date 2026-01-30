@@ -2,19 +2,21 @@
  * CAS Stack - Database Operations for Tokens
  */
 
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
-  QueryCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type {
   CasConfig,
+  CasServerConfig,
   Ticket,
   Token,
   UserToken,
+  WritableConfig,
 } from "../types.ts";
 
 // ============================================================================
@@ -107,30 +109,35 @@ export class TokensDb {
   }
 
   /**
-   * Create a ticket
+   * Create a ticket with new structure
    */
   async createTicket(
-    scope: string,
+    shard: string,
     issuerId: string,
-    ticketType: "read" | "write",
-    key?: string,
-    expiresIn?: number
+    scope: string | string[],
+    serverConfig: CasServerConfig,
+    options?: {
+      writable?: WritableConfig;
+      expiresIn?: number;
+    }
   ): Promise<Ticket> {
     const ticketId = generateTicketId();
     const now = Date.now();
-    // Default: read tickets last 1 hour, write tickets last 5 minutes
-    const defaultExpiry = ticketType === "read" ? 3600 : 300;
-    const expiresAt = now + (expiresIn ?? defaultExpiry) * 1000;
+    const expiresIn = options?.expiresIn ?? 3600; // default 1 hour
+    const expiresAt = now + expiresIn * 1000;
 
     const ticket: Ticket = {
       pk: `token#${ticketId}`,
       type: "ticket",
-      scope,
+      shard,
       issuerId,
-      ticketType,
-      key,
+      scope,
+      writable: options?.writable,
       createdAt: now,
       expiresAt,
+      config: {
+        chunkThreshold: serverConfig.chunkThreshold,
+      },
     };
 
     await this.client.send(
@@ -141,6 +148,50 @@ export class TokensDb {
     );
 
     return ticket;
+  }
+
+  /**
+   * Mark ticket as written (atomic operation)
+   * Returns true if successful, false if already written
+   */
+  async markTicketWritten(ticketId: string, rootKey: string): Promise<boolean> {
+    try {
+      await this.client.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: { pk: `token#${ticketId}` },
+          UpdateExpression: "SET written = :rootKey",
+          ConditionExpression: "attribute_not_exists(written)",
+          ExpressionAttributeValues: {
+            ":rootKey": rootKey,
+          },
+        })
+      );
+      return true;
+    } catch (error: unknown) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "name" in error &&
+        error.name === "ConditionalCheckFailedException"
+      ) {
+        return false; // Already written
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Revert ticket write status (for failed uploads)
+   */
+  async revertTicketWrite(ticketId: string): Promise<void> {
+    await this.client.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: { pk: `token#${ticketId}` },
+        UpdateExpression: "REMOVE written",
+      })
+    );
   }
 
   /**
@@ -158,10 +209,7 @@ export class TokensDb {
   /**
    * Verify token belongs to user (for revocation)
    */
-  async verifyTokenOwnership(
-    tokenId: string,
-    userId: string
-  ): Promise<boolean> {
+  async verifyTokenOwnership(tokenId: string, userId: string): Promise<boolean> {
     const token = await this.getToken(tokenId);
     if (!token) return false;
 

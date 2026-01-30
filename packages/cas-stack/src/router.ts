@@ -2,13 +2,20 @@
  * CAS Stack - HTTP Router
  */
 
-import type { HttpRequest, HttpResponse, CasConfig, AuthContext } from "./types.ts";
-import { AuthMiddleware } from "./middleware/auth.ts";
+import { generateVerificationCode } from "@agent-web-portal/auth";
+import { z } from "zod";
 import { AuthService } from "./auth/service.ts";
 import { CasStorage } from "./cas/storage.ts";
-import { TokensDb, OwnershipDb, DagDb, AwpPendingAuthStore, AwpPubkeyStore } from "./db/index.ts";
-import { handleAuthInit, handleAuthStatus, generateVerificationCode } from "@agent-web-portal/auth";
-import { z } from "zod";
+import { AwpPendingAuthStore, AwpPubkeyStore, OwnershipDb, TokensDb } from "./db/index.ts";
+import { AuthMiddleware } from "./middleware/auth.ts";
+import type {
+  AuthContext,
+  CasConfig,
+  CasConfigResponse,
+  HttpRequest,
+  HttpResponse,
+} from "./types.ts";
+import { loadServerConfig } from "./types.ts";
 
 // ============================================================================
 // Request Validation Schemas
@@ -33,9 +40,18 @@ const AwpAuthCompleteSchema = z.object({
   verification_code: z.string().min(1),
 });
 
+// New CreateTicketSchema with updated structure
 const CreateTicketSchema = z.object({
-  type: z.enum(["read", "write"]),
-  key: z.string().optional(),
+  scope: z.union([z.string(), z.array(z.string())]),
+  writable: z
+    .union([
+      z.boolean(),
+      z.object({
+        quota: z.number().positive().optional(),
+        accept: z.array(z.string()).optional(),
+      }),
+    ])
+    .optional(),
   expiresIn: z.number().positive().optional(),
 });
 
@@ -44,13 +60,24 @@ const ResolveSchema = z.object({
   nodes: z.array(z.string()),
 });
 
+// New schemas for CAS node operations
+const PutFileSchema = z.object({
+  chunks: z.array(z.string()),
+  contentType: z.string(),
+});
+
+const PutCollectionSchema = z.object({
+  children: z.record(z.string()),
+});
+
 // ============================================================================
 // Response Helpers
 // ============================================================================
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature",
+  "Access-Control-Allow-Headers":
+    "Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
 };
 
@@ -65,11 +92,7 @@ function jsonResponse(status: number, body: unknown): HttpResponse {
   };
 }
 
-function binaryResponse(
-  content: Buffer,
-  contentType: string,
-  casKey?: string
-): HttpResponse {
+function binaryResponse(content: Buffer, contentType: string, casKey?: string): HttpResponse {
   return {
     statusCode: 200,
     headers: {
@@ -98,7 +121,6 @@ export class Router {
   private casStorage: CasStorage;
   private tokensDb: TokensDb;
   private ownershipDb: OwnershipDb;
-  private dagDb: DagDb;
   private awpPendingStore: AwpPendingAuthStore;
   private awpPubkeyStore: AwpPubkeyStore;
 
@@ -106,7 +128,6 @@ export class Router {
     this.config = config;
     this.tokensDb = new TokensDb(config);
     this.ownershipDb = new OwnershipDb(config);
-    this.dagDb = new DagDb(config);
     this.awpPendingStore = new AwpPendingAuthStore(config);
     this.awpPubkeyStore = new AwpPubkeyStore(config);
     this.authMiddleware = new AuthMiddleware(config, this.tokensDb, this.awpPubkeyStore);
@@ -127,6 +148,11 @@ export class Router {
     }
 
     try {
+      // Config endpoint (no auth required)
+      if (req.path === "/cas/config" && req.method === "GET") {
+        return this.handleGetConfig();
+      }
+
       // Auth routes (no auth required for some)
       if (req.path.startsWith("/auth/")) {
         return this.handleAuth(req);
@@ -147,6 +173,20 @@ export class Router {
       console.error("Router error:", error);
       return errorResponse(500, error.message ?? "Internal server error");
     }
+  }
+
+  // ============================================================================
+  // Config Route
+  // ============================================================================
+
+  private handleGetConfig(): HttpResponse {
+    const serverConfig = loadServerConfig();
+    const response: CasConfigResponse = {
+      chunkThreshold: serverConfig.chunkThreshold,
+      maxCollectionChildren: serverConfig.maxCollectionChildren,
+      maxPayloadSize: serverConfig.maxPayloadSize,
+    };
+    return jsonResponse(200, response);
   }
 
   // ============================================================================
@@ -350,15 +390,34 @@ export class Router {
       }
 
       try {
-        const result = await this.authService.createTicket(auth, parsed.data);
-        return jsonResponse(201, result);
+        const serverConfig = loadServerConfig();
+        const ticket = await this.tokensDb.createTicket(
+          auth.shard,
+          TokensDb.extractTokenId(auth.token.pk),
+          parsed.data.scope,
+          serverConfig,
+          {
+            writable: parsed.data.writable,
+            expiresIn: parsed.data.expiresIn,
+          }
+        );
+
+        const ticketId = TokensDb.extractTokenId(ticket.pk);
+        return jsonResponse(201, {
+          id: ticketId,
+          expiresAt: new Date(ticket.expiresAt).toISOString(),
+          shard: ticket.shard,
+          scope: ticket.scope,
+          writable: ticket.writable ?? false,
+          config: ticket.config,
+        });
       } catch (error: any) {
         return errorResponse(403, error.message ?? "Cannot create ticket");
       }
     }
 
     // DELETE /auth/ticket/:id
-    const ticketMatch = path.match(/^\/ticket\/([^\/]+)$/);
+    const ticketMatch = path.match(/^\/ticket\/([^/]+)$/);
     if (req.method === "DELETE" && ticketMatch) {
       const ticketId = ticketMatch[1]!;
       try {
@@ -377,13 +436,13 @@ export class Router {
   // ============================================================================
 
   private async handleCas(req: HttpRequest): Promise<HttpResponse> {
-    // Parse path: /cas/{scope}/...
-    const casMatch = req.path.match(/^\/cas\/([^\/]+)(.*)$/);
+    // Parse path: /cas/{shard}/...
+    const casMatch = req.path.match(/^\/cas\/([^/]+)(.*)$/);
     if (!casMatch) {
       return errorResponse(404, "Invalid CAS path");
     }
 
-    const requestedScope = casMatch[1]!;
+    const requestedShard = casMatch[1]!;
     const subPath = casMatch[2] ?? "";
 
     // Authenticate
@@ -392,53 +451,84 @@ export class Router {
       return errorResponse(401, "Unauthorized");
     }
 
-    // Check scope access
-    if (!this.authMiddleware.checkScopeAccess(auth, requestedScope)) {
-      return errorResponse(403, "Access denied to this scope");
+    // Check shard access
+    if (!this.authMiddleware.checkShardAccess(auth, requestedShard)) {
+      return errorResponse(403, "Access denied to this shard");
     }
 
-    const scope = this.authMiddleware.resolveScope(auth, requestedScope);
+    const shard = this.authMiddleware.resolveShard(auth, requestedShard);
 
-    // POST /cas/{scope}/resolve
+    // POST /cas/{shard}/resolve
     if (req.method === "POST" && subPath === "/resolve") {
-      return this.handleResolve(auth, scope, req);
+      return this.handleResolve(auth, shard, req);
     }
 
-    // PUT /cas/{scope}/node/:key
-    const putNodeMatch = subPath.match(/^\/node\/(.+)$/);
-    if (req.method === "PUT" && putNodeMatch) {
-      const key = decodeURIComponent(putNodeMatch[1]!);
-      return this.handlePutNode(auth, scope, key, req);
+    // GET /cas/{shard}/nodes - List all nodes
+    if (req.method === "GET" && subPath === "/nodes") {
+      return this.handleListNodes(auth, shard, req);
     }
 
-    // GET /cas/{scope}/node/:key
+    // PUT /cas/{shard}/chunk/:key - Upload chunk (client-side chunking)
+    const putChunkMatch = subPath.match(/^\/chunk\/(.+)$/);
+    if (req.method === "PUT" && putChunkMatch) {
+      const key = decodeURIComponent(putChunkMatch[1]!);
+      return this.handlePutChunk(auth, shard, key, req);
+    }
+
+    // GET /cas/{shard}/chunk/:key - Get chunk data
+    const getChunkMatch = subPath.match(/^\/chunk\/(.+)$/);
+    if (req.method === "GET" && getChunkMatch) {
+      const key = decodeURIComponent(getChunkMatch[1]!);
+      return this.handleGetChunk(auth, shard, key);
+    }
+
+    // PUT /cas/{shard}/file - Upload file node (references chunks)
+    if (req.method === "PUT" && subPath === "/file") {
+      return this.handlePutFile(auth, shard, req);
+    }
+
+    // PUT /cas/{shard}/collection - Upload collection node
+    if (req.method === "PUT" && subPath === "/collection") {
+      return this.handlePutCollection(auth, shard, req);
+    }
+
+    // GET /cas/{shard}/node/:key - Get application layer node
     const getNodeMatch = subPath.match(/^\/node\/(.+)$/);
     if (req.method === "GET" && getNodeMatch) {
       const key = decodeURIComponent(getNodeMatch[1]!);
-      return this.handleGetNode(auth, scope, key);
+      return this.handleGetNode(auth, shard, key);
     }
 
-    // GET /cas/{scope}/dag/:key
+    // GET /cas/{shard}/raw/:key - Get storage layer node
+    const getRawMatch = subPath.match(/^\/raw\/(.+)$/);
+    if (req.method === "GET" && getRawMatch) {
+      const key = decodeURIComponent(getRawMatch[1]!);
+      return this.handleGetRawNode(auth, shard, key);
+    }
+
+    // Legacy: PUT /cas/{shard}/node/:key (for backward compatibility)
+    const putNodeMatch = subPath.match(/^\/node\/(.+)$/);
+    if (req.method === "PUT" && putNodeMatch) {
+      const key = decodeURIComponent(putNodeMatch[1]!);
+      return this.handlePutChunk(auth, shard, key, req);
+    }
+
+    // Legacy: GET /cas/{shard}/dag/:key
     const getDagMatch = subPath.match(/^\/dag\/(.+)$/);
     if (req.method === "GET" && getDagMatch) {
       const key = decodeURIComponent(getDagMatch[1]!);
-      return this.handleGetDag(auth, scope, key);
-    }
-
-    // POST /cas/{scope}/dag (multipart upload)
-    if (req.method === "POST" && subPath === "/dag") {
-      return this.handlePostDag(auth, scope, req);
+      return this.handleGetDag(auth, shard, key);
     }
 
     return errorResponse(404, "CAS endpoint not found");
   }
 
   /**
-   * POST /cas/{scope}/resolve
+   * POST /cas/{shard}/resolve
    */
   private async handleResolve(
     auth: AuthContext,
-    scope: string,
+    shard: string,
     req: HttpRequest
   ): Promise<HttpResponse> {
     const body = this.parseJson(req);
@@ -449,18 +539,35 @@ export class Router {
 
     const { nodes } = parsed.data;
 
-    // Check which nodes exist in this scope
-    const { missing } = await this.ownershipDb.checkOwnership(scope, nodes);
+    // Check which nodes exist in this shard
+    const { missing } = await this.ownershipDb.checkOwnership(shard, nodes);
 
     return jsonResponse(200, { missing });
   }
 
   /**
-   * PUT /cas/{scope}/node/:key
+   * GET /cas/{shard}/nodes - List all nodes for a shard
    */
-  private async handlePutNode(
+  private async handleListNodes(
     auth: AuthContext,
-    scope: string,
+    shard: string,
+    req: HttpRequest
+  ): Promise<HttpResponse> {
+    const url = new URL(req.path, "http://localhost");
+    const limit = Math.min(Number.parseInt(url.searchParams.get("limit") ?? "100", 10), 1000);
+    const startKey = url.searchParams.get("startKey") ?? undefined;
+
+    const result = await this.ownershipDb.listOwnership(shard, limit, startKey);
+
+    return jsonResponse(200, result);
+  }
+
+  /**
+   * PUT /cas/{shard}/chunk/:key - Upload chunk data
+   */
+  private async handlePutChunk(
+    auth: AuthContext,
+    shard: string,
     key: string,
     req: HttpRequest
   ): Promise<HttpResponse> {
@@ -474,10 +581,13 @@ export class Router {
       return errorResponse(400, "Empty body");
     }
 
+    // Check quota if applicable
+    if (!this.authMiddleware.checkWritableQuota(auth, content.length)) {
+      return errorResponse(413, "Quota exceeded");
+    }
+
     const contentType =
-      req.headers["content-type"] ??
-      req.headers["Content-Type"] ??
-      "application/octet-stream";
+      req.headers["content-type"] ?? req.headers["Content-Type"] ?? "application/octet-stream";
 
     // Store with hash validation
     const result = await this.casStorage.putWithKey(key, content, contentType);
@@ -491,27 +601,20 @@ export class Router {
 
     // Add ownership record
     const tokenId = TokensDb.extractTokenId(auth.token.pk);
-    await this.ownershipDb.addOwnership(
-      scope,
-      result.key,
-      tokenId,
-      contentType,
-      result.size
-    );
+    await this.ownershipDb.addOwnership(shard, result.key, tokenId, contentType, result.size);
 
     return jsonResponse(200, {
       key: result.key,
       size: result.size,
-      contentType,
     });
   }
 
   /**
-   * GET /cas/{scope}/node/:key
+   * GET /cas/{shard}/chunk/:key - Get chunk binary data
    */
-  private async handleGetNode(
+  private async handleGetChunk(
     auth: AuthContext,
-    scope: string,
+    shard: string,
     key: string
   ): Promise<HttpResponse> {
     if (!this.authMiddleware.checkReadAccess(auth, key)) {
@@ -519,7 +622,7 @@ export class Router {
     }
 
     // Check ownership
-    const hasAccess = await this.ownershipDb.hasOwnership(scope, key);
+    const hasAccess = await this.ownershipDb.hasOwnership(shard, key);
     if (!hasAccess) {
       return errorResponse(404, "Not found");
     }
@@ -534,62 +637,315 @@ export class Router {
   }
 
   /**
-   * GET /cas/{scope}/dag/:key
+   * PUT /cas/{shard}/file - Upload file node
    */
-  private async handleGetDag(
+  private async handlePutFile(
     auth: AuthContext,
-    scope: string,
-    key: string
-  ): Promise<HttpResponse> {
-    if (!this.authMiddleware.checkReadAccess(auth, key)) {
-      return errorResponse(403, "Read access denied");
-    }
-
-    // Check ownership of root
-    const hasAccess = await this.ownershipDb.hasOwnership(scope, key);
-    if (!hasAccess) {
-      return errorResponse(404, "Not found");
-    }
-
-    // Collect all DAG nodes
-    const dagKeys = await this.dagDb.collectDagKeys(key);
-
-    // For now, return a simple JSON manifest
-    // TODO: Implement tar streaming
-    const nodes: Record<string, { size: number; contentType: string; children: string[] }> = {};
-
-    for (const nodeKey of dagKeys) {
-      const meta = await this.dagDb.getNode(nodeKey);
-      if (meta) {
-        nodes[nodeKey] = {
-          size: meta.size,
-          contentType: meta.contentType,
-          children: meta.children,
-        };
-      }
-    }
-
-    return jsonResponse(200, {
-      root: key,
-      nodes,
-    });
-  }
-
-  /**
-   * POST /cas/{scope}/dag (multipart upload)
-   */
-  private async handlePostDag(
-    auth: AuthContext,
-    scope: string,
+    shard: string,
     req: HttpRequest
   ): Promise<HttpResponse> {
     if (!this.authMiddleware.checkWriteAccess(auth)) {
       return errorResponse(403, "Write access denied");
     }
 
-    // TODO: Implement multipart parsing with busboy
-    // For now, return not implemented
-    return errorResponse(501, "Multipart DAG upload not yet implemented");
+    const body = this.parseJson(req);
+    const parsed = PutFileSchema.safeParse(body);
+    if (!parsed.success) {
+      return errorResponse(400, "Invalid request", parsed.error.issues);
+    }
+
+    const { chunks, contentType } = parsed.data;
+
+    // Check accepted MIME type
+    if (!this.authMiddleware.checkAcceptedMimeType(auth, contentType)) {
+      return errorResponse(415, "Content type not accepted");
+    }
+
+    // Verify all chunks exist
+    for (const chunkKey of chunks) {
+      const hasChunk = await this.ownershipDb.hasOwnership(shard, chunkKey);
+      if (!hasChunk) {
+        return errorResponse(400, `Chunk not found: ${chunkKey}`);
+      }
+    }
+
+    // Calculate total size from chunks
+    let totalSize = 0;
+    for (const chunkKey of chunks) {
+      const meta = await this.casStorage.getMetadata(chunkKey);
+      if (meta) {
+        totalSize += meta.size;
+      }
+    }
+
+    // Create file node and store its metadata
+    const fileNodeData = JSON.stringify({
+      kind: "file",
+      chunks,
+      contentType,
+      size: totalSize,
+    });
+    const fileNodeBuffer = Buffer.from(fileNodeData, "utf-8");
+    const result = await this.casStorage.put(fileNodeBuffer, "application/json");
+
+    // Add ownership
+    const tokenId = TokensDb.extractTokenId(auth.token.pk);
+    await this.ownershipDb.addOwnership(shard, result.key, tokenId, contentType, totalSize);
+
+    // Mark ticket as written if applicable
+    if (auth.token.type === "ticket") {
+      const ticketId = TokensDb.extractTokenId(auth.token.pk);
+      const marked = await this.tokensDb.markTicketWritten(ticketId, result.key);
+      if (!marked) {
+        // Already written - this shouldn't happen if canWrite check passed
+        return errorResponse(403, "Ticket already consumed");
+      }
+    }
+
+    return jsonResponse(200, { key: result.key });
+  }
+
+  /**
+   * PUT /cas/{shard}/collection - Upload collection node
+   */
+  private async handlePutCollection(
+    auth: AuthContext,
+    shard: string,
+    req: HttpRequest
+  ): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkWriteAccess(auth)) {
+      return errorResponse(403, "Write access denied");
+    }
+
+    const body = this.parseJson(req);
+    const parsed = PutCollectionSchema.safeParse(body);
+    if (!parsed.success) {
+      return errorResponse(400, "Invalid request", parsed.error.issues);
+    }
+
+    const { children } = parsed.data;
+    const serverConfig = loadServerConfig();
+
+    // Check children count
+    if (Object.keys(children).length > serverConfig.maxCollectionChildren) {
+      return errorResponse(400, `Too many children (max ${serverConfig.maxCollectionChildren})`);
+    }
+
+    // Verify all children exist
+    for (const [name, childKey] of Object.entries(children)) {
+      const hasChild = await this.ownershipDb.hasOwnership(shard, childKey);
+      if (!hasChild) {
+        return errorResponse(400, `Child not found: ${name} -> ${childKey}`);
+      }
+    }
+
+    // Calculate total size from children
+    let totalSize = 0;
+    for (const childKey of Object.values(children)) {
+      const ownership = await this.ownershipDb.getOwnership(shard, childKey);
+      if (ownership) {
+        totalSize += ownership.size;
+      }
+    }
+
+    // Create collection node
+    const collectionNodeData = JSON.stringify({
+      kind: "collection",
+      children,
+      size: totalSize,
+    });
+    const collectionNodeBuffer = Buffer.from(collectionNodeData, "utf-8");
+    const result = await this.casStorage.put(collectionNodeBuffer, "application/json");
+
+    // Add ownership
+    const tokenId = TokensDb.extractTokenId(auth.token.pk);
+    await this.ownershipDb.addOwnership(
+      shard,
+      result.key,
+      tokenId,
+      "application/vnd.cas.collection",
+      totalSize
+    );
+
+    // Mark ticket as written if applicable
+    if (auth.token.type === "ticket") {
+      const ticketId = TokensDb.extractTokenId(auth.token.pk);
+      const marked = await this.tokensDb.markTicketWritten(ticketId, result.key);
+      if (!marked) {
+        return errorResponse(403, "Ticket already consumed");
+      }
+    }
+
+    return jsonResponse(200, { key: result.key });
+  }
+
+  /**
+   * GET /cas/{shard}/node/:key - Get application layer node (CasNode)
+   */
+  private async handleGetNode(
+    auth: AuthContext,
+    shard: string,
+    key: string
+  ): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkReadAccess(auth, key)) {
+      return errorResponse(403, "Read access denied");
+    }
+
+    // Check ownership
+    const hasAccess = await this.ownershipDb.hasOwnership(shard, key);
+    if (!hasAccess) {
+      return errorResponse(404, "Not found");
+    }
+
+    // Get raw node first
+    const rawNode = await this.getRawNodeData(key);
+    if (!rawNode) {
+      return errorResponse(404, "Node not found");
+    }
+
+    // Expand to application layer view
+    const node = await this.expandToAppNode(rawNode, shard, auth);
+
+    return jsonResponse(200, node);
+  }
+
+  /**
+   * GET /cas/{shard}/raw/:key - Get storage layer node (CasRawNode)
+   */
+  private async handleGetRawNode(
+    auth: AuthContext,
+    shard: string,
+    key: string
+  ): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkReadAccess(auth, key)) {
+      return errorResponse(403, "Read access denied");
+    }
+
+    // Check ownership
+    const hasAccess = await this.ownershipDb.hasOwnership(shard, key);
+    if (!hasAccess) {
+      return errorResponse(404, "Not found");
+    }
+
+    // Get raw node
+    const rawNode = await this.getRawNodeData(key);
+    if (!rawNode) {
+      return errorResponse(404, "Node not found");
+    }
+
+    return jsonResponse(200, rawNode);
+  }
+
+  /**
+   * Get raw node data from storage
+   */
+  private async getRawNodeData(key: string): Promise<any | null> {
+    const result = await this.casStorage.get(key);
+    if (!result) {
+      return null;
+    }
+
+    // Check if it's a structured node (JSON) or raw chunk
+    if (result.contentType === "application/json") {
+      try {
+        const data = JSON.parse(result.content.toString("utf-8"));
+        return { ...data, key };
+      } catch {
+        // Not a structured node, treat as chunk
+      }
+    }
+
+    // Raw chunk
+    return {
+      kind: "chunk",
+      key,
+      size: result.content.length,
+    };
+  }
+
+  /**
+   * Expand raw node to application layer node
+   */
+  private async expandToAppNode(rawNode: any, shard: string, auth: AuthContext): Promise<any> {
+    if (rawNode.kind === "file") {
+      return {
+        kind: "file",
+        key: rawNode.key,
+        size: rawNode.size,
+        contentType: rawNode.contentType,
+      };
+    }
+
+    if (rawNode.kind === "collection") {
+      const expandedChildren: Record<string, any> = {};
+      for (const [name, childKey] of Object.entries(rawNode.children as Record<string, string>)) {
+        const childRaw = await this.getRawNodeData(childKey);
+        if (childRaw) {
+          expandedChildren[name] = await this.expandToAppNode(childRaw, shard, auth);
+        }
+      }
+      return {
+        kind: "collection",
+        key: rawNode.key,
+        size: rawNode.size,
+        children: expandedChildren,
+      };
+    }
+
+    // Chunk nodes are not exposed in app layer
+    return rawNode;
+  }
+
+  /**
+   * GET /cas/{shard}/dag/:key (legacy, for backward compatibility)
+   */
+  private async handleGetDag(auth: AuthContext, shard: string, key: string): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkReadAccess(auth, key)) {
+      return errorResponse(403, "Read access denied");
+    }
+
+    // Check ownership of root
+    const hasAccess = await this.ownershipDb.hasOwnership(shard, key);
+    if (!hasAccess) {
+      return errorResponse(404, "Not found");
+    }
+
+    // Collect all DAG nodes and content types
+    const nodes: Record<string, any> = {};
+    const contentTypes: Record<string, string> = {};
+
+    const collectNodes = async (nodeKey: string): Promise<void> => {
+      if (nodes[nodeKey]) return; // Already visited
+
+      const rawNode = await this.getRawNodeData(nodeKey);
+      if (!rawNode) return;
+
+      nodes[nodeKey] = rawNode;
+
+      if (rawNode.kind === "file" && rawNode.contentType) {
+        contentTypes[nodeKey] = rawNode.contentType;
+      }
+
+      if (rawNode.kind === "collection" && rawNode.children) {
+        for (const childKey of Object.values(rawNode.children as Record<string, string>)) {
+          await collectNodes(childKey);
+        }
+      }
+
+      if (rawNode.kind === "file" && rawNode.chunks) {
+        for (const chunkKey of rawNode.chunks) {
+          await collectNodes(chunkKey);
+        }
+      }
+    };
+
+    await collectNodes(key);
+
+    return jsonResponse(200, {
+      root: key,
+      nodes,
+      contentTypes,
+    });
   }
 
   // ============================================================================
@@ -617,15 +973,11 @@ export class Router {
     if (!req.body) return Buffer.alloc(0);
 
     if (Buffer.isBuffer(req.body)) {
-      return req.isBase64Encoded
-        ? Buffer.from(req.body.toString(), "base64")
-        : req.body;
+      return req.isBase64Encoded ? Buffer.from(req.body.toString(), "base64") : req.body;
     }
 
     if (typeof req.body === "string") {
-      return req.isBase64Encoded
-        ? Buffer.from(req.body, "base64")
-        : Buffer.from(req.body, "utf-8");
+      return req.isBase64Encoded ? Buffer.from(req.body, "base64") : Buffer.from(req.body, "utf-8");
     }
 
     return Buffer.alloc(0);

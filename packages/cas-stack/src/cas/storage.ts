@@ -2,13 +2,13 @@
  * CAS Stack - S3 CAS Storage Operations
  */
 
+import { createHash } from "node:crypto";
 import {
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { createHash } from "crypto";
 import type { CasConfig } from "../types.ts";
 
 export class CasStorage {
@@ -123,7 +123,10 @@ export class CasStorage {
     expectedKey: string,
     content: Buffer,
     contentType: string = "application/octet-stream"
-  ): Promise<{ key: string; size: number; isNew: boolean } | { error: "hash_mismatch"; expected: string; actual: string }> {
+  ): Promise<
+    | { key: string; size: number; isNew: boolean }
+    | { error: "hash_mismatch"; expected: string; actual: string }
+  > {
     const actualKey = CasStorage.computeHash(content);
 
     if (actualKey !== expectedKey) {

@@ -5,14 +5,14 @@
  * for storing pending authorization requests during the AWP auth flow.
  */
 
+import type { PendingAuth, PendingAuthStore } from "@agent-web-portal/auth";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type { PendingAuth, PendingAuthStore } from "@agent-web-portal/auth";
 import type { CasConfig } from "../types.ts";
 
 /**

@@ -39,8 +39,8 @@ import { useAuth } from "../contexts/AuthContext";
 
 interface CasNode {
   key: string;
-  scope: string;
-  contentType: string;
+  shard: string;
+  contentType?: string;
   size: number;
   createdAt: number;
   createdBy: string;

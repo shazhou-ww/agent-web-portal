@@ -3,8 +3,8 @@
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from "aws-lambda";
-import { loadConfig, type HttpRequest } from "./types.ts";
 import { Router } from "./router.ts";
+import { type HttpRequest, loadConfig } from "./types.ts";
 
 // Create router with config from environment
 const config = loadConfig();

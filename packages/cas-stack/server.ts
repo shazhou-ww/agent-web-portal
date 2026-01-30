@@ -5,21 +5,21 @@
  * Supports Cognito JWT authentication for cas-webui integration.
  */
 
-import { createHash } from "crypto";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createHash, createHash as cryptoCreateHash } from "node:crypto";
 import type {
-  CasConfig,
-  HttpRequest,
-  HttpResponse,
-  Token,
-  UserToken,
-  Ticket,
-  CasOwnership,
-  CasDagNode,
-} from "./src/types.ts";
-import type { PendingAuth, AuthorizedPubkey, PendingAuthStore, PubkeyStore } from "@agent-web-portal/auth";
-import { generateVerificationCode, verifySignature, validateTimestamp, AWP_AUTH_HEADERS } from "@agent-web-portal/auth";
-import { createHash as cryptoCreateHash } from "crypto";
+  AuthorizedPubkey,
+  PendingAuth,
+  PendingAuthStore,
+  PubkeyStore,
+} from "@agent-web-portal/auth";
+import {
+  AWP_AUTH_HEADERS,
+  generateVerificationCode,
+  validateTimestamp,
+  verifySignature,
+} from "@agent-web-portal/auth";
+import { createRemoteJWKSet, jwtVerify } from "jose";
+import type { CasDagNode, CasOwnership, Ticket, Token, UserToken } from "./src/types.ts";
 
 // ============================================================================
 // In-Memory Storage
@@ -57,21 +57,24 @@ class MemoryTokensDb {
   }
 
   async createTicket(
-    scope: string,
+    shard: string,
     issuerId: string,
-    ticketType: "read" | "write",
-    key?: string,
+    scope: string | string[],
+    writable?: boolean | { quota?: number; accept?: string[] },
     expiresIn?: number
   ): Promise<Ticket> {
     const ticketId = `tkt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const defaultExpiry = ticketType === "read" ? 3600 : 300;
+    const defaultExpiry = writable ? 300 : 3600;
     const ticket: Ticket = {
       pk: `token#${ticketId}`,
       type: "ticket",
-      scope,
+      shard,
       issuerId,
-      ticketType,
-      key,
+      scope,
+      writable,
+      config: {
+        chunkThreshold: 1048576, // 1MB default
+      },
       createdAt: Date.now(),
       expiresAt: Date.now() + (expiresIn ?? defaultExpiry) * 1000,
     };
@@ -107,26 +110,26 @@ class MemoryTokensDb {
 class MemoryOwnershipDb {
   private ownership = new Map<string, CasOwnership>();
 
-  private key(scope: string, casKey: string): string {
-    return `${scope}#${casKey}`;
+  private key(shard: string, casKey: string): string {
+    return `${shard}#${casKey}`;
   }
 
-  async hasOwnership(scope: string, casKey: string): Promise<boolean> {
-    return this.ownership.has(this.key(scope, casKey));
+  async hasOwnership(shard: string, casKey: string): Promise<boolean> {
+    return this.ownership.has(this.key(shard, casKey));
   }
 
-  async getOwnership(scope: string, casKey: string): Promise<CasOwnership | null> {
-    return this.ownership.get(this.key(scope, casKey)) ?? null;
+  async getOwnership(shard: string, casKey: string): Promise<CasOwnership | null> {
+    return this.ownership.get(this.key(shard, casKey)) ?? null;
   }
 
   async checkOwnership(
-    scope: string,
+    shard: string,
     keys: string[]
   ): Promise<{ found: string[]; missing: string[] }> {
     const found: string[] = [];
     const missing: string[] = [];
     for (const k of keys) {
-      if (this.ownership.has(this.key(scope, k))) {
+      if (this.ownership.has(this.key(shard, k))) {
         found.push(k);
       } else {
         missing.push(k);
@@ -136,33 +139,33 @@ class MemoryOwnershipDb {
   }
 
   async addOwnership(
-    scope: string,
+    shard: string,
     casKey: string,
     createdBy: string,
     contentType: string,
     size: number
   ): Promise<CasOwnership> {
     const record: CasOwnership = {
-      scope,
+      shard,
       key: casKey,
       createdAt: Date.now(),
       createdBy,
       contentType,
       size,
     };
-    this.ownership.set(this.key(scope, casKey), record);
+    this.ownership.set(this.key(shard, casKey), record);
     return record;
   }
 
   async listNodes(
-    scope: string,
+    shard: string,
     limit: number = 10,
     startKey?: string
   ): Promise<{ nodes: CasOwnership[]; nextKey?: string; total: number }> {
-    // Get all nodes for this scope
+    // Get all nodes for this shard
     const allNodes: CasOwnership[] = [];
     for (const record of this.ownership.values()) {
-      if (record.scope === scope) {
+      if (record.shard === shard) {
         allNodes.push(record);
       }
     }
@@ -181,15 +184,16 @@ class MemoryOwnershipDb {
 
     // Paginate
     const nodes = allNodes.slice(startIndex, startIndex + limit);
-    const nextKey = nodes.length === limit && startIndex + limit < allNodes.length
-      ? nodes[nodes.length - 1]?.key
-      : undefined;
+    const nextKey =
+      nodes.length === limit && startIndex + limit < allNodes.length
+        ? nodes[nodes.length - 1]?.key
+        : undefined;
 
     return { nodes, nextKey, total: allNodes.length };
   }
 
-  async deleteOwnership(scope: string, casKey: string): Promise<boolean> {
-    return this.ownership.delete(this.key(scope, casKey));
+  async deleteOwnership(shard: string, casKey: string): Promise<boolean> {
+    return this.ownership.delete(this.key(shard, casKey));
   }
 }
 
@@ -393,7 +397,8 @@ const pubkeyStore = new MemoryAwpPubkeyStore();
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature",
+  "Access-Control-Allow-Headers":
+    "Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
 };
 
@@ -439,7 +444,7 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return null;
 
-  const [scheme, tokenValue] = authHeader.split(" ");
+  const [_scheme, tokenValue] = authHeader.split(" ");
   if (!tokenValue) return null;
 
   // Check if it's a JWT (Cognito token) - JWTs have 3 parts separated by dots
@@ -448,14 +453,14 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
     if (cognitoPayload) {
       // Create or get user token for this Cognito user
       const userId = cognitoPayload.sub;
-      
+
       // Check if we already have a user token for this session
       // For simplicity, create a new one each time (or reuse existing)
       const userToken = await tokensDb.createUserToken(userId, "cognito-session", 3600);
       const tokenId = MemoryTokensDb.extractTokenId(userToken.pk);
-      
+
       console.log(`[Cognito] Authenticated user: ${cognitoPayload.email ?? userId}`);
-      
+
       return {
         userId,
         scope: `usr_${userId}`,
@@ -488,12 +493,12 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
   if (token.type === "ticket") {
     return {
       userId: "",
-      scope: token.scope,
-      canRead: token.ticketType === "read",
-      canWrite: token.ticketType === "write",
+      scope: token.shard,
+      canRead: true,
+      canWrite: !!token.writable,
       canIssueTicket: false,
       tokenId: id,
-      allowedKey: token.key,
+      allowedKey: Array.isArray(token.scope) ? token.scope[0] : token.scope,
     };
   }
 
@@ -516,7 +521,8 @@ async function authenticateAwp(req: Request): Promise<AuthContext | null> {
   }
 
   // Verify timestamp
-  if (!validateTimestamp(timestamp, 300)) { // 5 minute max clock skew
+  if (!validateTimestamp(timestamp, 300)) {
+    // 5 minute max clock skew
     console.log(`[AWP] Timestamp validation failed for pubkey: ${pubkey.slice(0, 20)}...`);
     return null;
   }
@@ -524,7 +530,7 @@ async function authenticateAwp(req: Request): Promise<AuthContext | null> {
   // Verify the signature
   const url = new URL(req.url);
   const body = req.method === "GET" || req.method === "HEAD" ? "" : await req.clone().text();
-  
+
   // Build signature payload: timestamp.METHOD.path.bodyHash
   const bodyHash = cryptoCreateHash("sha256").update(body).digest("hex");
   const signaturePayload = `${timestamp}.${req.method.toUpperCase()}.${url.pathname + url.search}.${bodyHash}`;
@@ -559,7 +565,7 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
 
   // POST /auth/agent-tokens/init - Start AWP auth flow
   if (req.method === "POST" && path === "/agent-tokens/init") {
-    const body = await req.json() as { pubkey?: string; client_name?: string };
+    const body = (await req.json()) as { pubkey?: string; client_name?: string };
     if (!body.pubkey || !body.client_name) {
       return errorResponse(400, "Missing pubkey or client_name");
     }
@@ -628,7 +634,7 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
       return errorResponse(401, "User authentication required");
     }
 
-    const body = await req.json() as { pubkey?: string; verification_code?: string };
+    const body = (await req.json()) as { pubkey?: string; verification_code?: string };
     if (!body.pubkey || !body.verification_code) {
       return errorResponse(400, "Missing pubkey or verification_code");
     }
@@ -708,25 +714,34 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     if (!auth.canIssueTicket) {
       return errorResponse(403, "Not authorized to issue tickets");
     }
-    const body = await req.json() as { type?: "read" | "write"; key?: string };
-    if (!body.type) {
-      return errorResponse(400, "Missing type");
+    const body = (await req.json()) as {
+      scope?: string | string[];
+      writable?: boolean | { quota?: number; accept?: string[] };
+      expiresIn?: number;
+    };
+    if (!body.scope) {
+      return errorResponse(400, "Missing scope");
     }
-    if (body.type === "read" && !body.key) {
-      return errorResponse(400, "Read tickets require a key");
-    }
-    const ticket = await tokensDb.createTicket(auth.scope, auth.tokenId, body.type, body.key);
+    const ticket = await tokensDb.createTicket(
+      auth.scope,
+      auth.tokenId,
+      body.scope,
+      body.writable,
+      body.expiresIn
+    );
     const ticketId = MemoryTokensDb.extractTokenId(ticket.pk);
     return jsonResponse(201, {
       id: ticketId,
-      type: body.type,
-      key: body.key,
       expiresAt: new Date(ticket.expiresAt).toISOString(),
+      shard: ticket.shard,
+      scope: ticket.scope,
+      writable: ticket.writable ?? false,
+      config: ticket.config,
     });
   }
 
   // DELETE /auth/ticket/:id
-  const ticketMatch = path.match(/^\/ticket\/([^\/]+)$/);
+  const ticketMatch = path.match(/^\/ticket\/([^/]+)$/);
   if (req.method === "DELETE" && ticketMatch) {
     const ticketId = ticketMatch[1]!;
     const isOwner = await tokensDb.verifyTokenOwnership(ticketId, auth.userId);
@@ -767,7 +782,7 @@ async function handleCas(req: Request, scope: string, subPath: string): Promise<
 
   // POST /cas/{scope}/resolve
   if (req.method === "POST" && subPath === "/resolve") {
-    const body = await req.json() as { root?: string; nodes?: string[] };
+    const body = (await req.json()) as { root?: string; nodes?: string[] };
     if (!body.nodes) {
       return errorResponse(400, "Missing nodes");
     }
@@ -949,7 +964,7 @@ Bun.serve({
       }
 
       // CAS routes
-      const casMatch = path.match(/^\/cas\/([^\/]+)(.*)$/);
+      const casMatch = path.match(/^\/cas\/([^/]+)(.*)$/);
       if (casMatch) {
         const [, scope, subPath] = casMatch;
         return handleCas(req, scope!, subPath ?? "");

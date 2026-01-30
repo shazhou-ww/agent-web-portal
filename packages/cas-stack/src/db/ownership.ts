@@ -2,6 +2,7 @@
  * CAS Stack - Database Operations for CAS Ownership
  */
 
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   BatchGetCommand,
   DeleteCommand,
@@ -10,7 +11,6 @@ import {
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type { CasConfig, CasOwnership } from "../types.ts";
 
 export class OwnershipDb {
@@ -27,13 +27,13 @@ export class OwnershipDb {
   }
 
   /**
-   * Check if a scope owns a specific key
+   * Check if a shard owns a specific key
    */
-  async hasOwnership(scope: string, key: string): Promise<boolean> {
+  async hasOwnership(shard: string, key: string): Promise<boolean> {
     const result = await this.client.send(
       new GetCommand({
         TableName: this.tableName,
-        Key: { scope, key },
+        Key: { shard, key },
       })
     );
 
@@ -43,11 +43,11 @@ export class OwnershipDb {
   /**
    * Get ownership record
    */
-  async getOwnership(scope: string, key: string): Promise<CasOwnership | null> {
+  async getOwnership(shard: string, key: string): Promise<CasOwnership | null> {
     const result = await this.client.send(
       new GetCommand({
         TableName: this.tableName,
-        Key: { scope, key },
+        Key: { shard, key },
       })
     );
 
@@ -55,10 +55,10 @@ export class OwnershipDb {
   }
 
   /**
-   * Check which keys a scope owns from a list
+   * Check which keys a shard owns from a list
    */
   async checkOwnership(
-    scope: string,
+    shard: string,
     keys: string[]
   ): Promise<{ found: string[]; missing: string[] }> {
     if (keys.length === 0) {
@@ -71,7 +71,7 @@ export class OwnershipDb {
 
     for (let i = 0; i < keys.length; i += batchSize) {
       const batch = keys.slice(i, i + batchSize);
-      const batchKeys = batch.map((key) => ({ scope, key }));
+      const batchKeys = batch.map((key) => ({ shard, key }));
 
       const result = await this.client.send(
         new BatchGetCommand({
@@ -99,14 +99,14 @@ export class OwnershipDb {
    * Add ownership record
    */
   async addOwnership(
-    scope: string,
+    shard: string,
     key: string,
     createdBy: string,
     contentType: string,
     size: number
   ): Promise<CasOwnership> {
     const ownership: CasOwnership = {
-      scope,
+      shard,
       key,
       createdAt: Date.now(),
       createdBy,
@@ -127,32 +127,32 @@ export class OwnershipDb {
   /**
    * Remove ownership record
    */
-  async removeOwnership(scope: string, key: string): Promise<void> {
+  async removeOwnership(shard: string, key: string): Promise<void> {
     await this.client.send(
       new DeleteCommand({
         TableName: this.tableName,
-        Key: { scope, key },
+        Key: { shard, key },
       })
     );
   }
 
   /**
-   * List all keys owned by a scope (with pagination)
+   * List all keys owned by a shard (with pagination)
    */
   async listKeys(
-    scope: string,
+    shard: string,
     limit: number = 100,
     startKey?: string
   ): Promise<{ keys: string[]; nextKey?: string }> {
     const result = await this.client.send(
       new QueryCommand({
         TableName: this.tableName,
-        KeyConditionExpression: "scope = :scope",
+        KeyConditionExpression: "shard = :shard",
         ExpressionAttributeValues: {
-          ":scope": scope,
+          ":shard": shard,
         },
         Limit: limit,
-        ExclusiveStartKey: startKey ? { scope, key: startKey } : undefined,
+        ExclusiveStartKey: startKey ? { shard, key: startKey } : undefined,
       })
     );
 
@@ -163,7 +163,33 @@ export class OwnershipDb {
   }
 
   /**
-   * Count how many scopes reference a key (for GC)
+   * List all ownership records for a shard (with pagination)
+   */
+  async listOwnership(
+    shard: string,
+    limit: number = 100,
+    startKey?: string
+  ): Promise<{ nodes: CasOwnership[]; nextKey?: string; total?: number }> {
+    const result = await this.client.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: "shard = :shard",
+        ExpressionAttributeValues: {
+          ":shard": shard,
+        },
+        Limit: limit,
+        ExclusiveStartKey: startKey ? { shard, key: startKey } : undefined,
+      })
+    );
+
+    const nodes = (result.Items ?? []) as CasOwnership[];
+    const nextKey = result.LastEvaluatedKey?.key as string | undefined;
+
+    return { nodes, nextKey };
+  }
+
+  /**
+   * Count how many shards reference a key (for GC)
    */
   async countReferences(key: string): Promise<number> {
     const result = await this.client.send(

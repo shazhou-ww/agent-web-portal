@@ -2,13 +2,13 @@
  * CAS Stack - Database Operations for DAG Metadata
  */
 
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   BatchGetCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type { CasConfig, CasDagNode } from "../types.ts";
 
 export class DagDb {

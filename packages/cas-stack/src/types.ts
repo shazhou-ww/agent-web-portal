@@ -21,12 +21,29 @@ export interface UserToken extends BaseToken {
   refreshToken?: string;
 }
 
+/**
+ * Writable configuration for tickets
+ */
+export type WritableConfig =
+  | boolean
+  | {
+      quota?: number; // bytes limit
+      accept?: string[]; // allowed MIME types for root node
+    };
+
+/**
+ * Ticket - provides limited access to CAS resources
+ */
 export interface Ticket extends BaseToken {
   type: "ticket";
-  scope: string;
-  issuerId: string;
-  ticketType: "read" | "write";
-  key?: string; // For read tickets, the specific key allowed
+  shard: string; // user namespace (e.g., "usr_{userId}")
+  issuerId: string; // who issued this ticket
+  scope: string | string[]; // DAG root keys that can be accessed
+  writable?: WritableConfig; // write permission config
+  written?: string; // root key after write (ensures single write)
+  config: {
+    chunkThreshold: number; // chunk size threshold in bytes
+  };
 }
 
 export type Token = UserToken | Ticket;
@@ -67,31 +84,97 @@ export interface RefreshResponse {
 }
 
 export interface CreateTicketRequest {
-  type: "read" | "write";
-  key?: string; // Required for read, optional for write
-  expiresIn?: number; // seconds, default read=3600, write=300
+  scope: string | string[]; // DAG root keys to allow access
+  writable?: WritableConfig; // write permission config
+  expiresIn?: number; // seconds, default 3600
 }
 
 export interface CreateTicketResponse {
   id: string;
-  type: "read" | "write";
-  key?: string;
   expiresAt: string;
+  shard: string;
+  scope: string | string[];
+  writable: WritableConfig | false;
+  config: {
+    chunkThreshold: number;
+  };
 }
 
 // ============================================================================
 // CAS Types
 // ============================================================================
 
+/**
+ * Node kind in CAS three-level structure
+ */
+export type NodeKind = "collection" | "file" | "chunk";
+
+/**
+ * CAS Ownership - tracks which shard owns a key
+ */
 export interface CasOwnership {
-  scope: string;
+  shard: string;
   key: string;
   createdAt: number;
   createdBy: string;
-  contentType: string;
+  contentType?: string;
   size: number;
 }
 
+// ============================================================================
+// Raw Node Types (Storage Layer View)
+// ============================================================================
+
+export interface CasRawCollectionNode {
+  kind: "collection";
+  key: string;
+  size: number;
+  children: Record<string, string>; // name → key
+}
+
+export interface CasRawFileNode {
+  kind: "file";
+  key: string;
+  size: number;
+  contentType: string;
+  chunks: string[]; // chunk keys
+}
+
+export interface CasRawChunkNode {
+  kind: "chunk";
+  key: string;
+  size: number;
+  parts?: string[]; // sub-chunks (B-tree)
+}
+
+export type CasRawNode = CasRawCollectionNode | CasRawFileNode | CasRawChunkNode;
+
+// ============================================================================
+// Application Node Types (Application Layer View)
+// ============================================================================
+
+export interface CasCollectionNode {
+  kind: "collection";
+  key: string;
+  size: number;
+  children: Record<string, CasNode>; // recursively expanded
+}
+
+export interface CasFileNode {
+  kind: "file";
+  key: string;
+  size: number;
+  contentType: string;
+  // Note: no content field! Use openFile() for streaming
+}
+
+export type CasNode = CasCollectionNode | CasFileNode;
+
+// ============================================================================
+// Legacy Types (to be removed)
+// ============================================================================
+
+/** @deprecated Use CasRawNode instead */
 export interface CasDagNode {
   key: string;
   children: string[];
@@ -135,12 +218,12 @@ export interface UploadDagResponse {
 export interface AuthContext {
   token: Token;
   userId: string;
-  scope: string;
+  shard: string; // user namespace
   canRead: boolean;
   canWrite: boolean;
   canIssueTicket: boolean;
-  // For read tickets, the allowed key
-  allowedKey?: string;
+  // For tickets, the allowed DAG root keys
+  allowedScope?: string | string[];
 }
 
 // ============================================================================
@@ -168,6 +251,12 @@ export interface HttpResponse {
 // Config
 // ============================================================================
 
+export interface CasServerConfig {
+  chunkThreshold: number; // default 1MB
+  maxCollectionChildren: number; // default 10000
+  maxPayloadSize: number; // default 10MB
+}
+
 export interface CasConfig {
   tokensTable: string;
   casOwnershipTable: string;
@@ -176,6 +265,15 @@ export interface CasConfig {
   cognitoUserPoolId: string;
   cognitoClientId: string;
   cognitoRegion: string;
+  serverConfig: CasServerConfig;
+}
+
+export function loadServerConfig(): CasServerConfig {
+  return {
+    chunkThreshold: parseInt(process.env.CAS_CHUNK_THRESHOLD ?? "1048576", 10), // 1MB
+    maxCollectionChildren: parseInt(process.env.CAS_MAX_COLLECTION_CHILDREN ?? "10000", 10),
+    maxPayloadSize: parseInt(process.env.CAS_MAX_PAYLOAD_SIZE ?? "10485760", 10), // 10MB
+  };
 }
 
 export function loadConfig(): CasConfig {
@@ -187,5 +285,38 @@ export function loadConfig(): CasConfig {
     cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
     cognitoClientId: process.env.COGNITO_CLIENT_ID ?? "",
     cognitoRegion: process.env.COGNITO_REGION ?? "us-east-1",
+    serverConfig: loadServerConfig(),
   };
+}
+
+// ============================================================================
+// CAS API Request/Response Types
+// ============================================================================
+
+export interface CasConfigResponse {
+  chunkThreshold: number;
+  maxCollectionChildren: number;
+  maxPayloadSize: number;
+}
+
+export interface PutChunkResponse {
+  key: string;
+  size: number;
+}
+
+export interface PutFileRequest {
+  chunks: string[];
+  contentType: string;
+}
+
+export interface PutFileResponse {
+  key: string;
+}
+
+export interface PutCollectionRequest {
+  children: Record<string, string>;
+}
+
+export interface PutCollectionResponse {
+  key: string;
 }

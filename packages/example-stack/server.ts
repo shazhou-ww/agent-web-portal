@@ -322,7 +322,9 @@ async function handleRequest(req: Request): Promise<Response> {
 
         const data = await file.arrayBuffer();
 
-        const result = USE_S3_STORAGE ? await storeTempUploadS3(data, file.type || "image/png") : storeTempUpload(data, file.type || "image/png");
+        const result = USE_S3_STORAGE
+          ? await storeTempUploadS3(data, file.type || "image/png")
+          : storeTempUpload(data, file.type || "image/png");
 
         // Build absolute URLs using the request's Host header
         const host = req.headers.get("host") || `localhost:${PORT}`;
@@ -348,7 +350,9 @@ async function handleRequest(req: Request): Promise<Response> {
       // Handle raw binary upload
       const data = await req.arrayBuffer();
       const imageContentType = contentType.startsWith("image/") ? contentType : "image/png";
-      const result = USE_S3_STORAGE ? await storeTempUploadS3(data, imageContentType) : storeTempUpload(data, imageContentType);
+      const result = USE_S3_STORAGE
+        ? await storeTempUploadS3(data, imageContentType)
+        : storeTempUpload(data, imageContentType);
 
       // Build absolute URLs using the request's Host header
       const host = req.headers.get("host") || `localhost:${PORT}`;
@@ -441,7 +445,9 @@ async function handleRequest(req: Request): Promise<Response> {
       `[Blob] Writing output blob: ${id}, contentType: ${contentType}, size: ${data.byteLength} bytes`
     );
 
-    const success = USE_S3_STORAGE ? await writeOutputBlobS3(id, data, contentType) : writeOutputBlob(id, data, contentType);
+    const success = USE_S3_STORAGE
+      ? await writeOutputBlobS3(id, data, contentType)
+      : writeOutputBlob(id, data, contentType);
 
     if (!success) {
       console.error(`[Blob] Failed to write output blob: ${id} - not found or expired`);
@@ -501,7 +507,9 @@ async function handleRequest(req: Request): Promise<Response> {
         }
 
         const data = await file.arrayBuffer();
-        const result = USE_S3_STORAGE ? await storeImageS3(data, file.type || "image/png") : storeImage(data, file.type || "image/png");
+        const result = USE_S3_STORAGE
+          ? await storeImageS3(data, file.type || "image/png")
+          : storeImage(data, file.type || "image/png");
 
         return new Response(JSON.stringify(result), {
           status: 200,
@@ -515,7 +523,9 @@ async function handleRequest(req: Request): Promise<Response> {
       // Handle raw binary upload
       const data = await req.arrayBuffer();
       const imageContentType = contentType.startsWith("image/") ? contentType : "image/png";
-      const result = USE_S3_STORAGE ? await storeImageS3(data, imageContentType) : storeImage(data, imageContentType);
+      const result = USE_S3_STORAGE
+        ? await storeImageS3(data, imageContentType)
+        : storeImage(data, imageContentType);
 
       return new Response(JSON.stringify(result), {
         status: 200,

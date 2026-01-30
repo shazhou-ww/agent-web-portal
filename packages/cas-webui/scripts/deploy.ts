@@ -14,14 +14,8 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
-import {
-  CloudFormationClient,
-  DescribeStacksCommand,
-} from "@aws-sdk/client-cloudformation";
-import {
-  CloudFrontClient,
-  CreateInvalidationCommand,
-} from "@aws-sdk/client-cloudfront";
+import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 const UI_DIST_DIR = join(import.meta.dir, "../dist");
@@ -61,23 +55,17 @@ interface StackOutputs {
 async function getStackOutputs(stackName: string): Promise<StackOutputs> {
   try {
     const cf = new CloudFormationClient(awsConfig);
-    const response = await cf.send(
-      new DescribeStacksCommand({ StackName: stackName })
-    );
+    const response = await cf.send(new DescribeStacksCommand({ StackName: stackName }));
 
     const outputs = response.Stacks?.[0]?.Outputs || [];
 
     return {
       uiBucket: outputs.find((o) => o.OutputKey === "UiBucketName")?.OutputValue,
-      cloudFrontId: outputs.find((o) => o.OutputKey === "CloudFrontDistributionId")
-        ?.OutputValue,
-      cloudFrontUrl: outputs.find((o) => o.OutputKey === "CloudFrontUrl")
-        ?.OutputValue,
+      cloudFrontId: outputs.find((o) => o.OutputKey === "CloudFrontDistributionId")?.OutputValue,
+      cloudFrontUrl: outputs.find((o) => o.OutputKey === "CloudFrontUrl")?.OutputValue,
       apiUrl: outputs.find((o) => o.OutputKey === "ApiUrl")?.OutputValue,
-      cognitoUserPoolId: outputs.find((o) => o.OutputKey === "CognitoUserPoolId")
-        ?.OutputValue,
-      cognitoClientId: outputs.find((o) => o.OutputKey === "CognitoClientId")
-        ?.OutputValue,
+      cognitoUserPoolId: outputs.find((o) => o.OutputKey === "CognitoUserPoolId")?.OutputValue,
+      cognitoClientId: outputs.find((o) => o.OutputKey === "CognitoClientId")?.OutputValue,
     };
   } catch (error) {
     console.error(`Failed to get stack ${stackName}:`, (error as Error).message);
