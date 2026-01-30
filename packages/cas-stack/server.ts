@@ -475,18 +475,12 @@ const COGNITO_ISSUER = COGNITO_USER_POOL_ID
   ? `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}`
   : "";
 
-// Local development mock mode - skip Cognito verification
-const USE_MOCK_AUTH = process.env.USE_MOCK_AUTH === "true";
-const MOCK_USER_ID = "mock-user-12345";
-const MOCK_USER_EMAIL = "test@example.com";
-
-// JWKS for Cognito JWT verification (skip if mock mode)
-const cognitoJwks =
-  COGNITO_USER_POOL_ID && !USE_MOCK_AUTH
-    ? createRemoteJWKSet(new URL(`${COGNITO_ISSUER}/.well-known/jwks.json`), {
-        timeoutDuration: 10000, // 10 seconds timeout
-      })
-    : null;
+// JWKS for Cognito JWT verification
+const cognitoJwks = COGNITO_USER_POOL_ID
+  ? createRemoteJWKSet(new URL(`${COGNITO_ISSUER}/.well-known/jwks.json`), {
+      timeoutDuration: 10000, // 10 seconds timeout
+    })
+  : null;
 
 interface CognitoTokenPayload {
   sub: string;
@@ -497,17 +491,6 @@ interface CognitoTokenPayload {
 }
 
 async function verifyCognitoToken(token: string): Promise<CognitoTokenPayload | null> {
-  // Mock mode - return mock user for any token
-  if (USE_MOCK_AUTH) {
-    console.log("[Auth] Mock mode enabled, using mock user");
-    return {
-      sub: MOCK_USER_ID,
-      email: MOCK_USER_EMAIL,
-      token_use: "access",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-    };
-  }
-
   if (!cognitoJwks || !COGNITO_ISSUER) {
     return null;
   }
@@ -595,21 +578,6 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
 
   const [_scheme, tokenValue] = authHeader.split(" ");
   if (!tokenValue) return null;
-
-  // Mock mode - accept any token and return mock user
-  if (USE_MOCK_AUTH) {
-    console.log("[Auth] Mock mode enabled, using mock user");
-    const userToken = await tokensDb.createUserToken(MOCK_USER_ID, "mock-session", 3600);
-    const tokenId = tokenIdFromPk(userToken.pk);
-    return {
-      userId: MOCK_USER_ID,
-      scope: `usr_${MOCK_USER_ID}`,
-      canRead: true,
-      canWrite: true,
-      canIssueTicket: true,
-      tokenId,
-    };
-  }
 
   // Check if it's a JWT (Cognito token) - JWTs have 3 parts separated by dots
   if (tokenValue.split(".").length === 3) {
@@ -1275,19 +1243,15 @@ async function handleCas(req: Request, scope: string, subPath: string): Promise<
 
 const PORT = parseInt(process.env.CAS_API_PORT ?? process.env.PORT ?? "3550", 10);
 
-if (!COGNITO_USER_POOL_ID && !USE_MOCK_AUTH) {
+if (!COGNITO_USER_POOL_ID) {
   console.error("ERROR: COGNITO_USER_POOL_ID environment variable is required");
   console.error("Set COGNITO_USER_POOL_ID in .env, or run: awp config pull");
   process.exit(1);
 }
 
-const authInfo = USE_MOCK_AUTH
-  ? `║  Auth: Mock Mode (no Cognito verification)                   ║
-║    Email: ${MOCK_USER_EMAIL.padEnd(47)}║
-║    Password: (any)                                           ║`
-  : `║  Auth: Cognito                                               ║
+const authInfo = `║  Auth: Cognito + Google Sign-In                              ║
 ║    User Pool: ${COGNITO_USER_POOL_ID.padEnd(43)}║
-║    Login via cas-webui with your Cognito credentials         ║`;
+║    Login via cas-webui with Google                           ║`;
 
 const storageInfo = useDynamo
   ? "║  Storage: DynamoDB (local)"

@@ -1,22 +1,15 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Box,
   Card,
   CardContent,
-  TextField,
   Button,
   Typography,
   Alert,
   CircularProgress,
-  InputAdornment,
-  IconButton,
 } from "@mui/material";
-import {
-  Storage as StorageIcon,
-  Visibility,
-  VisibilityOff,
-} from "@mui/icons-material";
+import { Storage as StorageIcon } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 
 // Google icon for Sign in with Google
@@ -46,12 +39,7 @@ function GoogleIcon() {
 export default function Login() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, login, loginWithGoogle, googleSignInEnabled, loading: authLoading } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { user, loginWithGoogle, googleSignInEnabled, loading: authLoading } = useAuth();
 
   const returnUrl = searchParams.get("returnUrl") || "/";
 
@@ -61,25 +49,6 @@ export default function Login() {
       navigate(decodeURIComponent(returnUrl), { replace: true });
     }
   }, [user, authLoading, navigate, returnUrl]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      const result = await login(email, password);
-      if (result.success) {
-        navigate(decodeURIComponent(returnUrl), { replace: true });
-      } else {
-        setError(result.error || "Invalid email or password");
-      }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (authLoading) {
     return (
@@ -134,107 +103,45 @@ export default function Login() {
             </Typography>
           </Box>
 
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {error}
+          {!googleSignInEnabled && (
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              Google sign-in is not configured. Please contact an administrator.
             </Alert>
           )}
 
-          <Box component="form" onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              margin="normal"
-              required
-              autoComplete="email"
-              autoFocus
-            />
-            <TextField
-              fullWidth
-              label="Password"
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              margin="normal"
-              required
-              autoComplete="current-password"
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={loading}
-              sx={{
-                mt: 3,
-                py: 1.5,
-                background: "linear-gradient(135deg, #1976d2 0%, #7c4dff 100%)",
-                "&:hover": {
-                  background:
-                    "linear-gradient(135deg, #1565c0 0%, #6a3fc7 100%)",
-                },
-              }}
-            >
-              {loading ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                "Sign In"
-              )}
-            </Button>
-
-            {googleSignInEnabled && (
-              <>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, my: 2 }}>
-                  <Box sx={{ flex: 1, height: 1, bgcolor: "divider" }} />
-                  <Typography variant="body2" color="text.secondary">
-                    or
-                  </Typography>
-                  <Box sx={{ flex: 1, height: 1, bgcolor: "divider" }} />
-                </Box>
-                <Button
-                  type="button"
-                  fullWidth
-                  variant="outlined"
-                  size="large"
-                  onClick={loginWithGoogle}
-                  startIcon={<GoogleIcon />}
-                  sx={{
-                    py: 1.5,
-                    borderColor: "grey.400",
-                    color: "text.primary",
-                    "&:hover": {
-                      borderColor: "grey.600",
-                      bgcolor: "action.hover",
-                    },
-                  }}
-                >
-                  Sign in with Google
-                </Button>
-              </>
-            )}
-          </Box>
+          <Button
+            type="button"
+            fullWidth
+            variant="contained"
+            size="large"
+            onClick={loginWithGoogle}
+            disabled={!googleSignInEnabled}
+            startIcon={<GoogleIcon />}
+            sx={{
+              py: 1.5,
+              background: "white",
+              color: "text.primary",
+              border: "1px solid",
+              borderColor: "grey.300",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              "&:hover": {
+                background: "grey.50",
+                borderColor: "grey.400",
+              },
+              "&.Mui-disabled": {
+                background: "grey.100",
+              },
+            }}
+          >
+            Sign in with Google
+          </Button>
 
           <Typography
             variant="body2"
             color="text.secondary"
             sx={{ mt: 3, textAlign: "center" }}
           >
-            Use your AWS Cognito credentials or Google to sign in
+            Sign in with your Google account
           </Typography>
         </CardContent>
       </Card>

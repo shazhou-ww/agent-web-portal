@@ -9,8 +9,6 @@ import {
 } from "react";
 import {
   CognitoUserPool,
-  CognitoUser,
-  AuthenticationDetails,
   CognitoUserSession,
 } from "amazon-cognito-identity-js";
 import { API_URL } from "../utils/api.ts";
@@ -59,7 +57,6 @@ interface AuthContextType {
   /** Current user role from GET /api/auth/me (null while loading or not logged in) */
   userRole: UserRole | null;
   isAdmin: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => void;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -184,56 +181,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Login with email and password
-  const login = useCallback(
-    async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-      const userPool = getUserPool();
-      if (!userPool) {
-        return { success: false, error: "Auth not configured" };
-      }
-
-      return new Promise((resolve) => {
-        const cognitoUser = new CognitoUser({
-          Username: email,
-          Pool: userPool,
-        });
-
-        const authDetails = new AuthenticationDetails({
-          Username: email,
-          Password: password,
-        });
-
-        cognitoUser.authenticateUser(authDetails, {
-          onSuccess: (session: CognitoUserSession) => {
-            const newTokens: AuthTokens = {
-              accessToken: session.getAccessToken().getJwtToken(),
-              idToken: session.getIdToken().getJwtToken(),
-              refreshToken: session.getRefreshToken().getToken(),
-            };
-
-            setTokens(newTokens);
-            setUser(extractUserFromSession(session));
-            resolve({ success: true });
-          },
-          onFailure: (err) => {
-            console.error("Login failed:", err);
-            resolve({
-              success: false,
-              error: err.message || "Authentication failed",
-            });
-          },
-          newPasswordRequired: () => {
-            resolve({
-              success: false,
-              error: "New password required. Please contact administrator.",
-            });
-          },
-        });
-      });
-    },
-    []
-  );
-
   const loginWithGoogle = useCallback((): void => {
     if (!authConfig?.cognitoClientId || !authConfig?.cognitoHostedUiUrl) {
       console.warn("[Auth] Google sign-in not configured (cognitoClientId or cognitoHostedUiUrl missing from /api/auth/config).");
@@ -356,7 +303,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         authConfig,
         userRole,
         isAdmin: userRole === "admin",
-        login,
         loginWithGoogle,
         logout,
         refreshSession,
