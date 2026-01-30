@@ -34,7 +34,7 @@ export default defineConfig({
       "/api": {
         target: apiUrl,
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ""),
+        // Keep the /api prefix - backend expects it
       },
     },
   },
