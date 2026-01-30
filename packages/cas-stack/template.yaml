@@ -522,7 +522,7 @@ Resources:
       StageName: prod
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
+        AllowHeaders: "'Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature'"
         AllowOrigin: "'*'"
       BinaryMediaTypes:
         - "application/octet-stream"
