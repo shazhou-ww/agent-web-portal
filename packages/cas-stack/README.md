@@ -116,11 +116,60 @@ bun run sam:deploy
 
 ### Configuration
 
-Set Cognito domain for OAuth:
+Set Cognito domain for OAuth (required for Hosted UI / Google sign-in):
 
 ```bash
 sam deploy --parameter-overrides CognitoDomain=my-unique-domain
 ```
+
+### Google Sign-In
+
+To enable "Sign in with Google" in cas-webui:
+
+1. **Deploy with Google parameters** (Client ID and Client Secret from Google Cloud Console):
+
+   **Option A – use deploy script (reads secret from env):**
+
+   In project root or `packages/cas-stack`, add to `.env`:
+   ```bash
+   GOOGLE_CLIENT_SECRET=你的Google客户端密钥
+   # optional: COGNITO_DOMAIN=my-unique-domain   # default: awp-cas-ui
+   ```
+   Then:
+   ```bash
+   cd packages/cas-stack
+   bun run deploy:google
+   ```
+
+   **Option B – pass on command line:**
+   ```bash
+   sam deploy --parameter-overrides \
+     CognitoDomain=my-unique-domain \
+     GoogleClientId=YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com \
+     GoogleClientSecret=YOUR_GOOGLE_CLIENT_SECRET
+   ```
+
+2. **Google Cloud Console** – create/configure OAuth 2.0 credentials:
+
+   - Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Credentials**.
+   - Create or edit an **OAuth 2.0 Client ID** (Application type: **Web application**).
+   - **Authorized redirect URIs** – add **Cognito’s** callback URL (Google redirects to Cognito, not to your app):
+     - `https://YOUR_COGNITO_DOMAIN_PREFIX.auth.YOUR_REGION.amazoncognito.com/oauth2/idpresponse`
+     - Example: `https://my-unique-domain.auth.us-east-1.amazoncognito.com/oauth2/idpresponse`
+   - (Optional) **Authorized JavaScript origins**: add your Cognito Hosted UI origin, e.g. `https://my-unique-domain.auth.us-east-1.amazoncognito.com`.
+   - Copy **Client ID** and **Client Secret** into the `sam deploy` parameters above.
+
+   After deploy, Cognito’s Hosted UI will show "Sign in with Google"; Google redirects to Cognito’s `/oauth2/idpresponse`, then Cognito redirects to your app’s `/auth/callback` with an authorization code.
+
+   **Production callback URL (optional, avoids circular dependency):** On first deploy, leave `CallbackBaseUrl` empty. After deploy, copy `CloudFrontUrl` from stack outputs, then set in `.env`: `CALLBACK_BASE_URL=https://your-distribution.cloudfront.net` and run `bun run deploy:google` again so Cognito allows that URL for OAuth callback/logout.
+
+3. **Pull config** so the frontend gets the Hosted UI URL:
+
+   ```bash
+   awp config pull
+   ```
+
+   This writes `VITE_COGNITO_HOSTED_UI_URL` (and other Cognito IDs) into `.env` so the login page can show the "Sign in with Google" button.
 
 ## Usage Example
 

@@ -13,6 +13,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { extname, join } from "node:path";
 import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
 import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
@@ -50,6 +51,7 @@ interface StackOutputs {
   apiUrl?: string;
   cognitoUserPoolId?: string;
   cognitoClientId?: string;
+  cognitoHostedUiUrl?: string;
 }
 
 async function getStackOutputs(stackName: string): Promise<StackOutputs> {
@@ -64,8 +66,9 @@ async function getStackOutputs(stackName: string): Promise<StackOutputs> {
       cloudFrontId: outputs.find((o) => o.OutputKey === "CloudFrontDistributionId")?.OutputValue,
       cloudFrontUrl: outputs.find((o) => o.OutputKey === "CloudFrontUrl")?.OutputValue,
       apiUrl: outputs.find((o) => o.OutputKey === "ApiUrl")?.OutputValue,
-      cognitoUserPoolId: outputs.find((o) => o.OutputKey === "CognitoUserPoolId")?.OutputValue,
-      cognitoClientId: outputs.find((o) => o.OutputKey === "CognitoClientId")?.OutputValue,
+      cognitoUserPoolId: outputs.find((o) => o.OutputKey === "UserPoolId")?.OutputValue ?? outputs.find((o) => o.OutputKey === "CognitoUserPoolId")?.OutputValue,
+      cognitoClientId: outputs.find((o) => o.OutputKey === "UserPoolClientId")?.OutputValue ?? outputs.find((o) => o.OutputKey === "CognitoClientId")?.OutputValue,
+      cognitoHostedUiUrl: outputs.find((o) => o.OutputKey === "CognitoHostedUiUrl")?.OutputValue,
     };
   } catch (error) {
     console.error(`Failed to get stack ${stackName}:`, (error as Error).message);
@@ -94,7 +97,7 @@ async function main() {
   const stackName = process.argv[2] || DEFAULT_STACK_NAME;
 
   console.log(`🔍 Looking up UI bucket from CloudFormation stack: ${stackName}`);
-  const { uiBucket, cloudFrontId, cloudFrontUrl, apiUrl, cognitoUserPoolId, cognitoClientId } =
+  const { uiBucket, cloudFrontId, cloudFrontUrl, apiUrl, cognitoUserPoolId, cognitoClientId, cognitoHostedUiUrl } =
     await getStackOutputs(stackName);
 
   if (!uiBucket) {
@@ -113,19 +116,35 @@ async function main() {
   if (cognitoUserPoolId) {
     console.log(`✅ Found Cognito User Pool: ${cognitoUserPoolId}`);
   }
-  console.log("");
-
-  // Check if UI dist exists
-  if (!existsSync(UI_DIST_DIR)) {
-    console.error(`❌ UI dist directory not found: ${UI_DIST_DIR}`);
-    console.error("   Run 'bun run build' first.");
-    console.error("");
-    console.error("   Build with environment variables:");
-    console.error(
-      `   VITE_API_URL=${apiUrl || "<api-url>"} VITE_COGNITO_USER_POOL_ID=${cognitoUserPoolId || "<pool-id>"} VITE_COGNITO_CLIENT_ID=${cognitoClientId || "<client-id>"} bun run build`
-    );
+  if (!cognitoUserPoolId || !cognitoClientId) {
+    console.error("❌ Stack is missing UserPoolId or UserPoolClientId. Cognito config is required for the UI build.");
     process.exit(1);
   }
+  console.log("");
+
+  // Build with stack outputs so Vite bakes in VITE_COGNITO_* and VITE_API_URL
+  console.log("🔨 Building UI with stack config (VITE_COGNITO_*, VITE_API_URL)...");
+  const buildEnv = {
+    ...process.env,
+    VITE_API_URL: apiUrl || "",
+    VITE_COGNITO_USER_POOL_ID: cognitoUserPoolId,
+    VITE_COGNITO_CLIENT_ID: cognitoClientId,
+    VITE_COGNITO_HOSTED_UI_URL: cognitoHostedUiUrl || "",
+  };
+  const build = spawn("bun", ["run", "build"], {
+    cwd: join(import.meta.dir, ".."),
+    stdio: "inherit",
+    env: buildEnv,
+  });
+  const buildExit = await new Promise<number | null>((resolve) => {
+    build.on("exit", (code) => resolve(code ?? null));
+  });
+  if (buildExit !== 0) {
+    console.error("❌ Build failed.");
+    process.exit(1);
+  }
+  console.log("✅ Build complete.");
+  console.log("");
 
   // Get all files
   const files = getAllFiles(UI_DIST_DIR);

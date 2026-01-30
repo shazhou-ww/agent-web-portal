@@ -719,7 +719,48 @@ async function authenticateAwp(req: Request): Promise<AuthContext | null> {
 // Request Handlers
 // ============================================================================
 
+// Cognito Hosted UI URL for OAuth token exchange (server-side proxy to avoid CORS)
+const COGNITO_HOSTED_UI_URL =
+  process.env.COGNITO_HOSTED_UI_URL || process.env.VITE_COGNITO_HOSTED_UI_URL || "";
+const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || process.env.VITE_COGNITO_CLIENT_ID || "";
+
 async function handleAuth(req: Request, path: string): Promise<Response> {
+  // ========================================================================
+  // OAuth token exchange (no auth) - proxy for Cognito Hosted UI / Google sign-in
+  // ========================================================================
+  if (req.method === "POST" && path === "/oauth/token") {
+    if (!COGNITO_HOSTED_UI_URL || !COGNITO_CLIENT_ID) {
+      return errorResponse(503, "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)");
+    }
+    const body = (await req.json()) as { code?: string; redirect_uri?: string };
+    if (!body.code || !body.redirect_uri) {
+      return errorResponse(400, "Missing code or redirect_uri");
+    }
+    const tokenBody = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: COGNITO_CLIENT_ID,
+      code: body.code,
+      redirect_uri: body.redirect_uri,
+    });
+    const tokenRes = await fetch(`${COGNITO_HOSTED_UI_URL}/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: tokenBody.toString(),
+    });
+    const text = await tokenRes.text();
+    if (!tokenRes.ok) {
+      console.error("[OAuth] Token exchange failed:", tokenRes.status, text);
+      return jsonResponse(tokenRes.status, { error: "Token exchange failed", details: text });
+    }
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return errorResponse(502, "Invalid token response from Cognito");
+    }
+    return jsonResponse(200, data);
+  }
+
   // ========================================================================
   // AWP Auth Routes (no auth required for init/status)
   // ========================================================================

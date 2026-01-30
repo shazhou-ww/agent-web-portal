@@ -16,6 +16,7 @@
     "sam:deploy": "sam deploy",
     "sam:remove": "sam delete",
     "deploy": "bun run sam:build && bun run sam:deploy",
+    "deploy:google": "bun run sam:build && bun run scripts/deploy-with-google.ts",
     "test": "bun test",
     "create-local-tables": "bun run scripts/create-local-tables.ts",
     "typecheck": "tsc --noEmit",

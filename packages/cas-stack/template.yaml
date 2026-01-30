@@ -13,7 +13,20 @@ Globals:
 Parameters:
   CognitoDomain:
     Type: String
-    Description: Cognito hosted UI domain prefix (must be globally unique)
+    Description: Cognito hosted UI domain prefix (must be globally unique). Required for Google sign-in.
+    Default: ""
+  GoogleClientId:
+    Type: String
+    Description: Google OAuth 2.0 Client ID (for Sign in with Google)
+    Default: "1084492958564-ngqgsjbss5ta8676oa101rrg9prcankv.apps.googleusercontent.com"
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth 2.0 Client Secret (for Sign in with Google)
+    Default: ""
+  CallbackBaseUrl:
+    Type: String
+    Description: Production UI base URL for Cognito callback/logout (e.g. https://xxx.cloudfront.net). Leave empty on first deploy, then re-deploy with CloudFront URL from outputs.
     Default: ""
 
 Resources:
@@ -45,8 +58,26 @@ Resources:
           Mutable: true
           Required: false
 
-  UserPoolClient:
+  UserPoolGoogleIdP:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasGoogleIdP
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: "openid email profile"
+      AttributeMapping:
+        email: email
+        name: name
+
+  # When Google IdP is not configured: single client with COGNITO only
+  UserPoolClientNoGoogle:
     Type: AWS::Cognito::UserPoolClient
+    Condition: NoGoogleIdP
+    DependsOn: UserPool
     Properties:
       ClientName: !Sub "${AWS::StackName}-client"
       UserPoolId: !Ref UserPool
@@ -57,10 +88,62 @@ Resources:
         - ALLOW_USER_SRP_AUTH
       SupportedIdentityProviders:
         - COGNITO
-      CallbackURLs:
-        - http://localhost:3500/auth/callback
-      LogoutURLs:
-        - http://localhost:3500
+      CallbackURLs: !If
+        - HasCallbackBaseUrl
+        - - http://localhost:5173/auth/callback
+          - http://localhost:3550/auth/callback
+          - !Sub
+            - "${Base}/auth/callback"
+            - Base: !Ref CallbackBaseUrl
+        - - http://localhost:5173/auth/callback
+          - http://localhost:3550/auth/callback
+      LogoutURLs: !If
+        - HasCallbackBaseUrl
+        - - http://localhost:5173
+          - http://localhost:3550
+          - !Ref CallbackBaseUrl
+        - - http://localhost:5173
+          - http://localhost:3550
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+
+  # When Google IdP is configured: client with COGNITO + Google, must wait for Google IdP
+  UserPoolClientWithGoogle:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: HasGoogleIdP
+    DependsOn: UserPoolGoogleIdP
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-client"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+        - Google
+      CallbackURLs: !If
+        - HasCallbackBaseUrl
+        - - http://localhost:5173/auth/callback
+          - http://localhost:3550/auth/callback
+          - !Sub
+            - "${Base}/auth/callback"
+            - Base: !Ref CallbackBaseUrl
+        - - http://localhost:5173/auth/callback
+          - http://localhost:3550/auth/callback
+      LogoutURLs: !If
+        - HasCallbackBaseUrl
+        - - http://localhost:5173
+          - http://localhost:3550
+          - !Ref CallbackBaseUrl
+        - - http://localhost:5173
+          - http://localhost:3550
       AllowedOAuthFlows:
         - code
       AllowedOAuthScopes:
@@ -275,8 +358,14 @@ Resources:
           CAS_DAG_TABLE: !Ref CasDagTable
           CAS_BUCKET: !Ref CasBucket
           COGNITO_USER_POOL_ID: !Ref UserPool
-          COGNITO_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_CLIENT_ID: !If [HasGoogleIdP, !Ref UserPoolClientWithGoogle, !Ref UserPoolClientNoGoogle]
           COGNITO_REGION: !Ref AWS::Region
+          COGNITO_HOSTED_UI_URL: !If
+            - HasCognitoDomain
+            - !Sub
+              - "https://${Prefix}.auth.${Region}.amazoncognito.com"
+              - { Prefix: !Ref CognitoDomain, Region: !Ref AWS::Region }
+            - ""
           NODE_OPTIONS: "--enable-source-maps"
       Policies:
         - DynamoDBCrudPolicy:
@@ -320,6 +409,9 @@ Resources:
 
 Conditions:
   HasCognitoDomain: !Not [!Equals [!Ref CognitoDomain, ""]]
+  HasGoogleIdP: !And [!Not [!Equals [!Ref GoogleClientId, ""]], !Not [!Equals [!Ref GoogleClientSecret, ""]]]
+  NoGoogleIdP: !Not [!Condition HasGoogleIdP]
+  HasCallbackBaseUrl: !Not [!Equals [!Ref CallbackBaseUrl, ""]]
 
 Outputs:
   ApiEndpoint:
@@ -332,7 +424,26 @@ Outputs:
   
   UserPoolClientId:
     Description: Cognito User Pool Client ID
-    Value: !Ref UserPoolClient
+    Value: !If [HasGoogleIdP, !Ref UserPoolClientWithGoogle, !Ref UserPoolClientNoGoogle]
+
+  CognitoDomainPrefix:
+    Condition: HasCognitoDomain
+    Description: Cognito Hosted UI domain prefix (for OAuth / Google sign-in URL)
+    Value: !Ref CognitoDomain
+
+  CognitoHostedUiUrl:
+    Condition: HasCognitoDomain
+    Description: Cognito Hosted UI base URL (for Google / OAuth sign-in redirect)
+    Value: !Sub
+      - "https://${Prefix}.auth.${Region}.amazoncognito.com"
+      - { Prefix: !Ref CognitoDomain, Region: !Ref AWS::Region }
+
+  GoogleRedirectUri:
+    Condition: HasCognitoDomain
+    Description: "Add this EXACT URL to Google Cloud Console → Credentials → OAuth 2.0 Client → Authorized redirect URIs"
+    Value: !Sub
+      - "https://${Prefix}.auth.${Region}.amazoncognito.com/oauth2/idpresponse"
+      - { Prefix: !Ref CognitoDomain, Region: !Ref AWS::Region }
   
   CasBucketName:
     Description: S3 bucket for CAS storage

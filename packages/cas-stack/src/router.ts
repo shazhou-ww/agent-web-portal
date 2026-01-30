@@ -238,6 +238,41 @@ export class Router {
   private async handleAuth(req: HttpRequest): Promise<HttpResponse> {
     const path = req.path.replace("/auth", "");
 
+    // POST /auth/oauth/token - Exchange authorization code for tokens (Cognito Hosted UI / Google sign-in)
+    if (req.method === "POST" && path === "/oauth/token") {
+      const { cognitoHostedUiUrl, cognitoClientId } = this.config;
+      if (!cognitoHostedUiUrl || !cognitoClientId) {
+        return errorResponse(503, "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)");
+      }
+      const body = this.parseJson(req) as { code?: string; redirect_uri?: string };
+      if (!body?.code || !body?.redirect_uri) {
+        return errorResponse(400, "Missing code or redirect_uri");
+      }
+      const tokenBody = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: cognitoClientId,
+        code: body.code,
+        redirect_uri: body.redirect_uri,
+      });
+      const tokenRes = await fetch(`${cognitoHostedUiUrl}/oauth2/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: tokenBody.toString(),
+      });
+      const text = await tokenRes.text();
+      if (!tokenRes.ok) {
+        console.error("[OAuth] Token exchange failed:", tokenRes.status, text);
+        return jsonResponse(tokenRes.status, { error: "Token exchange failed", details: text });
+      }
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        return errorResponse(502, "Invalid token response from Cognito");
+      }
+      return jsonResponse(200, data);
+    }
+
     // POST /auth/login
     if (req.method === "POST" && path === "/login") {
       const body = this.parseJson(req);

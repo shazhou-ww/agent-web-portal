@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import AuthCallback from "./pages/AuthCallback";
 import Clients from "./pages/Clients";
 import Nodes from "./pages/Nodes";
 import Tokens from "./pages/Tokens";
@@ -43,6 +44,7 @@ function AppRoutes() {
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/auth/awp" element={<AwpAuth />} />
         <Route
           path="/"

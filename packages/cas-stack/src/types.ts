@@ -314,6 +314,8 @@ export interface CasConfig {
   cognitoUserPoolId: string;
   cognitoClientId: string;
   cognitoRegion: string;
+  /** Cognito Hosted UI base URL for OAuth / Google sign-in token exchange */
+  cognitoHostedUiUrl: string;
   serverConfig: CasServerConfig;
 }
 
@@ -337,6 +339,7 @@ export function loadConfig(): CasConfig {
     cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
     cognitoClientId: process.env.COGNITO_CLIENT_ID ?? "",
     cognitoRegion: process.env.COGNITO_REGION ?? "us-east-1",
+    cognitoHostedUiUrl: process.env.COGNITO_HOSTED_UI_URL ?? "",
     serverConfig: loadServerConfig(),
   };
 }

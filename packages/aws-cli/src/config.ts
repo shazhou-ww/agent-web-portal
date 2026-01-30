@@ -13,6 +13,7 @@ const DEFAULT_STACK_NAME = "awp-cas";
 const ENV_KEYS = [
   "VITE_COGNITO_USER_POOL_ID",
   "VITE_COGNITO_CLIENT_ID",
+  "VITE_COGNITO_HOSTED_UI_URL",
   "VITE_API_URL",
   "CAS_API_PORT",
   "CAS_WEBUI_PORT",
@@ -22,6 +23,7 @@ const ENV_KEYS = [
 const OUTPUT_TO_ENV: Record<string, (typeof ENV_KEYS)[number]> = {
   UserPoolId: "VITE_COGNITO_USER_POOL_ID",
   UserPoolClientId: "VITE_COGNITO_CLIENT_ID",
+  CognitoHostedUiUrl: "VITE_COGNITO_HOSTED_UI_URL",
 };
 
 export interface ConfigOptions {
