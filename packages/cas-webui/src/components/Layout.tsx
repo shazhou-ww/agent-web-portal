@@ -23,6 +23,7 @@ import {
   Hub as HubIcon,
   Logout as LogoutIcon,
   KeyboardArrowDown as ArrowDownIcon,
+  Key as KeyIcon,
 } from "@mui/icons-material";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
@@ -33,6 +34,7 @@ const menuItems = [
   { path: "/", label: "Dashboard", icon: <DashboardIcon /> },
   { path: "/agents", label: "Clients", icon: <DevicesIcon /> },
   { path: "/nodes", label: "Nodes", icon: <HubIcon /> },
+  { path: "/tokens", label: "Agent Tokens", icon: <KeyIcon /> },
 ];
 
 export default function Layout() {

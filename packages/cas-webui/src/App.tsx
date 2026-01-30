@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Clients from "./pages/Clients";
 import Nodes from "./pages/Nodes";
+import Tokens from "./pages/Tokens";
 import AwpAuth from "./pages/AwpAuth";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -53,6 +54,7 @@ function AppRoutes() {
           <Route index element={<Dashboard />} />
           <Route path="agents" element={<Clients />} />
           <Route path="nodes" element={<Nodes />} />
+          <Route path="tokens" element={<Tokens />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
