@@ -71,7 +71,7 @@ function StatCard({ title, value, icon, color }: StatCardProps) {
 }
 
 export default function Dashboard() {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, userRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -150,6 +150,12 @@ export default function Dashboard() {
           Overview of your Content Addressable Storage
         </Typography>
       </Box>
+
+      {userRole === "unauthorized" && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Your account is not authorized. Some features are unavailable. Please contact an administrator.
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>

@@ -117,19 +117,15 @@ async function main() {
     console.log(`✅ Found Cognito User Pool: ${cognitoUserPoolId}`);
   }
   if (!cognitoUserPoolId || !cognitoClientId) {
-    console.error("❌ Stack is missing UserPoolId or UserPoolClientId. Cognito config is required for the UI build.");
-    process.exit(1);
+    console.warn("⚠️ Stack has no UserPoolId/UserPoolClientId; /api/auth/config will return empty. Set COGNITO_* on the API for auth.");
   }
   console.log("");
 
-  // Build with stack outputs so Vite bakes in VITE_COGNITO_* and VITE_API_URL
-  console.log("🔨 Building UI with stack config (VITE_COGNITO_*, VITE_API_URL)...");
+  // Build with API URL only; Cognito config is loaded at runtime from GET /api/auth/config
+  console.log("🔨 Building UI (VITE_API_URL for API base; auth config from API at runtime)...");
   const buildEnv = {
     ...process.env,
     VITE_API_URL: apiUrl || "",
-    VITE_COGNITO_USER_POOL_ID: cognitoUserPoolId,
-    VITE_COGNITO_CLIENT_ID: cognitoClientId,
-    VITE_COGNITO_HOSTED_UI_URL: cognitoHostedUiUrl || "",
   };
   const build = spawn("bun", ["run", "build"], {
     cwd: join(import.meta.dir, ".."),

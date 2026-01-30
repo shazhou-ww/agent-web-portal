@@ -9,6 +9,7 @@ import Clients from "./pages/Clients";
 import Nodes from "./pages/Nodes";
 import Tokens from "./pages/Tokens";
 import Tickets from "./pages/Tickets";
+import Users from "./pages/Users";
 import AwpAuth from "./pages/AwpAuth";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -59,6 +60,7 @@ function AppRoutes() {
           <Route path="nodes" element={<Nodes />} />
           <Route path="tokens" element={<Tokens />} />
           <Route path="tickets" element={<Tickets />} />
+          <Route path="users" element={<Users />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

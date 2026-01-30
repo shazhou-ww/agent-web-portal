@@ -114,6 +114,34 @@ bun run sam:build
 bun run sam:deploy
 ```
 
+### User roles and initial admin
+
+CAS has three roles: **unauthorized** (no CAS access), **authorized** (normal CAS use), **admin** (can grant/revoke other users). New users are unauthorized until an admin grants access.
+
+**Option A – script (recommended):** List Cognito users and set admin(s) by email or sub (writes to DynamoDB):
+
+```bash
+cd packages/cas-stack
+
+# List all Cognito users (sub, email, name)
+bun run set-admin-users --list
+
+# Set one user as admin by email
+bun run set-admin-users --set-admin admin@example.com
+
+# Set by Cognito sub (from --list output)
+bun run set-admin-users --set-admin a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+# Set multiple users
+bun run set-admin-users --set-admin admin@example.com "another-sub-uuid"
+```
+
+Requires `COGNITO_USER_POOL_ID`, `TOKENS_TABLE`, and AWS credentials (or `DYNAMODB_ENDPOINT` for local).
+
+**Option B – env var:** Set `CAS_ADMIN_USER_IDS` (comma-separated Cognito `sub`). Used only when there is no role record in DB for that user (bootstrap). To get sub IDs: `bun run set-admin-users --list` or `aws cognito-idp list-users --user-pool-id <id> --query 'Users[*].Attributes[?Name==\`sub\`].Value' --output text`.
+
+**Cognito config:** Backend uses env `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `COGNITO_HOSTED_UI_URL`. Frontend gets Cognito config at runtime from `GET /api/auth/config` (no build-time env). `awp config pull` writes `COGNITO_*` to `.env` for the backend.
+
 ### Configuration
 
 Set Cognito domain for OAuth (required for Hosted UI / Google sign-in):
@@ -169,7 +197,7 @@ To enable "Sign in with Google" in cas-webui:
    awp config pull
    ```
 
-   This writes `VITE_COGNITO_HOSTED_UI_URL` (and other Cognito IDs) into `.env` so the login page can show the "Sign in with Google" button.
+   Run `awp config pull` to write `COGNITO_*` into `.env` for the backend. The UI loads Cognito config at runtime from `GET /api/auth/config`.
 
 ## Usage Example
 

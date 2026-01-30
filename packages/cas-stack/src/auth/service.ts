@@ -6,7 +6,7 @@ import {
   CognitoIdentityProviderClient,
   InitiateAuthCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { TokensDb } from "../db/index.ts";
+import { TokensDb, UserRolesDb } from "../db/index.ts";
 import type {
   AuthContext,
   CasConfig,
@@ -22,11 +22,18 @@ import { loadServerConfig } from "../types.ts";
 export class AuthService {
   private cognito: CognitoIdentityProviderClient;
   private tokensDb: TokensDb;
+  private userRolesDb: UserRolesDb | null;
   private config: CasConfig;
 
-  constructor(config: CasConfig, tokensDb?: TokensDb, cognito?: CognitoIdentityProviderClient) {
+  constructor(
+    config: CasConfig,
+    tokensDb?: TokensDb,
+    userRolesDb?: UserRolesDb,
+    cognito?: CognitoIdentityProviderClient
+  ) {
     this.config = config;
     this.tokensDb = tokensDb ?? new TokensDb(config);
+    this.userRolesDb = userRolesDb ?? null;
     this.cognito = cognito ?? new CognitoIdentityProviderClient({ region: config.cognitoRegion });
   }
 
@@ -66,6 +73,8 @@ export class AuthService {
 
     const tokenId = TokensDb.extractTokenId(userToken.pk);
 
+    const role = this.userRolesDb ? await this.userRolesDb.getRole(userId) : undefined;
+
     return {
       userToken: tokenId,
       refreshToken: RefreshToken,
@@ -75,6 +84,7 @@ export class AuthService {
         email,
         name,
       },
+      ...(role !== undefined && { role }),
     };
   }
 
@@ -115,9 +125,12 @@ export class AuthService {
 
     const tokenId = TokensDb.extractTokenId(userToken.pk);
 
+    const role = this.userRolesDb ? await this.userRolesDb.getRole(userId) : undefined;
+
     return {
       userToken: tokenId,
       expiresAt: new Date(userToken.expiresAt).toISOString(),
+      ...(role !== undefined && { role }),
     };
   }
 

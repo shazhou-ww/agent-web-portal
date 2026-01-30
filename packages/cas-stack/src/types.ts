@@ -83,6 +83,8 @@ export interface LoginResponse {
     email: string;
     name?: string;
   };
+  /** Resolved user role for UI (unauthorized / authorized / admin) */
+  role?: UserRole;
 }
 
 export interface RefreshRequest {
@@ -92,6 +94,8 @@ export interface RefreshRequest {
 export interface RefreshResponse {
   userToken: string;
   expiresAt: string;
+  /** Resolved user role for UI */
+  role?: UserRole;
 }
 
 // ============================================================================
@@ -258,6 +262,12 @@ export interface UploadDagResponse {
 }
 
 // ============================================================================
+// User Role (authorization level)
+// ============================================================================
+
+export type UserRole = "unauthorized" | "authorized" | "admin";
+
+// ============================================================================
 // Parsed Auth Context
 // ============================================================================
 
@@ -268,6 +278,10 @@ export interface AuthContext {
   canRead: boolean;
   canWrite: boolean;
   canIssueTicket: boolean;
+  /** Resolved user role (only set for user/agent/AWP auth) */
+  role?: UserRole;
+  /** True only for admin; allows user management APIs */
+  canManageUsers?: boolean;
   // For tickets, the allowed DAG root keys
   allowedScope?: string | string[];
 }

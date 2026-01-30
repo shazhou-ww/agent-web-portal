@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useEffect,
+  useRef,
   useCallback,
   type ReactNode,
 } from "react";
@@ -12,20 +13,30 @@ import {
   AuthenticationDetails,
   CognitoUserSession,
 } from "amazon-cognito-identity-js";
-
-// Cognito configuration - loaded from environment variables
-const COGNITO_USER_POOL_ID = import.meta.env.VITE_COGNITO_USER_POOL_ID || "";
-const COGNITO_CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID || "";
-const COGNITO_HOSTED_UI_URL = import.meta.env.VITE_COGNITO_HOSTED_UI_URL || "";
+import { API_URL } from "../utils/api.ts";
 
 /** SessionStorage key for OAuth (Hosted UI / Google) tokens */
 export const COGNITO_OAUTH_TOKENS_KEY = "cognito_oauth_tokens";
 
-// Initialize Cognito User Pool
-const userPool = new CognitoUserPool({
-  UserPoolId: COGNITO_USER_POOL_ID,
-  ClientId: COGNITO_CLIENT_ID,
-});
+export type UserRole = "unauthorized" | "authorized" | "admin";
+
+export interface AuthConfig {
+  cognitoUserPoolId: string;
+  cognitoClientId: string;
+  cognitoHostedUiUrl: string;
+}
+
+async function fetchAuthConfig(): Promise<AuthConfig> {
+  const base = API_URL || "";
+  const res = await fetch(`${base}/api/auth/config`);
+  if (!res.ok) throw new Error(`Failed to load auth config: ${res.status}`);
+  const data = (await res.json()) as AuthConfig;
+  return {
+    cognitoUserPoolId: data.cognitoUserPoolId ?? "",
+    cognitoClientId: data.cognitoClientId ?? "",
+    cognitoHostedUiUrl: data.cognitoHostedUiUrl ?? "",
+  };
+}
 
 export interface User {
   userId: string;
@@ -43,13 +54,16 @@ interface AuthContextType {
   user: User | null;
   tokens: AuthTokens | null;
   loading: boolean;
+  /** Auth config from API (null if not loaded or failed) */
+  authConfig: AuthConfig | null;
+  /** Current user role from GET /api/auth/me (null while loading or not logged in) */
+  userRole: UserRole | null;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  /** Redirect to Cognito Hosted UI for Google sign-in (only when VITE_COGNITO_HOSTED_UI_URL is set) */
   loginWithGoogle: () => void;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
-  /** Whether Google sign-in is available */
   googleSignInEnabled: boolean;
 }
 
@@ -58,7 +72,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 function parseJwt(token: string): Record<string, unknown> {
   try {
     const base64Url = token.split(".")[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const base64 = base64Url?.replace(/-/g, "+").replace(/_/g, "/") ?? "";
     const jsonPayload = decodeURIComponent(
       atob(base64)
         .split("")
@@ -101,9 +115,26 @@ function getStoredOAuthTokens(): AuthTokens | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
+  const userPoolRef = useRef<CognitoUserPool | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [tokens, setTokens] = useState<AuthTokens | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Create user pool when config is loaded
+  useEffect(() => {
+    if (!authConfig?.cognitoUserPoolId || !authConfig?.cognitoClientId) {
+      userPoolRef.current = null;
+      return;
+    }
+    userPoolRef.current = new CognitoUserPool({
+      UserPoolId: authConfig.cognitoUserPoolId,
+      ClientId: authConfig.cognitoClientId,
+    });
+  }, [authConfig]);
+
+  const getUserPool = (): CognitoUserPool | null => userPoolRef.current;
 
   // Refresh session: prefer stored OAuth tokens, then Cognito user session
   const refreshSession = useCallback(async (): Promise<void> => {
@@ -111,6 +142,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (oauthTokens) {
       setTokens(oauthTokens);
       setUser(extractUserFromIdToken(oauthTokens.idToken));
+      return;
+    }
+
+    const userPool = getUserPool();
+    if (!userPool) {
+      setUser(null);
+      setTokens(null);
       return;
     }
 
@@ -146,73 +184,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Check for existing session on mount
-  useEffect(() => {
-    const checkSession = async () => {
-      await refreshSession();
-      setLoading(false);
-    };
-    checkSession();
-  }, [refreshSession]);
-
   // Login with email and password
-  const login = async (
-    email: string,
-    password: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  const login = useCallback(
+    async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+      const userPool = getUserPool();
+      if (!userPool) {
+        return { success: false, error: "Auth not configured" };
+      }
 
-    return new Promise((resolve) => {
-      const cognitoUser = new CognitoUser({
-        Username: email,
-        Pool: userPool,
+      return new Promise((resolve) => {
+        const cognitoUser = new CognitoUser({
+          Username: email,
+          Pool: userPool,
+        });
+
+        const authDetails = new AuthenticationDetails({
+          Username: email,
+          Password: password,
+        });
+
+        cognitoUser.authenticateUser(authDetails, {
+          onSuccess: (session: CognitoUserSession) => {
+            const newTokens: AuthTokens = {
+              accessToken: session.getAccessToken().getJwtToken(),
+              idToken: session.getIdToken().getJwtToken(),
+              refreshToken: session.getRefreshToken().getToken(),
+            };
+
+            setTokens(newTokens);
+            setUser(extractUserFromSession(session));
+            resolve({ success: true });
+          },
+          onFailure: (err) => {
+            console.error("Login failed:", err);
+            resolve({
+              success: false,
+              error: err.message || "Authentication failed",
+            });
+          },
+          newPasswordRequired: () => {
+            resolve({
+              success: false,
+              error: "New password required. Please contact administrator.",
+            });
+          },
+        });
       });
-
-      const authDetails = new AuthenticationDetails({
-        Username: email,
-        Password: password,
-      });
-
-      cognitoUser.authenticateUser(authDetails, {
-        onSuccess: (session: CognitoUserSession) => {
-          const newTokens: AuthTokens = {
-            accessToken: session.getAccessToken().getJwtToken(),
-            idToken: session.getIdToken().getJwtToken(),
-            refreshToken: session.getRefreshToken().getToken(),
-          };
-
-          setTokens(newTokens);
-          setUser(extractUserFromSession(session));
-          resolve({ success: true });
-        },
-        onFailure: (err) => {
-          console.error("Login failed:", err);
-          resolve({
-            success: false,
-            error: err.message || "Authentication failed",
-          });
-        },
-        newPasswordRequired: () => {
-          // Handle new password required scenario
-          resolve({
-            success: false,
-            error: "New password required. Please contact administrator.",
-          });
-        },
-      });
-    });
-  };
+    },
+    []
+  );
 
   const loginWithGoogle = useCallback((): void => {
-    if (!COGNITO_CLIENT_ID) return;
-    if (!COGNITO_HOSTED_UI_URL) {
-      console.warn(
-        "[Auth] Google sign-in: VITE_COGNITO_HOSTED_UI_URL is not set. " +
-          "Set it in .env (e.g. run: awp config pull after deploying with CognitoDomain)."
-      );
-      alert(
-        "Google 登录未配置：请在 .env 中设置 VITE_COGNITO_HOSTED_UI_URL。\n" +
-          "部署时指定 CognitoDomain 后运行 awp config pull 可自动写入。"
-      );
+    if (!authConfig?.cognitoClientId || !authConfig?.cognitoHostedUiUrl) {
+      console.warn("[Auth] Google sign-in not configured (cognitoClientId or cognitoHostedUiUrl missing from /api/auth/config).");
+      alert("Google sign-in is not configured. Please contact an administrator to set up Cognito Hosted UI.");
       return;
     }
     const returnUrl = encodeURIComponent(
@@ -223,31 +248,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const redirectUri = window.location.origin + "/auth/callback";
     const scope = "openid email profile";
     const params = new URLSearchParams({
-      client_id: COGNITO_CLIENT_ID,
+      client_id: authConfig.cognitoClientId,
       response_type: "code",
       scope,
       redirect_uri: redirectUri,
       state: returnUrl,
       identity_provider: "Google",
     });
-    window.location.href = `${COGNITO_HOSTED_UI_URL}/oauth2/authorize?${params.toString()}`;
-  }, []);
+    window.location.href = `${authConfig.cognitoHostedUiUrl}/oauth2/authorize?${params.toString()}`;
+  }, [authConfig]);
 
-  // Logout
-  const logout = async (): Promise<void> => {
+  const logout = useCallback(async (): Promise<void> => {
     sessionStorage.removeItem(COGNITO_OAUTH_TOKENS_KEY);
-    const cognitoUser = userPool.getCurrentUser();
-    if (cognitoUser) {
-      cognitoUser.signOut();
+    const userPool = getUserPool();
+    if (userPool) {
+      const cognitoUser = userPool.getCurrentUser();
+      if (cognitoUser) cognitoUser.signOut();
     }
     setUser(null);
     setTokens(null);
-  };
+    setUserRole(null);
+  }, []);
 
-  // Get current access token (from OAuth storage or Cognito session)
   const getAccessToken = useCallback(async (): Promise<string | null> => {
     const oauthTokens = getStoredOAuthTokens();
     if (oauthTokens) return oauthTokens.accessToken;
+
+    const userPool = getUserPool();
+    if (!userPool) return null;
 
     const cognitoUser = userPool.getCurrentUser();
     if (!cognitoUser) return null;
@@ -265,18 +293,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Load auth config from API, then check session
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const config = await fetchAuthConfig();
+        if (!cancelled) setAuthConfig(config);
+      } catch (err) {
+        console.error("[Auth] Failed to load auth config:", err);
+        if (!cancelled) setAuthConfig({ cognitoUserPoolId: "", cognitoClientId: "", cognitoHostedUiUrl: "" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // After config is set (or failed), check session and set loading false
+  useEffect(() => {
+    if (authConfig === null) return; // still loading config
+    const checkSession = async () => {
+      await refreshSession();
+      setLoading(false);
+    };
+    checkSession();
+  }, [authConfig, refreshSession]);
+
+  // Fetch current user role from GET /api/auth/me when user is logged in
+  useEffect(() => {
+    if (!user || !tokens) {
+      setUserRole(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token || cancelled) return;
+        const base = API_URL || "";
+        const res = await fetch(`${base}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { role?: UserRole };
+        if (!cancelled && data.role) setUserRole(data.role);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, tokens, getAccessToken]);
+
   return (
     <AuthContext.Provider
       value={{
         user,
         tokens,
         loading,
+        authConfig,
+        userRole,
+        isAdmin: userRole === "admin",
         login,
         loginWithGoogle,
         logout,
         refreshSession,
         getAccessToken,
-        googleSignInEnabled: Boolean(COGNITO_CLIENT_ID),
+        googleSignInEnabled: Boolean(authConfig?.cognitoClientId && authConfig?.cognitoHostedUiUrl),
       }}
     >
       {children}

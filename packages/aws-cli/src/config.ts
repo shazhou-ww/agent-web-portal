@@ -11,19 +11,18 @@ import chalk from "chalk";
 
 const DEFAULT_STACK_NAME = "awp-cas";
 const ENV_KEYS = [
-  "VITE_COGNITO_USER_POOL_ID",
-  "VITE_COGNITO_CLIENT_ID",
-  "VITE_COGNITO_HOSTED_UI_URL",
+  "COGNITO_USER_POOL_ID",
+  "COGNITO_CLIENT_ID",
+  "COGNITO_HOSTED_UI_URL",
   "VITE_API_URL",
   "CAS_API_PORT",
   "CAS_WEBUI_PORT",
 ] as const;
 
-// Only Cognito IDs by default - local dev uses empty VITE_API_URL so Vite proxy hits localhost
 const OUTPUT_TO_ENV: Record<string, (typeof ENV_KEYS)[number]> = {
-  UserPoolId: "VITE_COGNITO_USER_POOL_ID",
-  UserPoolClientId: "VITE_COGNITO_CLIENT_ID",
-  CognitoHostedUiUrl: "VITE_COGNITO_HOSTED_UI_URL",
+  UserPoolId: "COGNITO_USER_POOL_ID",
+  UserPoolClientId: "COGNITO_CLIENT_ID",
+  CognitoHostedUiUrl: "COGNITO_HOSTED_UI_URL",
 };
 
 export interface ConfigOptions {

@@ -26,7 +26,9 @@ import {
   DagDb,
   OwnershipDb,
   TokensDb,
+  UserRolesDb,
 } from "./src/db/index.ts";
+import { getCognitoUserMap } from "./src/auth/cognito-users.ts";
 import { loadConfig, loadServerConfig } from "./src/types.ts";
 
 function tokenIdFromPk(pk: string): string {
@@ -466,9 +468,9 @@ function createAgentTokensDbAdapter(
 // Cognito JWT Verifier (for cas-webui integration)
 // ============================================================================
 
-// Cognito configuration from environment
-const COGNITO_USER_POOL_ID = process.env.VITE_COGNITO_USER_POOL_ID ?? "";
-const COGNITO_REGION = COGNITO_USER_POOL_ID.split("_")[0] ?? "us-east-1";
+// Cognito configuration from env (COGNITO_* only)
+const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID ?? "";
+const COGNITO_REGION = process.env.COGNITO_REGION ?? (COGNITO_USER_POOL_ID.split("_")[0] || "us-east-1");
 const COGNITO_ISSUER = COGNITO_USER_POOL_ID
   ? `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}`
   : "";
@@ -540,6 +542,7 @@ const pubkeyStore = useDynamo ? new AwpPubkeyStore(loadConfig()) : new MemoryAwp
 const agentTokensDb = useDynamo
   ? createAgentTokensDbAdapter(tokensDb as TokensDb, loadServerConfig())
   : new MemoryAgentTokensDb();
+const userRolesDb = useDynamo ? new UserRolesDb(loadConfig()) : null;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -719,12 +722,19 @@ async function authenticateAwp(req: Request): Promise<AuthContext | null> {
 // Request Handlers
 // ============================================================================
 
-// Cognito Hosted UI URL for OAuth token exchange (server-side proxy to avoid CORS)
-const COGNITO_HOSTED_UI_URL =
-  process.env.COGNITO_HOSTED_UI_URL || process.env.VITE_COGNITO_HOSTED_UI_URL || "";
-const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID || process.env.VITE_COGNITO_CLIENT_ID || "";
+const COGNITO_HOSTED_UI_URL = process.env.COGNITO_HOSTED_UI_URL ?? "";
+const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID ?? "";
 
 async function handleAuth(req: Request, path: string): Promise<Response> {
+  // GET /auth/config - Public Cognito config for frontend (no auth)
+  if (req.method === "GET" && path === "/config") {
+    return jsonResponse(200, {
+      cognitoUserPoolId: COGNITO_USER_POOL_ID,
+      cognitoClientId: COGNITO_CLIENT_ID,
+      cognitoHostedUiUrl: COGNITO_HOSTED_UI_URL,
+    });
+  }
+
   // ========================================================================
   // OAuth token exchange (no auth) - proxy for Cognito Hosted UI / Google sign-in
   // ========================================================================
@@ -880,6 +890,59 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
   const auth = await authenticate(req);
   if (!auth) {
     return errorResponse(401, "Unauthorized - use Cognito via cas-webui to login");
+  }
+
+  // GET /auth/me - Current user info and role (for UI)
+  if (req.method === "GET" && path === "/me") {
+    const role = userRolesDb ? await userRolesDb.getRole(auth.userId) : "authorized";
+    return jsonResponse(200, {
+      userId: auth.userId,
+      realm: auth.scope,
+      role,
+    });
+  }
+
+  // Helper: current user is admin (when userRolesDb: check role; when in-memory: allow for dev)
+  const isAdmin = userRolesDb ? (await userRolesDb.getRole(auth.userId)) === "admin" : true;
+
+  // GET /auth/users - List users with roles (admin only), enriched with email/name from Cognito
+  if (req.method === "GET" && path === "/users") {
+    if (!isAdmin) return errorResponse(403, "Admin access required");
+    if (!userRolesDb) return jsonResponse(200, { users: [] });
+    const list = await userRolesDb.listRoles();
+    const cognitoMap = await getCognitoUserMap(COGNITO_USER_POOL_ID, COGNITO_REGION);
+    const users = list.map((u) => {
+      const attrs = cognitoMap.get(u.userId);
+      return {
+        userId: u.userId,
+        role: u.role,
+        email: attrs?.email ?? "",
+        name: attrs?.name ?? undefined,
+      };
+    });
+    return jsonResponse(200, { users });
+  }
+
+  // POST /auth/users/:userId/authorize - Set user role (admin only)
+  const authorizePostMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
+  if (req.method === "POST" && authorizePostMatch) {
+    if (!isAdmin) return errorResponse(403, "Admin access required");
+    if (!userRolesDb) return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
+    const targetUserId = decodeURIComponent(authorizePostMatch[1]!);
+    const body = (await req.json()) as { role?: string };
+    const role = body.role === "admin" ? "admin" : "authorized";
+    await userRolesDb.setRole(targetUserId, role);
+    return jsonResponse(200, { userId: targetUserId, role });
+  }
+
+  // DELETE /auth/users/:userId/authorize - Revoke user (admin only)
+  const authorizeDeleteMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
+  if (req.method === "DELETE" && authorizeDeleteMatch) {
+    if (!isAdmin) return errorResponse(403, "Admin access required");
+    if (!userRolesDb) return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
+    const targetUserId = decodeURIComponent(authorizeDeleteMatch[1]!);
+    await userRolesDb.revoke(targetUserId);
+    return jsonResponse(200, { userId: targetUserId, revoked: true });
   }
 
   // GET /auth/agent-tokens/clients - List authorized AWP clients
@@ -1208,8 +1271,8 @@ async function handleCas(req: Request, scope: string, subPath: string): Promise<
 const PORT = parseInt(process.env.CAS_API_PORT ?? process.env.PORT ?? "3550", 10);
 
 if (!COGNITO_USER_POOL_ID && !USE_MOCK_AUTH) {
-  console.error("ERROR: VITE_COGNITO_USER_POOL_ID environment variable is required");
-  console.error("Please set it in your .env file");
+  console.error("ERROR: COGNITO_USER_POOL_ID environment variable is required");
+  console.error("Set COGNITO_USER_POOL_ID in .env, or run: awp config pull");
   process.exit(1);
 }
 

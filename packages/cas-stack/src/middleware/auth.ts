@@ -11,17 +11,58 @@ import { createHash } from "node:crypto";
 import type { PubkeyStore } from "@agent-web-portal/auth";
 import { AWP_AUTH_HEADERS, validateTimestamp, verifySignature } from "@agent-web-portal/auth";
 import { TokensDb } from "../db/tokens.ts";
-import type { AuthContext, CasConfig, HttpRequest, Token } from "../types.ts";
+import type { UserRolesDb } from "../db/user-roles.ts";
+import type { AuthContext, CasConfig, HttpRequest, Token, UserRole } from "../types.ts";
 
 export class AuthMiddleware {
   private config: CasConfig;
   private tokensDb: TokensDb;
+  private userRolesDb: UserRolesDb | null;
   private awpPubkeyStore: PubkeyStore | null;
 
-  constructor(config: CasConfig, tokensDb?: TokensDb, awpPubkeyStore?: PubkeyStore) {
+  constructor(
+    config: CasConfig,
+    tokensDb?: TokensDb,
+    awpPubkeyStore?: PubkeyStore,
+    userRolesDb?: UserRolesDb
+  ) {
     this.config = config;
     this.tokensDb = tokensDb ?? new TokensDb(config);
+    this.userRolesDb = userRolesDb ?? null;
     this.awpPubkeyStore = awpPubkeyStore ?? null;
+  }
+
+  /**
+   * Apply user role to auth context (for user/agent/AWP). Tickets are unchanged.
+   */
+  private async applyUserRole(auth: AuthContext): Promise<AuthContext> {
+    if (!auth.userId) return auth; // ticket or similar
+    const userRolesDb = this.userRolesDb;
+    if (!userRolesDb) {
+      // No role DB: treat as authorized (backward compat when not wired)
+      auth.role = "authorized";
+      auth.canManageUsers = false;
+      return auth;
+    }
+    const role: UserRole = await userRolesDb.getRole(auth.userId);
+    auth.role = role;
+    if (role === "unauthorized") {
+      auth.canRead = false;
+      auth.canWrite = false;
+      auth.canIssueTicket = false;
+      auth.canManageUsers = false;
+    } else if (role === "authorized") {
+      auth.canRead = true;
+      auth.canWrite = true;
+      auth.canIssueTicket = true;
+      auth.canManageUsers = false;
+    } else {
+      auth.canRead = true;
+      auth.canWrite = true;
+      auth.canIssueTicket = true;
+      auth.canManageUsers = true;
+    }
+    return auth;
   }
 
   /**
@@ -105,8 +146,8 @@ export class AuthMiddleware {
       return null;
     }
 
-    // Build auth context for AWP client
-    return this.buildAwpAuthContext(authorizedPubkey);
+    const ctx = this.buildAwpAuthContext(authorizedPubkey);
+    return this.applyUserRole(ctx);
   }
 
   /**
@@ -168,8 +209,9 @@ export class AuthMiddleware {
       return null;
     }
 
-    // Build auth context based on token type
-    return this.buildAuthContext(token);
+    const ctx = this.buildAuthContext(token);
+    if (token.type === "ticket") return ctx;
+    return this.applyUserRole(ctx);
   }
 
   /**
@@ -215,8 +257,7 @@ export class AuthMiddleware {
         return null;
       }
 
-      // Build auth context for Cognito user
-      return {
+      const ctx: AuthContext = {
         token: {
           pk: `jwt#${userId}`,
           type: "user",
@@ -230,6 +271,7 @@ export class AuthMiddleware {
         canWrite: true,
         canIssueTicket: true,
       };
+      return this.applyUserRole(ctx);
     } catch (error) {
       console.error("[Auth] JWT decode error:", error);
       return null;

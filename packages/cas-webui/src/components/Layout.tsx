@@ -25,13 +25,14 @@ import {
   KeyboardArrowDown as ArrowDownIcon,
   Key as KeyIcon,
   ConfirmationNumber as TicketIcon,
+  People as PeopleIcon,
 } from "@mui/icons-material";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
 const DRAWER_WIDTH = 260;
 
-const menuItems = [
+const BASE_MENU_ITEMS: { path: string; label: string; icon: React.ReactNode }[] = [
   { path: "/", label: "Dashboard", icon: <DashboardIcon /> },
   { path: "/agents", label: "Clients", icon: <DevicesIcon /> },
   { path: "/nodes", label: "Nodes", icon: <HubIcon /> },
@@ -46,7 +47,21 @@ export default function Layout() {
   );
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, userRole, isAdmin } = useAuth();
+
+  const menuItems = [
+    ...BASE_MENU_ITEMS,
+    ...(isAdmin ? [{ path: "/users", label: "User Management", icon: <PeopleIcon /> }] : []),
+  ];
+
+  const roleLabel =
+    userRole === "admin"
+      ? "Admin"
+      : userRole === "authorized"
+        ? "Authorized"
+        : userRole === "unauthorized"
+          ? "Unauthorized"
+          : "—";
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -237,7 +252,7 @@ export default function Layout() {
                 fontSize: "0.7rem",
               }}
             >
-              Administrator
+              {roleLabel}
             </Typography>
           </Box>
           <ArrowDownIcon
@@ -347,7 +362,7 @@ export default function Layout() {
             {user?.email}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Administrator
+            {roleLabel}
           </Typography>
         </Box>
         <Divider />

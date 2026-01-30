@@ -4,9 +4,16 @@
 
 import { generateVerificationCode } from "@agent-web-portal/auth";
 import { z } from "zod";
+import { getCognitoUserMap } from "./auth/cognito-users.ts";
 import { AuthService } from "./auth/service.ts";
 import { CasStorage } from "./cas/storage.ts";
-import { AwpPendingAuthStore, AwpPubkeyStore, OwnershipDb, TokensDb } from "./db/index.ts";
+import {
+  AwpPendingAuthStore,
+  AwpPubkeyStore,
+  OwnershipDb,
+  TokensDb,
+  UserRolesDb,
+} from "./db/index.ts";
 import { McpHandler } from "./mcp/handler.ts";
 import { AuthMiddleware } from "./middleware/auth.ts";
 import type {
@@ -78,6 +85,11 @@ const CreateAgentTokenSchema = z.object({
   expiresIn: z.number().positive().optional(),
 });
 
+// User authorize schema (admin only)
+const AuthorizeUserSchema = z.object({
+  role: z.enum(["authorized", "admin"]),
+});
+
 // ============================================================================
 // Response Helpers
 // ============================================================================
@@ -128,6 +140,7 @@ export class Router {
   private authService: AuthService;
   private casStorage: CasStorage;
   private tokensDb: TokensDb;
+  private userRolesDb: UserRolesDb;
   private ownershipDb: OwnershipDb;
   private awpPendingStore: AwpPendingAuthStore;
   private awpPubkeyStore: AwpPubkeyStore;
@@ -136,11 +149,17 @@ export class Router {
   constructor(config: CasConfig) {
     this.config = config;
     this.tokensDb = new TokensDb(config);
+    this.userRolesDb = new UserRolesDb(config);
     this.ownershipDb = new OwnershipDb(config);
     this.awpPendingStore = new AwpPendingAuthStore(config);
     this.awpPubkeyStore = new AwpPubkeyStore(config);
-    this.authMiddleware = new AuthMiddleware(config, this.tokensDb, this.awpPubkeyStore);
-    this.authService = new AuthService(config, this.tokensDb);
+    this.authMiddleware = new AuthMiddleware(
+      config,
+      this.tokensDb,
+      this.awpPubkeyStore,
+      this.userRolesDb
+    );
+    this.authService = new AuthService(config, this.tokensDb, this.userRolesDb);
     this.casStorage = new CasStorage(config);
     this.mcpHandler = new McpHandler(config, loadServerConfig());
   }
@@ -237,6 +256,16 @@ export class Router {
 
   private async handleAuth(req: HttpRequest): Promise<HttpResponse> {
     const path = req.path.replace("/auth", "");
+
+    // GET /auth/config - Public Cognito config for frontend (no auth)
+    if (req.method === "GET" && path === "/config") {
+      const { cognitoUserPoolId, cognitoClientId, cognitoHostedUiUrl } = this.config;
+      return jsonResponse(200, {
+        cognitoUserPoolId: cognitoUserPoolId ?? "",
+        cognitoClientId: cognitoClientId ?? "",
+        cognitoHostedUiUrl: cognitoHostedUiUrl ?? "",
+      });
+    }
 
     // POST /auth/oauth/token - Exchange authorization code for tokens (Cognito Hosted UI / Google sign-in)
     if (req.method === "POST" && path === "/oauth/token") {
@@ -428,6 +457,64 @@ export class Router {
     const auth = await this.authMiddleware.authenticate(req);
     if (!auth) {
       return errorResponse(401, "Unauthorized");
+    }
+
+    // GET /auth/me - Current user info and role (for UI)
+    if (req.method === "GET" && path === "/me") {
+      return jsonResponse(200, {
+        userId: auth.userId,
+        realm: auth.realm,
+        role: auth.role ?? "unauthorized",
+      });
+    }
+
+    // GET /auth/users - List users with roles (admin only), enriched with email/name from Cognito
+    if (req.method === "GET" && path === "/users") {
+      if (!auth.canManageUsers) {
+        return errorResponse(403, "Admin access required");
+      }
+      const list = await this.userRolesDb.listRoles();
+      const cognitoMap = await getCognitoUserMap(
+        this.config.cognitoUserPoolId,
+        this.config.cognitoRegion
+      );
+      const users = list.map((u) => {
+        const attrs = cognitoMap.get(u.userId);
+        return {
+          userId: u.userId,
+          role: u.role,
+          email: attrs?.email ?? "",
+          name: attrs?.name ?? undefined,
+        };
+      });
+      return jsonResponse(200, { users });
+    }
+
+    // POST /auth/users/:userId/authorize - Set user role (admin only)
+    const authorizePostMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
+    if (req.method === "POST" && authorizePostMatch) {
+      if (!auth.canManageUsers) {
+        return errorResponse(403, "Admin access required");
+      }
+      const targetUserId = decodeURIComponent(authorizePostMatch[1]!);
+      const body = this.parseJson(req);
+      const parsed = AuthorizeUserSchema.safeParse(body);
+      if (!parsed.success) {
+        return errorResponse(400, "Invalid request", parsed.error.issues);
+      }
+      await this.userRolesDb.setRole(targetUserId, parsed.data.role);
+      return jsonResponse(200, { userId: targetUserId, role: parsed.data.role });
+    }
+
+    // DELETE /auth/users/:userId/authorize - Revoke user (admin only)
+    const authorizeDeleteMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
+    if (req.method === "DELETE" && authorizeDeleteMatch) {
+      if (!auth.canManageUsers) {
+        return errorResponse(403, "Admin access required");
+      }
+      const targetUserId = decodeURIComponent(authorizeDeleteMatch[1]!);
+      await this.userRolesDb.revoke(targetUserId);
+      return jsonResponse(200, { userId: targetUserId, revoked: true });
     }
 
     // GET /auth/agent-tokens/clients - List authorized AWP clients
