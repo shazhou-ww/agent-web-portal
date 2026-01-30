@@ -58,10 +58,12 @@ interface AuthContextType {
   userRole: UserRole | null;
   isAdmin: boolean;
   loginWithGoogle: () => void;
+  loginWithMicrosoft: () => void;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
   googleSignInEnabled: boolean;
+  microsoftSignInEnabled: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -181,29 +183,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const loginWithGoogle = useCallback((): void => {
-    if (!authConfig?.cognitoClientId || !authConfig?.cognitoHostedUiUrl) {
-      console.warn("[Auth] Google sign-in not configured (cognitoClientId or cognitoHostedUiUrl missing from /api/auth/config).");
-      alert("Google sign-in is not configured. Please contact an administrator to set up Cognito Hosted UI.");
-      return;
-    }
-    const returnUrl = encodeURIComponent(
-      window.location.pathname === "/login"
-        ? (new URLSearchParams(window.location.search).get("returnUrl") || "/")
-        : window.location.pathname + window.location.search
-    );
-    const redirectUri = window.location.origin + "/auth/callback";
-    const scope = "openid email profile";
-    const params = new URLSearchParams({
-      client_id: authConfig.cognitoClientId,
-      response_type: "code",
-      scope,
-      redirect_uri: redirectUri,
-      state: returnUrl,
-      identity_provider: "Google",
-    });
-    window.location.href = `${authConfig.cognitoHostedUiUrl}/oauth2/authorize?${params.toString()}`;
-  }, [authConfig]);
+  const loginWithIdP = useCallback(
+    (identityProvider: string): void => {
+      if (!authConfig?.cognitoClientId || !authConfig?.cognitoHostedUiUrl) {
+        console.warn(`[Auth] ${identityProvider} sign-in not configured (missing Cognito config).`);
+        alert(`${identityProvider} sign-in is not configured. Please contact an administrator.`);
+        return;
+      }
+      const returnUrl = encodeURIComponent(
+        window.location.pathname === "/login"
+          ? new URLSearchParams(window.location.search).get("returnUrl") || "/"
+          : window.location.pathname + window.location.search
+      );
+      const redirectUri = window.location.origin + "/auth/callback";
+      const scope = "openid email profile";
+      const params = new URLSearchParams({
+        client_id: authConfig.cognitoClientId,
+        response_type: "code",
+        scope,
+        redirect_uri: redirectUri,
+        state: returnUrl,
+        identity_provider: identityProvider,
+      });
+      window.location.href = `${authConfig.cognitoHostedUiUrl}/oauth2/authorize?${params.toString()}`;
+    },
+    [authConfig]
+  );
+
+  const loginWithGoogle = useCallback((): void => loginWithIdP("Google"), [loginWithIdP]);
+  const loginWithMicrosoft = useCallback((): void => loginWithIdP("Microsoft"), [loginWithIdP]);
 
   const logout = useCallback(async (): Promise<void> => {
     sessionStorage.removeItem(COGNITO_OAUTH_TOKENS_KEY);
@@ -294,6 +302,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user, tokens, getAccessToken]);
 
+  const hostedUiConfigured = Boolean(authConfig?.cognitoClientId && authConfig?.cognitoHostedUiUrl);
+
   return (
     <AuthContext.Provider
       value={{
@@ -304,10 +314,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userRole,
         isAdmin: userRole === "admin",
         loginWithGoogle,
+        loginWithMicrosoft,
         logout,
         refreshSession,
         getAccessToken,
-        googleSignInEnabled: Boolean(authConfig?.cognitoClientId && authConfig?.cognitoHostedUiUrl),
+        googleSignInEnabled: hostedUiConfigured,
+        microsoftSignInEnabled: hostedUiConfigured,
       }}
     >
       {children}

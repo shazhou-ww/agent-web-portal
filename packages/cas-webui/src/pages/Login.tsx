@@ -8,6 +8,7 @@ import {
   Typography,
   Alert,
   CircularProgress,
+  Stack,
 } from "@mui/material";
 import { Storage as StorageIcon } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
@@ -36,12 +37,32 @@ function GoogleIcon() {
   );
 }
 
+// Microsoft icon for Sign in with Microsoft
+function MicrosoftIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 21 21">
+      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+    </svg>
+  );
+}
+
 export default function Login() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, loginWithGoogle, googleSignInEnabled, loading: authLoading } = useAuth();
+  const {
+    user,
+    loginWithGoogle,
+    loginWithMicrosoft,
+    googleSignInEnabled,
+    microsoftSignInEnabled,
+    loading: authLoading,
+  } = useAuth();
 
   const returnUrl = searchParams.get("returnUrl") || "/";
+  const anySignInEnabled = googleSignInEnabled || microsoftSignInEnabled;
 
   // If already logged in, redirect
   useEffect(() => {
@@ -103,45 +124,70 @@ export default function Login() {
             </Typography>
           </Box>
 
-          {!googleSignInEnabled && (
+          {!anySignInEnabled && (
             <Alert severity="warning" sx={{ mb: 3 }}>
-              Google sign-in is not configured. Please contact an administrator.
+              No sign-in method is configured. Please contact an administrator.
             </Alert>
           )}
 
-          <Button
-            type="button"
-            fullWidth
-            variant="contained"
-            size="large"
-            onClick={loginWithGoogle}
-            disabled={!googleSignInEnabled}
-            startIcon={<GoogleIcon />}
-            sx={{
-              py: 1.5,
-              background: "white",
-              color: "text.primary",
-              border: "1px solid",
-              borderColor: "grey.300",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-              "&:hover": {
-                background: "grey.50",
-                borderColor: "grey.400",
-              },
-              "&.Mui-disabled": {
-                background: "grey.100",
-              },
-            }}
-          >
-            Sign in with Google
-          </Button>
+          <Stack spacing={2}>
+            {microsoftSignInEnabled && (
+              <Button
+                type="button"
+                fullWidth
+                variant="contained"
+                size="large"
+                onClick={loginWithMicrosoft}
+                startIcon={<MicrosoftIcon />}
+                sx={{
+                  py: 1.5,
+                  background: "white",
+                  color: "text.primary",
+                  border: "1px solid",
+                  borderColor: "grey.300",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  "&:hover": {
+                    background: "grey.50",
+                    borderColor: "grey.400",
+                  },
+                }}
+              >
+                Sign in with Microsoft
+              </Button>
+            )}
+
+            {googleSignInEnabled && (
+              <Button
+                type="button"
+                fullWidth
+                variant="contained"
+                size="large"
+                onClick={loginWithGoogle}
+                startIcon={<GoogleIcon />}
+                sx={{
+                  py: 1.5,
+                  background: "white",
+                  color: "text.primary",
+                  border: "1px solid",
+                  borderColor: "grey.300",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  "&:hover": {
+                    background: "grey.50",
+                    borderColor: "grey.400",
+                  },
+                }}
+              >
+                Sign in with Google
+              </Button>
+            )}
+          </Stack>
 
           <Typography
             variant="body2"
             color="text.secondary"
             sx={{ mt: 3, textAlign: "center" }}
           >
-            Sign in with your Google account
+            Sign in with your organization account
           </Typography>
         </CardContent>
       </Card>
