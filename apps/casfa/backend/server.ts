@@ -696,8 +696,8 @@ async function authenticateAwp(req: Request): Promise<AuthContext | null> {
 const COGNITO_HOSTED_UI_URL = process.env.COGNITO_HOSTED_UI_URL ?? "";
 const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID ?? "";
 
-async function handleAuth(req: Request, path: string): Promise<Response> {
-  // GET /auth/config - Public Cognito config for frontend (no auth)
+async function handleOAuth(req: Request, path: string): Promise<Response> {
+  // GET /oauth/config - Public Cognito config for frontend (no auth)
   if (req.method === "GET" && path === "/config") {
     return jsonResponse(200, {
       cognitoUserPoolId: COGNITO_USER_POOL_ID,
@@ -706,10 +706,8 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     });
   }
 
-  // ========================================================================
-  // OAuth token exchange (no auth) - proxy for Cognito Hosted UI / Google sign-in
-  // ========================================================================
-  if (req.method === "POST" && path === "/oauth/token") {
+  // POST /oauth/token - Exchange authorization code for tokens
+  if (req.method === "POST" && path === "/token") {
     if (!COGNITO_HOSTED_UI_URL || !COGNITO_CLIENT_ID) {
       return errorResponse(
         503,
@@ -745,12 +743,34 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     return jsonResponse(200, data);
   }
 
+  // GET /oauth/me - Current user info and role (requires auth)
+  if (req.method === "GET" && path === "/me") {
+    const auth = await authenticate(req);
+    if (!auth) {
+      return errorResponse(401, "Unauthorized");
+    }
+    // Ensure user record exists so admins can see and authorize them
+    if (userRolesDb && auth.userId) {
+      await userRolesDb.ensureUser(auth.userId);
+    }
+    const role = userRolesDb ? await userRolesDb.getRole(auth.userId) : "authorized";
+    return jsonResponse(200, {
+      userId: auth.userId,
+      realm: auth.scope,
+      role,
+    });
+  }
+
+  return errorResponse(404, "OAuth endpoint not found");
+}
+
+async function handleAuth(req: Request, path: string): Promise<Response> {
   // ========================================================================
-  // AWP Auth Routes (no auth required for init/status)
+  // AWP Client Routes (no auth required for init/status)
   // ========================================================================
 
-  // POST /auth/agent-tokens/init - Start AWP auth flow
-  if (req.method === "POST" && path === "/agent-tokens/init") {
+  // POST /auth/clients/init - Start AWP auth flow
+  if (req.method === "POST" && path === "/clients/init") {
     const body = (await req.json()) as { pubkey?: string; client_name?: string };
     if (!body.pubkey || !body.client_name) {
       return errorResponse(400, "Missing pubkey or client_name");
@@ -783,8 +803,8 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     });
   }
 
-  // GET /auth/agent-tokens/status - Poll for auth completion
-  if (req.method === "GET" && path === "/agent-tokens/status") {
+  // GET /auth/clients/status - Poll for auth completion
+  if (req.method === "GET" && path === "/clients/status") {
     const url = new URL(req.url);
     const pubkey = url.searchParams.get("pubkey");
     if (!pubkey) {
@@ -813,8 +833,8 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     });
   }
 
-  // POST /auth/agent-tokens/complete - Complete authorization (requires user auth)
-  if (req.method === "POST" && path === "/agent-tokens/complete") {
+  // POST /auth/clients/complete - Complete authorization (requires user auth)
+  if (req.method === "POST" && path === "/clients/complete") {
     const auth = await authenticate(req);
     if (!auth) {
       return errorResponse(401, "User authentication required");
@@ -871,63 +891,8 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     await userRolesDb.ensureUser(auth.userId);
   }
 
-  // GET /auth/me - Current user info and role (for UI)
-  if (req.method === "GET" && path === "/me") {
-    const role = userRolesDb ? await userRolesDb.getRole(auth.userId) : "authorized";
-    return jsonResponse(200, {
-      userId: auth.userId,
-      realm: auth.scope,
-      role,
-    });
-  }
-
-  // Helper: current user is admin (when userRolesDb: check role; when in-memory: allow for dev)
-  const isAdmin = userRolesDb ? (await userRolesDb.getRole(auth.userId)) === "admin" : true;
-
-  // GET /auth/users - List users with roles (admin only), enriched with email/name from Cognito
-  if (req.method === "GET" && path === "/users") {
-    if (!isAdmin) return errorResponse(403, "Admin access required");
-    if (!userRolesDb) return jsonResponse(200, { users: [] });
-    const list = await userRolesDb.listRoles();
-    const cognitoMap = await getCognitoUserMap(COGNITO_USER_POOL_ID, COGNITO_REGION);
-    const users = list.map((u) => {
-      const attrs = cognitoMap.get(u.userId);
-      return {
-        userId: u.userId,
-        role: u.role,
-        email: attrs?.email ?? "",
-        name: attrs?.name ?? undefined,
-      };
-    });
-    return jsonResponse(200, { users });
-  }
-
-  // POST /auth/users/:userId/authorize - Set user role (admin only)
-  const authorizePostMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
-  if (req.method === "POST" && authorizePostMatch) {
-    if (!isAdmin) return errorResponse(403, "Admin access required");
-    if (!userRolesDb)
-      return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
-    const targetUserId = decodeURIComponent(authorizePostMatch[1]!);
-    const body = (await req.json()) as { role?: string };
-    const role = body.role === "admin" ? "admin" : "authorized";
-    await userRolesDb.setRole(targetUserId, role);
-    return jsonResponse(200, { userId: targetUserId, role });
-  }
-
-  // DELETE /auth/users/:userId/authorize - Revoke user (admin only)
-  const authorizeDeleteMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
-  if (req.method === "DELETE" && authorizeDeleteMatch) {
-    if (!isAdmin) return errorResponse(403, "Admin access required");
-    if (!userRolesDb)
-      return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
-    const targetUserId = decodeURIComponent(authorizeDeleteMatch[1]!);
-    await userRolesDb.revoke(targetUserId);
-    return jsonResponse(200, { userId: targetUserId, revoked: true });
-  }
-
-  // GET /auth/agent-tokens/clients - List authorized AWP clients
-  if (req.method === "GET" && path === "/agent-tokens/clients") {
+  // GET /auth/clients - List authorized AWP clients
+  if (req.method === "GET" && path === "/clients") {
     const clients = await pubkeyStore.listByUser(auth.userId);
     return jsonResponse(200, {
       clients: clients.map((c) => ({
@@ -939,8 +904,8 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     });
   }
 
-  // DELETE /auth/agent-tokens/clients/:pubkey - Revoke AWP client
-  const clientRevokeMatch = path.match(/^\/agent-tokens\/clients\/(.+)$/);
+  // DELETE /auth/clients/:pubkey - Revoke AWP client
+  const clientRevokeMatch = path.match(/^\/clients\/(.+)$/);
   if (req.method === "DELETE" && clientRevokeMatch) {
     const pubkey = decodeURIComponent(clientRevokeMatch[1]!);
 
@@ -1051,6 +1016,60 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
   }
 
   return errorResponse(404, "Auth endpoint not found");
+}
+
+async function handleAdmin(req: Request, path: string): Promise<Response> {
+  const auth = await authenticate(req);
+  if (!auth) {
+    return errorResponse(401, "Unauthorized");
+  }
+
+  // Helper: current user is admin (when userRolesDb: check role; when in-memory: allow for dev)
+  const isAdmin = userRolesDb ? (await userRolesDb.getRole(auth.userId)) === "admin" : true;
+  if (!isAdmin) {
+    return errorResponse(403, "Admin access required");
+  }
+
+  // GET /admin/users - List users with roles, enriched with email/name from Cognito
+  if (req.method === "GET" && path === "/users") {
+    if (!userRolesDb) return jsonResponse(200, { users: [] });
+    const list = await userRolesDb.listRoles();
+    const cognitoMap = await getCognitoUserMap(COGNITO_USER_POOL_ID, COGNITO_REGION);
+    const users = list.map((u) => {
+      const attrs = cognitoMap.get(u.userId);
+      return {
+        userId: u.userId,
+        role: u.role,
+        email: attrs?.email ?? "",
+        name: attrs?.name ?? undefined,
+      };
+    });
+    return jsonResponse(200, { users });
+  }
+
+  // POST /admin/users/:userId/authorize - Set user role
+  const authorizePostMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
+  if (req.method === "POST" && authorizePostMatch) {
+    if (!userRolesDb)
+      return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
+    const targetUserId = decodeURIComponent(authorizePostMatch[1]!);
+    const body = (await req.json()) as { role?: string };
+    const role = body.role === "admin" ? "admin" : "authorized";
+    await userRolesDb.setRole(targetUserId, role);
+    return jsonResponse(200, { userId: targetUserId, role });
+  }
+
+  // DELETE /admin/users/:userId/authorize - Revoke user
+  const authorizeDeleteMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
+  if (req.method === "DELETE" && authorizeDeleteMatch) {
+    if (!userRolesDb)
+      return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
+    const targetUserId = decodeURIComponent(authorizeDeleteMatch[1]!);
+    await userRolesDb.revoke(targetUserId);
+    return jsonResponse(200, { userId: targetUserId, revoked: true });
+  }
+
+  return errorResponse(404, "Admin endpoint not found");
 }
 
 async function handleCas(req: Request, scope: string, subPath: string): Promise<Response> {
@@ -1267,7 +1286,7 @@ const storageInfo = useDynamo
 
 console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║                    CAS Stack Local Server                    ║
+║                      CASFA Local Server                      ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  URL: http://localhost:${String(PORT).padEnd(38)}║
 ║                                                              ║
@@ -1275,12 +1294,14 @@ ${authInfo}
 ║                                                              ║
 ${storageInfo.padEnd(58)}║
 ║  Endpoints:                                                  ║
-║    GET  /auth/agent-tokens     - List agent tokens           ║
-║    POST /auth/agent-token      - Create agent token          ║
-║    POST /auth/ticket           - Create ticket               ║
-║    POST /cas/{scope}/resolve   - Check node existence        ║
-║    PUT  /cas/{scope}/node/:key - Upload node                 ║
-║    GET  /cas/{scope}/node/:key - Download node               ║
+║    GET  /api/health            - Health check                ║
+║    GET  /api/oauth/config      - Cognito config              ║
+║    GET  /api/oauth/me          - Current user info           ║
+║    GET  /api/auth/clients      - List AWP clients            ║
+║    GET  /api/auth/tokens       - List agent tokens           ║
+║    POST /api/auth/ticket       - Create ticket               ║
+║    GET  /api/admin/users       - List users (admin)          ║
+║    POST /api/cas/{scope}/...   - CAS operations              ║
 ╚══════════════════════════════════════════════════════════════╝
 `);
 
@@ -1298,11 +1319,6 @@ Bun.serve({
     }
 
     try {
-      // Health check (root level)
-      if (path === "/" || path === "/health") {
-        return jsonResponse(200, { status: "ok", service: "cas-stack-local" });
-      }
-
       // All API routes under /api prefix
       if (!path.startsWith("/api/")) {
         return errorResponse(404, "Not found");
@@ -1311,9 +1327,24 @@ Bun.serve({
       // Strip /api prefix for internal routing
       const apiPath = path.slice(4); // Remove "/api"
 
-      // Auth routes
+      // Health check
+      if (apiPath === "/health") {
+        return jsonResponse(200, { status: "ok", service: "casfa-local" });
+      }
+
+      // OAuth routes (login/authentication)
+      if (apiPath.startsWith("/oauth/")) {
+        return handleOAuth(req, apiPath.replace("/oauth", ""));
+      }
+
+      // Auth routes (authorization)
       if (apiPath.startsWith("/auth/")) {
         return handleAuth(req, apiPath.replace("/auth", ""));
+      }
+
+      // Admin routes
+      if (apiPath.startsWith("/admin/")) {
+        return handleAdmin(req, apiPath.replace("/admin", ""));
       }
 
       // CAS routes

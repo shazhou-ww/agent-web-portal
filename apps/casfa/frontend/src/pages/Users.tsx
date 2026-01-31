@@ -74,7 +74,7 @@ export default function Users() {
         setError("Not authenticated");
         return;
       }
-      const res = await apiRequest("/api/auth/users", {}, token);
+      const res = await apiRequest("/api/admin/users", {}, token);
       if (!res.ok) {
         if (res.status === 403) setError("Access denied (admin only)");
         else setError("Failed to load users");
@@ -100,7 +100,7 @@ export default function Users() {
     try {
       const token = await getAccessToken();
       if (!token) return;
-      const res = await apiRequest(`/api/auth/users/${encodeURIComponent(userId)}/authorize`, {
+      const res = await apiRequest(`/api/admin/users/${encodeURIComponent(userId)}/authorize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
@@ -127,7 +127,7 @@ export default function Users() {
     try {
       const token = await getAccessToken();
       if (!token) return;
-      const res = await apiRequest(`/api/auth/users/${encodeURIComponent(target.userId)}/authorize`, {
+      const res = await apiRequest(`/api/admin/users/${encodeURIComponent(target.userId)}/authorize`, {
         method: "DELETE",
       }, token);
       if (!res.ok) {

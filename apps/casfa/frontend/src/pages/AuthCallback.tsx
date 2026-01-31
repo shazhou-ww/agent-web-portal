@@ -32,7 +32,7 @@ export default function AuthCallback() {
     const redirectUri = window.location.origin + "/auth/callback";
 
     // Use our API to exchange code for tokens (avoids CORS - Cognito token endpoint doesn't allow browser)
-    fetch(`${API_BASE}/api/auth/oauth/token`, {
+    fetch(`${API_BASE}/api/oauth/token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, redirect_uri: redirectUri }),

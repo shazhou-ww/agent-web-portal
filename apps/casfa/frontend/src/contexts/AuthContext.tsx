@@ -26,7 +26,7 @@ export interface AuthConfig {
 
 async function fetchAuthConfig(): Promise<AuthConfig> {
   const base = API_URL || "";
-  const res = await fetch(`${base}/api/auth/config`);
+  const res = await fetch(`${base}/api/oauth/config`);
   if (!res.ok) throw new Error(`Failed to load auth config: ${res.status}`);
   const data = (await res.json()) as AuthConfig;
   return {
@@ -54,7 +54,7 @@ interface AuthContextType {
   loading: boolean;
   /** Auth config from API (null if not loaded or failed) */
   authConfig: AuthConfig | null;
-  /** Current user role from GET /api/auth/me (null while loading or not logged in) */
+  /** Current user role from GET /api/oauth/me (null while loading or not logged in) */
   userRole: UserRole | null;
   isAdmin: boolean;
   loginWithGoogle: () => void;
@@ -287,7 +287,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token = await getAccessToken();
         if (!token || cancelled) return;
         const base = API_URL || "";
-        const res = await fetch(`${base}/api/auth/me`, {
+        const res = await fetch(`${base}/api/oauth/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok || cancelled) return;

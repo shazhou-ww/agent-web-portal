@@ -55,7 +55,7 @@ export default function AwpAuth() {
       // We need to call the status endpoint to check if there's a pending auth
       // But first check if already authorized
       const response = await fetch(
-        `/api/auth/agent-tokens/status?pubkey=${encodeURIComponent(pubkey)}`
+        `/api/auth/clients/status?pubkey=${encodeURIComponent(pubkey)}`
       );
 
       if (response.ok) {
@@ -122,7 +122,7 @@ export default function AwpAuth() {
         return;
       }
 
-      const response = await fetch("/api/auth/agent-tokens/complete", {
+      const response = await fetch("/api/auth/clients/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

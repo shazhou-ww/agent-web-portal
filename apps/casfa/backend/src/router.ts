@@ -177,11 +177,6 @@ export class Router {
     }
 
     try {
-      // Health check (root level)
-      if (req.path === "/" || req.path === "/health") {
-        return jsonResponse(200, { status: "ok", service: "cas-stack" });
-      }
-
       // All API routes under /api prefix
       if (!req.path.startsWith("/api/")) {
         return errorResponse(404, "Not found");
@@ -190,15 +185,38 @@ export class Router {
       // Strip /api prefix for internal routing
       const apiPath = req.path.slice(4); // Remove "/api"
 
+      // Health check
+      if (apiPath === "/health" && req.method === "GET") {
+        return jsonResponse(200, { status: "ok", service: "casfa" });
+      }
+
       // Config endpoint (no auth required)
       if (apiPath === "/cas/config" && req.method === "GET") {
         return this.handleGetConfig();
       }
 
-      // Auth routes (no auth required for some)
+      // OAuth routes (login/authentication - no auth required for most)
+      if (apiPath.startsWith("/oauth/")) {
+        return this.handleOAuth({
+          ...req,
+          path: apiPath,
+          originalPath: req.originalPath ?? req.path,
+        });
+      }
+
+      // Auth routes (authorization - client management, tokens, tickets)
       // Preserve originalPath for signature verification
       if (apiPath.startsWith("/auth/")) {
         return this.handleAuth({
+          ...req,
+          path: apiPath,
+          originalPath: req.originalPath ?? req.path,
+        });
+      }
+
+      // Admin routes (user management - admin only)
+      if (apiPath.startsWith("/admin/")) {
+        return this.handleAdmin({
           ...req,
           path: apiPath,
           originalPath: req.originalPath ?? req.path,
@@ -264,13 +282,13 @@ export class Router {
   }
 
   // ============================================================================
-  // Auth Routes
+  // OAuth Routes (Login/Authentication)
   // ============================================================================
 
-  private async handleAuth(req: HttpRequest): Promise<HttpResponse> {
-    const path = req.path.replace("/auth", "");
+  private async handleOAuth(req: HttpRequest): Promise<HttpResponse> {
+    const path = req.path.replace("/oauth", "");
 
-    // GET /auth/config - Public Cognito config for frontend (no auth)
+    // GET /oauth/config - Public Cognito config for frontend (no auth)
     if (req.method === "GET" && path === "/config") {
       const { cognitoUserPoolId, cognitoClientId, cognitoHostedUiUrl } = this.config;
       return jsonResponse(200, {
@@ -280,8 +298,8 @@ export class Router {
       });
     }
 
-    // POST /auth/oauth/token - Exchange authorization code for tokens (Cognito Hosted UI / Google sign-in)
-    if (req.method === "POST" && path === "/oauth/token") {
+    // POST /oauth/token - Exchange authorization code for tokens (Cognito Hosted UI / Google sign-in)
+    if (req.method === "POST" && path === "/token") {
       const { cognitoHostedUiUrl, cognitoClientId } = this.config;
       if (!cognitoHostedUiUrl || !cognitoClientId) {
         return errorResponse(
@@ -318,7 +336,7 @@ export class Router {
       return jsonResponse(200, data);
     }
 
-    // POST /auth/login
+    // POST /oauth/login
     if (req.method === "POST" && path === "/login") {
       const body = this.parseJson(req);
       const parsed = LoginSchema.safeParse(body);
@@ -334,7 +352,7 @@ export class Router {
       }
     }
 
-    // POST /auth/refresh
+    // POST /oauth/refresh
     if (req.method === "POST" && path === "/refresh") {
       const body = this.parseJson(req);
       const parsed = RefreshSchema.safeParse(body);
@@ -350,12 +368,35 @@ export class Router {
       }
     }
 
+    // GET /oauth/me - Current user info and role (requires auth)
+    if (req.method === "GET" && path === "/me") {
+      const auth = await this.authMiddleware.authenticate(req);
+      if (!auth) {
+        return errorResponse(401, "Unauthorized");
+      }
+      return jsonResponse(200, {
+        userId: auth.userId,
+        realm: auth.realm,
+        role: auth.role ?? "unauthorized",
+      });
+    }
+
+    return errorResponse(404, "OAuth endpoint not found");
+  }
+
+  // ============================================================================
+  // Auth Routes (Authorization - Client management, tokens, tickets)
+  // ============================================================================
+
+  private async handleAuth(req: HttpRequest): Promise<HttpResponse> {
+    const path = req.path.replace("/auth", "");
+
     // ========================================================================
-    // AWP Auth Routes (agent-tokens namespace)
+    // AWP Client Routes (P256 public key authorization)
     // ========================================================================
 
-    // POST /auth/agent-tokens/init - Start AWP auth flow
-    if (req.method === "POST" && path === "/agent-tokens/init") {
+    // POST /auth/clients/init - Start AWP auth flow (no auth required)
+    if (req.method === "POST" && path === "/clients/init") {
       const body = this.parseJson(req);
       const parsed = AwpAuthInitSchema.safeParse(body);
       if (!parsed.success) {
@@ -390,8 +431,8 @@ export class Router {
       }
     }
 
-    // GET /auth/agent-tokens/status - Poll for auth completion
-    if (req.method === "GET" && path === "/agent-tokens/status") {
+    // GET /auth/clients/status - Poll for auth completion (no auth required)
+    if (req.method === "GET" && path === "/clients/status") {
       const pubkey = req.query.pubkey;
       if (!pubkey) {
         return errorResponse(400, "Missing pubkey parameter");
@@ -419,9 +460,8 @@ export class Router {
       });
     }
 
-    // POST /auth/agent-tokens/complete - Complete authorization (requires user auth)
-    if (req.method === "POST" && path === "/agent-tokens/complete") {
-      // This endpoint requires user authentication
+    // POST /auth/clients/complete - Complete authorization (requires user auth)
+    if (req.method === "POST" && path === "/clients/complete") {
       const auth = await this.authMiddleware.authenticate(req);
       if (!auth) {
         return errorResponse(401, "User authentication required");
@@ -475,66 +515,8 @@ export class Router {
       return errorResponse(401, "Unauthorized");
     }
 
-    // GET /auth/me - Current user info and role (for UI)
-    if (req.method === "GET" && path === "/me") {
-      return jsonResponse(200, {
-        userId: auth.userId,
-        realm: auth.realm,
-        role: auth.role ?? "unauthorized",
-      });
-    }
-
-    // GET /auth/users - List users with roles (admin only), enriched with email/name from Cognito
-    if (req.method === "GET" && path === "/users") {
-      if (!auth.canManageUsers) {
-        return errorResponse(403, "Admin access required");
-      }
-      const list = await this.userRolesDb.listRoles();
-      const cognitoMap = await getCognitoUserMap(
-        this.config.cognitoUserPoolId,
-        this.config.cognitoRegion
-      );
-      const users = list.map((u) => {
-        const attrs = cognitoMap.get(u.userId);
-        return {
-          userId: u.userId,
-          role: u.role,
-          email: attrs?.email ?? "",
-          name: attrs?.name ?? undefined,
-        };
-      });
-      return jsonResponse(200, { users });
-    }
-
-    // POST /auth/users/:userId/authorize - Set user role (admin only)
-    const authorizePostMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
-    if (req.method === "POST" && authorizePostMatch) {
-      if (!auth.canManageUsers) {
-        return errorResponse(403, "Admin access required");
-      }
-      const targetUserId = decodeURIComponent(authorizePostMatch[1]!);
-      const body = this.parseJson(req);
-      const parsed = AuthorizeUserSchema.safeParse(body);
-      if (!parsed.success) {
-        return errorResponse(400, "Invalid request", parsed.error.issues);
-      }
-      await this.userRolesDb.setRole(targetUserId, parsed.data.role);
-      return jsonResponse(200, { userId: targetUserId, role: parsed.data.role });
-    }
-
-    // DELETE /auth/users/:userId/authorize - Revoke user (admin only)
-    const authorizeDeleteMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
-    if (req.method === "DELETE" && authorizeDeleteMatch) {
-      if (!auth.canManageUsers) {
-        return errorResponse(403, "Admin access required");
-      }
-      const targetUserId = decodeURIComponent(authorizeDeleteMatch[1]!);
-      await this.userRolesDb.revoke(targetUserId);
-      return jsonResponse(200, { userId: targetUserId, revoked: true });
-    }
-
-    // GET /auth/agent-tokens/clients - List authorized AWP clients
-    if (req.method === "GET" && path === "/agent-tokens/clients") {
+    // GET /auth/clients - List authorized AWP clients
+    if (req.method === "GET" && path === "/clients") {
       const clients = await this.awpPubkeyStore.listByUser(auth.userId);
       return jsonResponse(200, {
         clients: clients.map((c) => ({
@@ -546,8 +528,8 @@ export class Router {
       });
     }
 
-    // DELETE /auth/agent-tokens/clients/:pubkey - Revoke AWP client
-    const clientRevokeMatch = path.match(/^\/agent-tokens\/clients\/(.+)$/);
+    // DELETE /auth/clients/:pubkey - Revoke AWP client
+    const clientRevokeMatch = path.match(/^\/clients\/(.+)$/);
     if (req.method === "DELETE" && clientRevokeMatch) {
       const pubkey = decodeURIComponent(clientRevokeMatch[1]!);
 
@@ -560,6 +542,10 @@ export class Router {
       await this.awpPubkeyStore.revoke(pubkey);
       return jsonResponse(200, { success: true });
     }
+
+    // ========================================================================
+    // Ticket Routes
+    // ========================================================================
 
     // POST /auth/ticket
     if (req.method === "POST" && path === "/ticket") {
@@ -675,6 +661,64 @@ export class Router {
     }
 
     return errorResponse(404, "Auth endpoint not found");
+  }
+
+  // ============================================================================
+  // Admin Routes (User management - admin only)
+  // ============================================================================
+
+  private async handleAdmin(req: HttpRequest): Promise<HttpResponse> {
+    const auth = await this.authMiddleware.authenticate(req);
+    if (!auth) {
+      return errorResponse(401, "Unauthorized");
+    }
+    if (!auth.canManageUsers) {
+      return errorResponse(403, "Admin access required");
+    }
+
+    const path = req.path.replace("/admin", "");
+
+    // GET /admin/users - List users with roles, enriched with email/name from Cognito
+    if (req.method === "GET" && path === "/users") {
+      const list = await this.userRolesDb.listRoles();
+      const cognitoMap = await getCognitoUserMap(
+        this.config.cognitoUserPoolId,
+        this.config.cognitoRegion
+      );
+      const users = list.map((u) => {
+        const attrs = cognitoMap.get(u.userId);
+        return {
+          userId: u.userId,
+          role: u.role,
+          email: attrs?.email ?? "",
+          name: attrs?.name ?? undefined,
+        };
+      });
+      return jsonResponse(200, { users });
+    }
+
+    // POST /admin/users/:userId/authorize - Set user role
+    const authorizePostMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
+    if (req.method === "POST" && authorizePostMatch) {
+      const targetUserId = decodeURIComponent(authorizePostMatch[1]!);
+      const body = this.parseJson(req);
+      const parsed = AuthorizeUserSchema.safeParse(body);
+      if (!parsed.success) {
+        return errorResponse(400, "Invalid request", parsed.error.issues);
+      }
+      await this.userRolesDb.setRole(targetUserId, parsed.data.role);
+      return jsonResponse(200, { userId: targetUserId, role: parsed.data.role });
+    }
+
+    // DELETE /admin/users/:userId/authorize - Revoke user
+    const authorizeDeleteMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
+    if (req.method === "DELETE" && authorizeDeleteMatch) {
+      const targetUserId = decodeURIComponent(authorizeDeleteMatch[1]!);
+      await this.userRolesDb.revoke(targetUserId);
+      return jsonResponse(200, { userId: targetUserId, revoked: true });
+    }
+
+    return errorResponse(404, "Admin endpoint not found");
   }
 
   // ============================================================================

@@ -73,7 +73,7 @@ export default function Clients() {
         return;
       }
 
-      const response = await apiRequest("/api/auth/agent-tokens/clients", {}, accessToken);
+      const response = await apiRequest("/api/auth/clients", {}, accessToken);
 
       if (response.ok) {
         const data = await response.json();
@@ -110,7 +110,7 @@ export default function Clients() {
       }
 
       const response = await apiRequest(
-        `/api/auth/agent-tokens/clients/${encodeURIComponent(clientToDelete.pubkey)}`,
+        `/api/auth/clients/${encodeURIComponent(clientToDelete.pubkey)}`,
         {
           method: "DELETE",
         },
