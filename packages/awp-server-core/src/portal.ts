@@ -59,7 +59,7 @@ class DefaultTicketProvider implements CasTicketProvider {
     const ticket = (await res.json()) as {
       id: string;
       expiresAt: string;
-      shard: string;
+      realm: string;
       scope: string | string[];
       writable: boolean | { quota?: number; accept?: string[] };
       config: { chunkThreshold: number };
@@ -69,7 +69,7 @@ class DefaultTicketProvider implements CasTicketProvider {
       ticket: ticket.id,
       endpoint: this.endpoint,
       expiresAt: ticket.expiresAt,
-      shard: ticket.shard,
+      realm: ticket.realm,
       scope: ticket.scope,
       writable: ticket.writable,
       config: ticket.config,
@@ -262,11 +262,12 @@ export class ServerPortal {
   /**
    * Execute a tool with CAS context
    *
-   * CAS context can be provided in two ways:
+   * CAS context can be provided in three ways (in order of priority):
    * 1. AWP Client: passes _casBlobContext in the request params
    * 2. Traditional MCP Client: uses #cas-endpoint in tool arguments
+   * 3. Server CAS config: uses ticketProvider to create a new ticket
    *
-   * If neither is provided, a dummy CAS client is used (operations will fail
+   * If none of these are available, a dummy CAS client is used (operations will fail
    * if the tool actually needs CAS access).
    *
    * @param name - Tool name
@@ -283,6 +284,17 @@ export class ServerPortal {
       context = this.extractCasContextFromArgs(args);
     }
 
+    // If still no context, try to create one using the server's ticket provider
+    if (!context && this.ticketProvider) {
+      try {
+        // Create a writable ticket with wildcard scope
+        context = await this.ticketProvider.createTicket(["*"], true);
+        console.log("[ServerPortal] Created CAS context using server ticket provider");
+      } catch (error) {
+        console.warn("[ServerPortal] Failed to create CAS context using ticket provider:", error);
+      }
+    }
+
     // Create BufferedCasClient if we have a context
     let cas: BufferedCasClient | undefined;
     if (context) {
@@ -292,6 +304,7 @@ export class ServerPortal {
     // Create a dummy CAS client if none available
     // (tools that don't need CAS will work, others will fail with clear error)
     if (!cas) {
+      console.warn("[ServerPortal] No CAS context available, using dummy client");
       cas = this.createDummyCasClient();
     }
 
@@ -301,7 +314,9 @@ export class ServerPortal {
 
       // Commit any pending writes
       if (cas.hasPendingWrites()) {
+        console.log("[ServerPortal] Committing pending CAS writes...");
         await cas.commit();
+        console.log("[ServerPortal] CAS writes committed successfully");
       }
 
       return result;
@@ -346,7 +361,7 @@ export class ServerPortal {
    *
    * Looks for objects with "#cas-endpoint" field which contains a full
    * CAS endpoint URL with embedded ticket:
-   * https://cas.example.com/api/cas/{shard}/ticket/{ticketId}
+   * https://cas.example.com/api/cas/{realm}/ticket/{ticketId}
    */
   private extractCasContextFromArgs(args: unknown): CasBlobContext | undefined {
     if (typeof args !== "object" || args === null) {
@@ -377,35 +392,35 @@ export class ServerPortal {
   /**
    * Parse a #cas-endpoint URL into CasBlobContext
    *
-   * URL format: https://cas.example.com/api/cas/{shard}/ticket/{ticketId}
+   * URL format: https://cas.example.com/api/cas/{realm}/ticket/{ticketId}
    */
   private parseCasEndpoint(endpointUrl: string): CasBlobContext | undefined {
     try {
       const url = new URL(endpointUrl);
       const pathParts = url.pathname.split("/").filter(Boolean);
 
-      // Expected path: /api/cas/{shard}/ticket/{ticketId}
-      // or: /cas/{shard}/ticket/{ticketId}
+      // Expected path: /api/cas/{realm}/ticket/{ticketId}
+      // or: /cas/{realm}/ticket/{ticketId}
       const casIndex = pathParts.indexOf("cas");
       if (casIndex === -1 || pathParts.length < casIndex + 4) {
         return undefined;
       }
 
-      const shard = pathParts[casIndex + 1];
+      const realm = pathParts[casIndex + 1];
       const ticketId = pathParts[casIndex + 3];
 
-      if (!shard || !ticketId || pathParts[casIndex + 2] !== "ticket") {
+      if (!realm || !ticketId || pathParts[casIndex + 2] !== "ticket") {
         return undefined;
       }
 
-      // Extract base endpoint (everything before /cas/{shard}/ticket/{ticketId})
+      // Extract base endpoint (everything before /cas/{realm}/ticket/{ticketId})
       const baseEndpoint = `${url.origin}${pathParts.slice(0, casIndex + 1).map((p) => `/${p}`).join("")}`;
 
       return {
         ticket: ticketId,
         endpoint: baseEndpoint,
         expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(), // Assume 1 hour
-        shard,
+        realm,
         scope: ["*"],
         writable: true,
         config: {
@@ -426,7 +441,7 @@ export class ServerPortal {
       ticket: "dummy",
       endpoint: "http://localhost:0",
       expiresAt: new Date().toISOString(),
-      shard: "dummy",
+      realm: "dummy",
       scope: [],
       writable: false,
       config: {

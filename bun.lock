@@ -27,6 +27,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@agent-web-portal/awp-client-browser": "workspace:*",
+        "@agent-web-portal/cas-client-browser": "workspace:*",
         "@agent-web-portal/client": "workspace:*",
         "@agent-web-portal/client-browser": "workspace:*",
         "@emotion/react": "^11.11.3",

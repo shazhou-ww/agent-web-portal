@@ -1,33 +1,34 @@
 /**
- * BlobMarkdown Component
+ * CasMarkdown Component
  *
- * A Markdown renderer that automatically resolves blob:// URLs in images
+ * A Markdown renderer that automatically resolves cas:// URLs in images
  */
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components, UrlTransform } from "react-markdown";
-import type { StorageProvider } from "@agent-web-portal/client";
-import { BlobImage, isBlobUri } from "./BlobImage";
+import { CasImage } from "./CasImage";
+import { isCasUri } from "../contexts/CasContext";
 
-export interface BlobMarkdownProps {
+export interface CasMarkdownProps {
   /** The markdown content to render */
   children: string;
-  /** Storage provider for resolving blob URLs */
-  storage?: StorageProvider;
   /** Additional components to override */
   components?: Components;
   /** Class name for the container */
   className?: string;
 }
 
+/** @deprecated Use CasMarkdownProps instead */
+export type BlobMarkdownProps = CasMarkdownProps;
+
 /**
- * Custom URL transform that allows blob:// and awp:// URLs
+ * Custom URL transform that allows cas:// URLs
  * By default, react-markdown sanitizes URLs and removes non-http(s) protocols
  */
-const allowBlobUrlTransform: UrlTransform = (url: string) => {
-  // Allow blob:// and awp:// URLs through without modification
-  if (url.startsWith("blob://") || url.startsWith("awp://")) {
+const allowCasUrlTransform: UrlTransform = (url: string) => {
+  // Allow cas:// URLs through without modification
+  if (url.startsWith("cas://")) {
     return url;
   }
   // Allow http(s) URLs
@@ -43,34 +44,37 @@ const allowBlobUrlTransform: UrlTransform = (url: string) => {
 };
 
 /**
- * BlobMarkdown - Renders markdown with automatic blob URL resolution for images
+ * CasMarkdown - Renders markdown with automatic CAS URL resolution for images
  *
  * Usage:
  * ```tsx
- * <BlobMarkdown storage={storageProvider}>
- *   Here is an image: ![Generated](blob://abc123)
- * </BlobMarkdown>
+ * <CasMarkdown>
+ *   Here is an image: ![Generated](cas://sha256:abc123...)
+ * </CasMarkdown>
  * ```
  */
-export function BlobMarkdown({
+export function CasMarkdown({
   children,
-  storage,
   components,
   className,
-}: BlobMarkdownProps) {
-  // Create custom components that handle blob URLs
-  const blobComponents: Components = {
-    // Override img to use BlobImage for blob:// URLs
+}: CasMarkdownProps) {
+  // Create custom components that handle CAS URLs
+  const casComponents: Components = {
+    // Override img to use CasImage for cas:// URLs
     img: ({ src, alt, node, ...props }) => {
-      // Handle case where src might be an object (e.g., { uri: "blob://..." })
+      // Handle case where src might be an object
       let resolvedSrc = src;
       if (typeof src === "object" && src !== null) {
-        const srcObj = src as { uri?: string; url?: string };
-        resolvedSrc = srcObj.uri || srcObj.url || "";
+        const srcObj = src as { uri?: string; url?: string; "cas-node"?: string };
+        resolvedSrc = srcObj["cas-node"] || srcObj.uri || srcObj.url || "";
+        // If it's a cas-node without prefix, add it
+        if (resolvedSrc && !resolvedSrc.startsWith("cas://") && resolvedSrc.startsWith("sha256:")) {
+          resolvedSrc = `cas://${resolvedSrc}`;
+        }
       }
       
-      if (resolvedSrc && typeof resolvedSrc === "string" && isBlobUri(resolvedSrc)) {
-        return <BlobImage src={resolvedSrc} alt={alt} storage={storage} />;
+      if (resolvedSrc && typeof resolvedSrc === "string" && isCasUri(resolvedSrc)) {
+        return <CasImage src={resolvedSrc} alt={alt} />;
       }
       // Regular image
       return (
@@ -89,8 +93,8 @@ export function BlobMarkdown({
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      components={blobComponents}
-      urlTransform={allowBlobUrlTransform}
+      components={casComponents}
+      urlTransform={allowCasUrlTransform}
       className={className}
     >
       {children}
@@ -98,24 +102,19 @@ export function BlobMarkdown({
   );
 }
 
+/** @deprecated Use CasMarkdown instead */
+export const BlobMarkdown = CasMarkdown;
+
 /**
- * Helper to extract blob URIs from markdown content
+ * Helper to extract CAS URIs from markdown content
  */
-export function extractBlobUris(content: string): string[] {
+export function extractCasUris(content: string): string[] {
   const uris: string[] = [];
   
-  // Match markdown image syntax: ![alt](blob://...)
-  const markdownImageRegex = /!\[([^\]]*)\]\((blob:\/\/[^)]+)\)/g;
+  // Match markdown image syntax: ![alt](cas://...)
+  const casImageRegex = /!\[([^\]]*)\]\((cas:\/\/[^)]+)\)/g;
   let match: RegExpExecArray | null;
-  while ((match = markdownImageRegex.exec(content)) !== null) {
-    if (match[2]) {
-      uris.push(match[2]);
-    }
-  }
-
-  // Match awp:// URLs as well
-  const awpImageRegex = /!\[([^\]]*)\]\((awp:\/\/[^)]+)\)/g;
-  while ((match = awpImageRegex.exec(content)) !== null) {
+  while ((match = casImageRegex.exec(content)) !== null) {
     if (match[2]) {
       uris.push(match[2]);
     }
@@ -123,3 +122,6 @@ export function extractBlobUris(content: string): string[] {
 
   return uris;
 }
+
+/** @deprecated Use extractCasUris instead */
+export const extractBlobUris = extractCasUris;

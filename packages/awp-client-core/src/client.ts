@@ -357,7 +357,7 @@ export class AwpClient {
       ticket: string;
       endpoint: string;
       expiresAt: string;
-      shard: string;
+      realm: string;
       scope: string | string[];
       writable: boolean | { quota?: number; accept?: string[] };
       config: { chunkThreshold: number };
@@ -372,7 +372,7 @@ export class AwpClient {
         ticket: ticketResponse.id,  // Map 'id' to 'ticket'
         endpoint: ticketResponse.endpoint,
         expiresAt: ticketResponse.expiresAt,
-        shard: ticketResponse.shard,
+        realm: ticketResponse.realm,
         scope: ticketResponse.scope,
         writable: ticketResponse.writable,
         config: ticketResponse.config,

@@ -1,0 +1,10 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "image-workshop"
+resolve_s3 = true
+s3_prefix = "image-workshop"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "CallbackBaseUrl=\"https://image-workshop.awp.shazhou.me\" CustomDomainName=\"image-workshop.awp.shazhou.me\" CustomDomainCertificateArn=\"arn:aws:acm:us-east-1:914369185440:certificate/399cd7ce-6a20-4da4-91cc-296d5141e6c1\" CasEndpoint=\"https://cas-console.awp.shazhou.me/api\" CognitoDomain=\"image-workshop-ui\" GoogleClientId=\"1084492958564-ngqgsjbss5ta8676oa101rrg9prcankv.apps.googleusercontent.com\" MicrosoftClientId=\"38da332e-7a20-4765-acae-c249e74c6a6a\" BflApiKeyArn=\"arn:aws:secretsmanager:us-east-1:914369185440:secret:awp-examples/bfl-api-key-sBpP7a\" StabilityApiKeyArn=\"arn:aws:secretsmanager:us-east-1:914369185440:secret:awp-examples/stability-api-key-hdOAca\""

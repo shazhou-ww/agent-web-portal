@@ -31,7 +31,7 @@ export interface CasBlobContext {
   ticket: string;
   endpoint: string;
   expiresAt: string;
-  shard: string;
+  realm: string;
   scope: string | string[];
   writable:
     | false
@@ -111,7 +111,7 @@ export type CasNode = CasCollectionNode | CasFileNode;
  * ```
  */
 export interface CasBlobRef {
-  /** CAS endpoint URL with embedded ticket: https://host/api/cas/{shard}/ticket/{ticketId} */
+  /** CAS endpoint URL with embedded ticket: https://host/api/cas/{realm}/ticket/{ticketId} */
   "#cas-endpoint": string;
   /** DAG root node key */
   "cas-node": string;
@@ -125,8 +125,8 @@ export interface CasBlobRef {
 export interface ParsedEndpoint {
   /** Base URL without path (e.g., "https://cas.example.com") */
   baseUrl: string;
-  /** Shard identifier */
-  shard: string;
+  /** Realm identifier (user namespace) */
+  realm: string;
   /** Ticket ID */
   ticketId: string;
 }

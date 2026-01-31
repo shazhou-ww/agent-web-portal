@@ -1,6 +1,13 @@
-export { BlobImage } from "./BlobImage";
-export { BlobMarkdown } from "./BlobMarkdown";
+export {
+  BlobMarkdown,
+  type BlobMarkdownProps,
+  CasMarkdown,
+  type CasMarkdownProps,
+  extractBlobUris,
+  extractCasUris,
+} from "./BlobMarkdown";
 export { CasConfigManager } from "./CasConfigManager";
+export { CasImage, type CasImageProps } from "./CasImage";
 export { ChatPanel, type ChatPanelProps } from "./ChatPanel";
 export { ConversationList, type ConversationListProps } from "./ConversationList";
 export { EndpointManager, type EndpointManagerProps } from "./EndpointManager";

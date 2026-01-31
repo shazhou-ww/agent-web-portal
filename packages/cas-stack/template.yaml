@@ -450,13 +450,9 @@ Resources:
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
             OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
             ResponseHeadersPolicyId: !Ref CorsResponseHeadersPolicy
-        CustomErrorResponses:
-          - ErrorCode: 403
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /index.html
+        # Note: CustomErrorResponses removed to prevent API 403/404 responses
+        # from being replaced with S3 index.html. SPA routing should be handled
+        # by the frontend application or using a different approach.
         PriceClass: PriceClass_100
 
   CorsResponseHeadersPolicy:
@@ -484,7 +480,7 @@ Resources:
             Items:
               - "*"
           AccessControlMaxAgeSec: 86400
-          OriginOverride: true
+          OriginOverride: false
 
   CloudFrontOAC:
     Type: AWS::CloudFront::OriginAccessControl

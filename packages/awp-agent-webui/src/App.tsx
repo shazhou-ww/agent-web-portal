@@ -34,7 +34,7 @@ import {
   CasConfigManager,
 } from './components';
 import { useModelConfig, useAwpManager, useConversations, useAgent } from './hooks';
-import { StorageContextProvider } from './contexts/StorageContext';
+import { CasContextProvider } from './contexts/CasContext';
 import type { Message } from './storage';
 
 const LEFT_DRAWER_WIDTH = 280;
@@ -264,7 +264,12 @@ export function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <StorageContextProvider baseUrl={casEndpoint}>
+      <CasContextProvider
+        casEndpoint={casEndpoint}
+        isAuthenticated={isCasAuthenticated}
+        keyStorage={keyStorage}
+        clientName={clientName}
+      >
         <Box sx={{ display: 'flex', height: '100vh' }}>
         {/* App Bar */}
         <AppBar
@@ -446,7 +451,7 @@ export function App() {
         )}
 
       </Box>
-      </StorageContextProvider>
+      </CasContextProvider>
     </ThemeProvider>
   );
 }

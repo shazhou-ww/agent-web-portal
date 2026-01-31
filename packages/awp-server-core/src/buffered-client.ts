@@ -475,13 +475,13 @@ export class BufferedCasClient implements IBufferedCasClient {
 
     // We need to access the internal upload mechanism
     // Let's add a method to get the client's base URL and make the request directly
-    const context = (this.client as unknown as { endpoint: string; shard?: string }).endpoint;
-    const shard = (this.client as unknown as { shard?: string }).shard ?? "@me";
+    const context = (this.client as unknown as { endpoint: string; realm?: string }).endpoint;
+    const realm = (this.client as unknown as { realm?: string }).realm ?? "@me";
 
     // Create a new ArrayBuffer copy to satisfy Blob type requirements
     const arrayBuffer = new ArrayBuffer(data.length);
     new Uint8Array(arrayBuffer).set(data);
-    const res = await fetch(`${context}/cas/${shard}/chunk/${encodeURIComponent(key)}`, {
+    const res = await fetch(`${context}/cas/${realm}/chunk/${encodeURIComponent(key)}`, {
       method: "PUT",
       headers: {
         Authorization: this.getAuthHeader(),
@@ -501,9 +501,9 @@ export class BufferedCasClient implements IBufferedCasClient {
    */
   private async uploadFileNode(file: PendingFile): Promise<void> {
     const context = (this.client as unknown as { endpoint: string }).endpoint;
-    const shard = (this.client as unknown as { shard?: string }).shard ?? "@me";
+    const realm = (this.client as unknown as { realm?: string }).realm ?? "@me";
 
-    const res = await fetch(`${context}/cas/${shard}/file`, {
+    const res = await fetch(`${context}/cas/${realm}/file`, {
       method: "PUT",
       headers: {
         Authorization: this.getAuthHeader(),
@@ -526,9 +526,9 @@ export class BufferedCasClient implements IBufferedCasClient {
    */
   private async uploadCollectionNode(collection: PendingCollection): Promise<void> {
     const context = (this.client as unknown as { endpoint: string }).endpoint;
-    const shard = (this.client as unknown as { shard?: string }).shard ?? "@me";
+    const realm = (this.client as unknown as { realm?: string }).realm ?? "@me";
 
-    const res = await fetch(`${context}/cas/${shard}/collection`, {
+    const res = await fetch(`${context}/cas/${realm}/collection`, {
       method: "PUT",
       headers: {
         Authorization: this.getAuthHeader(),

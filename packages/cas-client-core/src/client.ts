@@ -36,14 +36,14 @@ export class CasClient {
   private auth: CasAuth;
   private storage?: LocalStorageProvider;
   private chunkThreshold: number;
-  private shard?: string;
+  private realm?: string;
 
-  constructor(config: CasClientConfig & { storage?: LocalStorageProvider; shard?: string }) {
+  constructor(config: CasClientConfig & { storage?: LocalStorageProvider; realm?: string }) {
     this.endpoint = config.endpoint.replace(/\/$/, "");
     this.auth = config.auth;
     this.storage = config.storage;
     this.chunkThreshold = config.chunkThreshold ?? 1048576; // Default 1MB
-    this.shard = config.shard;
+    this.realm = config.realm;
   }
 
   // ============================================================================
@@ -86,23 +86,23 @@ export class CasClient {
       auth: { type: "ticket", id: context.ticket },
       storage,
       chunkThreshold: context.config.chunkThreshold,
-      shard: context.shard,
+      realm: context.realm,
     });
   }
 
   /**
    * Create a CasClient from a #cas-endpoint URL
    *
-   * @param endpointUrl - Full endpoint URL: https://host/api/cas/{shard}/ticket/{ticketId}
+   * @param endpointUrl - Full endpoint URL: https://host/api/cas/{realm}/ticket/{ticketId}
    * @param storage - Optional local storage provider for caching
    */
   static fromEndpoint(endpointUrl: string, storage?: LocalStorageProvider): CasClient {
-    const { baseUrl, shard, ticketId } = parseEndpoint(endpointUrl);
+    const { baseUrl, realm, ticketId } = parseEndpoint(endpointUrl);
     return new CasClient({
       endpoint: baseUrl,
       auth: { type: "ticket", id: ticketId },
       storage,
-      shard,
+      realm,
     });
   }
 
@@ -117,8 +117,8 @@ export class CasClient {
     if (this.auth.type !== "ticket") {
       throw new Error("Blob refs can only be created with ticket auth");
     }
-    const shard = this.shard ?? "@me";
-    const endpointUrl = buildEndpoint(this.endpoint, shard, this.auth.id);
+    const realm = this.realm ?? "@me";
+    const endpointUrl = buildEndpoint(this.endpoint, realm, this.auth.id);
     return createBlobRef(endpointUrl, casNode, path, pathKey);
   }
 
@@ -158,9 +158,9 @@ export class CasClient {
     }
   }
 
-  private async getShard(): Promise<string> {
-    if (this.shard) {
-      return this.shard;
+  private async getRealm(): Promise<string> {
+    if (this.realm) {
+      return this.realm;
     }
     return "@me";
   }
@@ -185,8 +185,8 @@ export class CasClient {
    * Get application layer node (CasNode)
    */
   async getNode(key: string): Promise<CasNode> {
-    const shard = await this.getShard();
-    const res = await fetch(`${this.endpoint}/cas/${shard}/node/${encodeURIComponent(key)}`, {
+    const realm = await this.getRealm();
+    const res = await fetch(`${this.endpoint}/cas/${realm}/node/${encodeURIComponent(key)}`, {
       headers: { Authorization: this.getAuthHeader() },
     });
 
@@ -209,8 +209,8 @@ export class CasClient {
       }
     }
 
-    const shard = await this.getShard();
-    const res = await fetch(`${this.endpoint}/cas/${shard}/raw/${encodeURIComponent(key)}`, {
+    const realm = await this.getRealm();
+    const res = await fetch(`${this.endpoint}/cas/${realm}/raw/${encodeURIComponent(key)}`, {
       headers: { Authorization: this.getAuthHeader() },
     });
 
@@ -263,8 +263,8 @@ export class CasClient {
       }
     }
 
-    const shard = await this.getShard();
-    const res = await fetch(`${this.endpoint}/cas/${shard}/chunk/${encodeURIComponent(key)}`, {
+    const realm = await this.getRealm();
+    const res = await fetch(`${this.endpoint}/cas/${realm}/chunk/${encodeURIComponent(key)}`, {
       headers: { Authorization: this.getAuthHeader() },
     });
 
@@ -355,9 +355,9 @@ export class CasClient {
    */
   private async uploadChunk(content: Uint8Array): Promise<string> {
     const key = await computeKey(content);
-    const shard = await this.getShard();
+    const realm = await this.getRealm();
 
-    const res = await fetch(`${this.endpoint}/cas/${shard}/chunk/${encodeURIComponent(key)}`, {
+    const res = await fetch(`${this.endpoint}/cas/${realm}/chunk/${encodeURIComponent(key)}`, {
       method: "PUT",
       headers: {
         Authorization: this.getAuthHeader(),
@@ -383,9 +383,9 @@ export class CasClient {
     contentType: string,
     _totalSize: number
   ): Promise<string> {
-    const shard = await this.getShard();
+    const realm = await this.getRealm();
 
-    const res = await fetch(`${this.endpoint}/cas/${shard}/file`, {
+    const res = await fetch(`${this.endpoint}/cas/${realm}/file`, {
       method: "PUT",
       headers: {
         Authorization: this.getAuthHeader(),
@@ -462,9 +462,9 @@ export class CasClient {
    * Create a collection node
    */
   private async createCollectionNode(children: Record<string, string>): Promise<string> {
-    const shard = await this.getShard();
+    const realm = await this.getRealm();
 
-    const res = await fetch(`${this.endpoint}/cas/${shard}/collection`, {
+    const res = await fetch(`${this.endpoint}/cas/${realm}/collection`, {
       method: "PUT",
       headers: {
         Authorization: this.getAuthHeader(),

@@ -35,9 +35,8 @@ const rainbowMove = keyframes`
 `;
 import type { Message, ModelWithEndpoint } from '../storage';
 import type { AgentState, StreamingMessage } from '../hooks/useAgent';
-import { BlobMarkdown } from './BlobMarkdown';
+import { CasMarkdown } from './BlobMarkdown';
 import { ModelSelector } from './ModelSelector';
-import { useStorage } from '../contexts/StorageContext';
 
 export interface ChatPanelProps {
   messages: Message[];
@@ -236,7 +235,6 @@ export function ChatPanel({
 function MessageBubble({ message }: { message: Message; isMobile?: boolean }) {
   const [toolExpanded, setToolExpanded] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
-  const storage = useStorage();
 
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -343,7 +341,7 @@ function MessageBubble({ message }: { message: Message; isMobile?: boolean }) {
               },
             }}
           >
-            <BlobMarkdown storage={storage ?? undefined}>{message.content}</BlobMarkdown>
+            <CasMarkdown>{message.content}</CasMarkdown>
           </Box>
         )
       )}
@@ -410,8 +408,6 @@ function MessageBubble({ message }: { message: Message; isMobile?: boolean }) {
  * Streaming Message Component
  */
 function StreamingMessageBubble({ streamingMessage }: { streamingMessage: StreamingMessage; isMobile?: boolean }) {
-  const storage = useStorage();
-
   return (
     <Box sx={{ mb: 2 }}>
       {/* Role label */}
@@ -429,9 +425,9 @@ function StreamingMessageBubble({ streamingMessage }: { streamingMessage: Stream
 
       {streamingMessage.content && (
         <Box sx={{ '& > *:first-of-type': { mt: 0 }, '& > *:last-child': { mb: 0 } }}>
-          <BlobMarkdown storage={storage ?? undefined}>
+          <CasMarkdown>
             {streamingMessage.content}
-          </BlobMarkdown>
+          </CasMarkdown>
         </Box>
       )}
 

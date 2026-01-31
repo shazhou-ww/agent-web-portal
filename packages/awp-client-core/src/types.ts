@@ -251,7 +251,7 @@ export interface CreateTicketResponse {
   id: string;
   endpoint: string;
   expiresAt: string;
-  shard: string;
+  realm: string;
   scope: string | string[];
   writable: boolean | { quota?: number; accept?: string[] };
   config: {
