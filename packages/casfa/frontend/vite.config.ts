@@ -19,6 +19,7 @@ console.log(`[vite] Proxying API requests to: ${apiUrl}`);
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  root: __dirname,
   base: "/",
   // Polyfill Node.js globals for browser (required by amazon-cognito-identity-js)
   define: {
@@ -30,6 +31,7 @@ export default defineConfig({
     sourcemap: true,
   },
   server: {
+    port: 5173,
     proxy: {
       "/api": {
         target: apiUrl,

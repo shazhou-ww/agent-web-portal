@@ -1,0 +1,12 @@
+# CASFA (CAS For Agents) - SAM CLI Configuration
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "casfa"
+resolve_s3 = true
+s3_prefix = "casfa"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+# Add parameter overrides as needed:
+# parameter_overrides = "CallbackBaseUrl=\"https://casfa.example.com\" CustomDomainName=\"casfa.example.com\" CustomDomainCertificateArn=\"arn:aws:acm:...\""

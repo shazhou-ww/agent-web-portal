@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: AWP CAS Stack - Content-Addressable Storage with global dedup and scope-based access control
+Description: CASFA (CAS For Agents) - Content-Addressable Storage with global dedup and scope-based access control
 
 Globals:
   Function:
@@ -502,7 +502,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "${AWS::StackName}-handler"
-      CodeUri: dist/
+      CodeUri: backend/dist/
       Handler: handler.handler
       Environment:
         Variables:

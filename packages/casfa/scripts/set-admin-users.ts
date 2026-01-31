@@ -29,8 +29,8 @@
  */
 
 import { CognitoIdentityProviderClient, ListUsersCommand } from "@aws-sdk/client-cognito-identity-provider";
-import { loadConfig } from "../src/types.ts";
-import { UserRolesDb } from "../src/db/user-roles.ts";
+import { loadConfig } from "../backend/src/types.ts";
+import { UserRolesDb } from "../backend/src/db/user-roles.ts";
 
 function parseArgs(): { list: boolean; setAdmin: string[] } {
   const args = process.argv.slice(2);

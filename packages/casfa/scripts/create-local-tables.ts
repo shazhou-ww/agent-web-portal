@@ -61,7 +61,7 @@ async function main(): Promise<void> {
     ],
     KeySchema: [{ AttributeName: "pk", KeyType: "HASH" }],
     BillingMode: "PAY_PER_REQUEST",
-    TimeToLiveSpecification: { AttributeName: "expiresAt", Enabled: true },
+    // Note: TimeToLiveSpecification must be set via UpdateTimeToLive API after table creation
     GlobalSecondaryIndexes: [
       {
         IndexName: "by-user",
