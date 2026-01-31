@@ -38,8 +38,8 @@ const command = args[0]; // 'api', 'webui', 'dev', or 'deploy'
 const restArgs = args.slice(1);
 
 const rootDir = join(import.meta.dir, "..");
-const stackDir = join(rootDir, "packages/example-stack");
-const webuiDir = join(rootDir, "packages/example-webui");
+const stackDir = join(rootDir, "apps/example-stack");
+const webuiDir = join(rootDir, "apps/example-webui");
 
 // Get ports from environment
 const EXAMPLES_API_PORT = process.env.EXAMPLES_API_PORT || "3400";

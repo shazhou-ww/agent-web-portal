@@ -36,8 +36,8 @@ const command = args[0]; // 'api', 'webui', 'dev', or 'deploy'
 const restArgs = args.slice(1);
 
 const rootDir = join(import.meta.dir, "..");
-const stackDir = join(rootDir, "packages/cas-stack");
-const webuiDir = join(rootDir, "packages/cas-webui");
+const stackDir = join(rootDir, "apps/cas-stack");
+const webuiDir = join(rootDir, "apps/cas-webui");
 
 // Get ports from environment
 const CAS_API_PORT = process.env.CAS_API_PORT || "3550";

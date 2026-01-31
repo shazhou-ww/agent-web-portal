@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "agent-web-portal-monorepo",
@@ -12,7 +11,7 @@
         "typescript": "^5.8.3",
       },
     },
-    "packages/agent": {
+    "apps/agent": {
       "name": "@agent-web-portal/agent",
       "version": "0.1.0",
       "dependencies": {
@@ -39,6 +38,205 @@
         "@vitejs/plugin-react": "^4.2.1",
         "typescript": "^5.3.3",
         "vite": "^6.4.1",
+      },
+    },
+    "apps/aws-lambda-fullstack": {
+      "name": "@agent-web-portal/aws-lambda-fullstack",
+      "version": "0.1.0",
+      "dependencies": {
+        "@emotion/react": "^11.13.5",
+        "@emotion/styled": "^11.13.5",
+        "@mui/icons-material": "^6.3.1",
+        "@mui/material": "^6.3.1",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-router-dom": "^7.1.1",
+      },
+      "devDependencies": {
+        "@aws-sdk/client-cloudformation": "^3.975.0",
+        "@aws-sdk/client-cloudfront": "^3.975.0",
+        "@aws-sdk/client-s3": "^3.975.0",
+        "@aws-sdk/credential-providers": "^3.975.0",
+        "@types/aws-lambda": "^8.10.147",
+        "@types/bun": "latest",
+        "@types/node": "^22.10.5",
+        "@types/react": "^18.3.18",
+        "@types/react-dom": "^18.3.5",
+        "@vitejs/plugin-react": "^4.3.4",
+        "typescript": "^5.7.2",
+        "vite": "^6.0.7",
+      },
+    },
+    "apps/casfa": {
+      "name": "@agent-web-portal/casfa",
+      "version": "0.1.0",
+      "dependencies": {
+        "@agent-web-portal/auth": "workspace:*",
+        "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
+        "@aws-sdk/client-dynamodb": "^3.975.0",
+        "@aws-sdk/client-s3": "^3.975.0",
+        "@aws-sdk/lib-dynamodb": "^3.975.0",
+        "@aws-sdk/s3-request-presigner": "^3.975.0",
+        "@emotion/react": "^11.13.5",
+        "@emotion/styled": "^11.13.5",
+        "@mui/icons-material": "^6.3.1",
+        "@mui/material": "^6.3.1",
+        "amazon-cognito-identity-js": "^6.3.12",
+        "busboy": "^1.6.0",
+        "jose": "^6.1.3",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-router-dom": "^7.1.1",
+        "zod": "3",
+      },
+      "devDependencies": {
+        "@aws-sdk/client-cloudformation": "^3.975.0",
+        "@aws-sdk/client-cloudfront": "^3.975.0",
+        "@aws-sdk/credential-providers": "^3.975.0",
+        "@types/aws-lambda": "^8.10.147",
+        "@types/bun": "latest",
+        "@types/busboy": "^1.5.4",
+        "@types/node": "^22.10.5",
+        "@types/react": "^18.3.18",
+        "@types/react-dom": "^18.3.5",
+        "@vitejs/plugin-react": "^4.3.4",
+        "typescript": "^5.7.2",
+        "vite": "^6.0.7",
+      },
+    },
+    "apps/example-agent": {
+      "name": "@agent-web-portal/example-agent",
+      "version": "0.0.1",
+      "dependencies": {
+        "@agent-web-portal/client": "workspace:*",
+        "@agent-web-portal/client-browser": "workspace:*",
+        "@emotion/react": "^11.11.3",
+        "@emotion/styled": "^11.11.0",
+        "@mui/icons-material": "^5.15.10",
+        "@mui/material": "^5.15.10",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-markdown": "^9.0.1",
+        "remark-gfm": "^4.0.0",
+      },
+      "devDependencies": {
+        "@types/react": "^18.2.55",
+        "@types/react-dom": "^18.2.19",
+        "@vitejs/plugin-react": "^4.2.1",
+        "typescript": "^5.3.3",
+        "vite": "^5.1.0",
+      },
+    },
+    "apps/example-agent-service": {
+      "name": "@agent-web-portal/example-agent-service",
+      "version": "0.1.0",
+      "dependencies": {
+        "@aws-sdk/client-cognito-identity-provider": "^3.758.0",
+        "@aws-sdk/client-s3": "^3.758.0",
+        "@aws-sdk/s3-request-presigner": "^3.758.0",
+        "jose": "^5.9.6",
+        "ulid": "^2.3.0",
+        "zod": "^3.24.1",
+      },
+      "devDependencies": {
+        "@types/aws-lambda": "^8.10.147",
+        "@types/bun": "latest",
+        "@types/node": "^22.10.5",
+        "rimraf": "^6.0.1",
+        "typescript": "^5.7.3",
+      },
+    },
+    "apps/example-stack": {
+      "name": "@agent-web-portal/example-stack",
+      "version": "0.2.0",
+      "dependencies": {
+        "@agent-web-portal/auth": "workspace:*",
+        "@agent-web-portal/aws-lambda": "workspace:*",
+        "@agent-web-portal/client": "workspace:*",
+        "@agent-web-portal/core": "workspace:*",
+        "@aws-sdk/client-cloudformation": "^3.975.0",
+        "@aws-sdk/client-cloudfront": "^3.975.0",
+        "@aws-sdk/client-dynamodb": "^3.975.0",
+        "@aws-sdk/client-s3": "^3.975.0",
+        "@aws-sdk/client-secrets-manager": "^3.975.0",
+        "@aws-sdk/client-ssm": "^3.975.0",
+        "@aws-sdk/credential-providers": "^3.975.0",
+        "@aws-sdk/s3-request-presigner": "^3.975.0",
+        "jsonata": "^2.0.5",
+        "jszip": "^3.10.1",
+        "setimmediate": "^1.0.5",
+        "zod": "3",
+      },
+      "devDependencies": {
+        "@types/aws-lambda": "^8.10.147",
+        "@types/bun": "latest",
+        "@types/node": "^22.10.5",
+      },
+    },
+    "apps/example-webui": {
+      "name": "@agent-web-portal/example-webui",
+      "version": "0.2.0",
+      "dependencies": {
+        "@agent-web-portal/client": "workspace:*",
+        "@agent-web-portal/client-browser": "workspace:*",
+        "@agent-web-portal/client-react": "workspace:*",
+        "@emotion/react": "^11.13.5",
+        "@emotion/styled": "^11.13.5",
+        "@mui/icons-material": "^6.3.1",
+        "@mui/material": "^6.3.1",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-router-dom": "^7.1.1",
+      },
+      "devDependencies": {
+        "@aws-sdk/client-cloudformation": "^3.975.0",
+        "@aws-sdk/client-cloudfront": "^3.975.0",
+        "@aws-sdk/client-s3": "^3.975.0",
+        "@aws-sdk/credential-providers": "^3.975.0",
+        "@types/bun": "latest",
+        "@types/react": "^18.3.18",
+        "@types/react-dom": "^18.3.5",
+        "@vitejs/plugin-react": "^4.3.4",
+        "typescript": "^5.7.2",
+        "vite": "^6.0.7",
+      },
+    },
+    "apps/image-workshop": {
+      "name": "@agent-web-portal/image-workshop",
+      "version": "0.1.0",
+      "dependencies": {
+        "@agent-web-portal/auth": "workspace:*",
+        "@agent-web-portal/awp-server-core": "workspace:*",
+        "@agent-web-portal/awp-server-lambda": "workspace:*",
+        "@agent-web-portal/cas-client-core": "workspace:*",
+        "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
+        "@aws-sdk/client-dynamodb": "^3.975.0",
+        "@aws-sdk/client-secrets-manager": "^3.975.0",
+        "@aws-sdk/lib-dynamodb": "^3.975.0",
+        "@emotion/react": "^11.13.5",
+        "@emotion/styled": "^11.13.5",
+        "@mui/icons-material": "^6.3.1",
+        "@mui/material": "^6.3.1",
+        "amazon-cognito-identity-js": "^6.3.12",
+        "jose": "^6.1.3",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-router-dom": "^7.1.1",
+        "zod": "3",
+      },
+      "devDependencies": {
+        "@aws-sdk/client-cloudformation": "^3.975.0",
+        "@aws-sdk/client-cloudfront": "^3.975.0",
+        "@aws-sdk/client-s3": "^3.975.0",
+        "@aws-sdk/credential-providers": "^3.975.0",
+        "@types/aws-lambda": "^8.10.147",
+        "@types/bun": "latest",
+        "@types/node": "^22.10.5",
+        "@types/react": "^18.3.18",
+        "@types/react-dom": "^18.3.5",
+        "@vitejs/plugin-react": "^4.3.4",
+        "typescript": "^5.7.2",
+        "vite": "^6.0.7",
       },
     },
     "packages/auth": {
@@ -153,33 +351,6 @@
         "typescript": "^5",
       },
     },
-    "packages/aws-lambda-fullstack": {
-      "name": "@agent-web-portal/aws-lambda-fullstack",
-      "version": "0.1.0",
-      "dependencies": {
-        "@emotion/react": "^11.13.5",
-        "@emotion/styled": "^11.13.5",
-        "@mui/icons-material": "^6.3.1",
-        "@mui/material": "^6.3.1",
-        "react": "^18.3.1",
-        "react-dom": "^18.3.1",
-        "react-router-dom": "^7.1.1",
-      },
-      "devDependencies": {
-        "@aws-sdk/client-cloudformation": "^3.975.0",
-        "@aws-sdk/client-cloudfront": "^3.975.0",
-        "@aws-sdk/client-s3": "^3.975.0",
-        "@aws-sdk/credential-providers": "^3.975.0",
-        "@types/aws-lambda": "^8.10.147",
-        "@types/bun": "latest",
-        "@types/node": "^22.10.5",
-        "@types/react": "^18.3.18",
-        "@types/react-dom": "^18.3.5",
-        "@vitejs/plugin-react": "^4.3.4",
-        "typescript": "^5.7.2",
-        "vite": "^6.0.7",
-      },
-    },
     "packages/cas-client-browser": {
       "name": "@agent-web-portal/cas-client-browser",
       "version": "0.0.1",
@@ -206,43 +377,6 @@
       "devDependencies": {
         "@types/node": "^20.10.0",
         "typescript": "^5.3.0",
-      },
-    },
-    "packages/casfa": {
-      "name": "@agent-web-portal/casfa",
-      "version": "0.1.0",
-      "dependencies": {
-        "@agent-web-portal/auth": "workspace:*",
-        "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
-        "@aws-sdk/client-dynamodb": "^3.975.0",
-        "@aws-sdk/client-s3": "^3.975.0",
-        "@aws-sdk/lib-dynamodb": "^3.975.0",
-        "@aws-sdk/s3-request-presigner": "^3.975.0",
-        "@emotion/react": "^11.13.5",
-        "@emotion/styled": "^11.13.5",
-        "@mui/icons-material": "^6.3.1",
-        "@mui/material": "^6.3.1",
-        "amazon-cognito-identity-js": "^6.3.12",
-        "busboy": "^1.6.0",
-        "jose": "^6.1.3",
-        "react": "^18.3.1",
-        "react-dom": "^18.3.1",
-        "react-router-dom": "^7.1.1",
-        "zod": "3",
-      },
-      "devDependencies": {
-        "@aws-sdk/client-cloudformation": "^3.975.0",
-        "@aws-sdk/client-cloudfront": "^3.975.0",
-        "@aws-sdk/credential-providers": "^3.975.0",
-        "@types/aws-lambda": "^8.10.147",
-        "@types/bun": "latest",
-        "@types/busboy": "^1.5.4",
-        "@types/node": "^22.10.5",
-        "@types/react": "^18.3.18",
-        "@types/react-dom": "^18.3.5",
-        "@vitejs/plugin-react": "^4.3.4",
-        "typescript": "^5.7.2",
-        "vite": "^6.0.7",
       },
     },
     "packages/client": {
@@ -327,144 +461,9 @@
         "typescript": "^5",
       },
     },
-    "packages/example-agent": {
-      "name": "@agent-web-portal/example-agent",
-      "version": "0.0.1",
-      "dependencies": {
-        "@agent-web-portal/client": "workspace:*",
-        "@agent-web-portal/client-browser": "workspace:*",
-        "@emotion/react": "^11.11.3",
-        "@emotion/styled": "^11.11.0",
-        "@mui/icons-material": "^5.15.10",
-        "@mui/material": "^5.15.10",
-        "react": "^18.2.0",
-        "react-dom": "^18.2.0",
-        "react-markdown": "^9.0.1",
-        "remark-gfm": "^4.0.0",
-      },
-      "devDependencies": {
-        "@types/react": "^18.2.55",
-        "@types/react-dom": "^18.2.19",
-        "@vitejs/plugin-react": "^4.2.1",
-        "typescript": "^5.3.3",
-        "vite": "^5.1.0",
-      },
-    },
-    "packages/example-agent-service": {
-      "name": "@agent-web-portal/example-agent-service",
-      "version": "0.1.0",
-      "dependencies": {
-        "@aws-sdk/client-cognito-identity-provider": "^3.758.0",
-        "@aws-sdk/client-s3": "^3.758.0",
-        "@aws-sdk/s3-request-presigner": "^3.758.0",
-        "jose": "^5.9.6",
-        "ulid": "^2.3.0",
-        "zod": "^3.24.1",
-      },
-      "devDependencies": {
-        "@types/aws-lambda": "^8.10.147",
-        "@types/bun": "latest",
-        "@types/node": "^22.10.5",
-        "rimraf": "^6.0.1",
-        "typescript": "^5.7.3",
-      },
-    },
-    "packages/example-stack": {
-      "name": "@agent-web-portal/example-stack",
-      "version": "0.2.0",
-      "dependencies": {
-        "@agent-web-portal/auth": "workspace:*",
-        "@agent-web-portal/aws-lambda": "workspace:*",
-        "@agent-web-portal/client": "workspace:*",
-        "@agent-web-portal/core": "workspace:*",
-        "@aws-sdk/client-cloudformation": "^3.975.0",
-        "@aws-sdk/client-cloudfront": "^3.975.0",
-        "@aws-sdk/client-dynamodb": "^3.975.0",
-        "@aws-sdk/client-s3": "^3.975.0",
-        "@aws-sdk/client-secrets-manager": "^3.975.0",
-        "@aws-sdk/client-ssm": "^3.975.0",
-        "@aws-sdk/credential-providers": "^3.975.0",
-        "@aws-sdk/s3-request-presigner": "^3.975.0",
-        "jsonata": "^2.0.5",
-        "jszip": "^3.10.1",
-        "setimmediate": "^1.0.5",
-        "zod": "3",
-      },
-      "devDependencies": {
-        "@types/aws-lambda": "^8.10.147",
-        "@types/bun": "latest",
-        "@types/node": "^22.10.5",
-      },
-    },
-    "packages/example-webui": {
-      "name": "@agent-web-portal/example-webui",
-      "version": "0.2.0",
-      "dependencies": {
-        "@agent-web-portal/client": "workspace:*",
-        "@agent-web-portal/client-browser": "workspace:*",
-        "@agent-web-portal/client-react": "workspace:*",
-        "@emotion/react": "^11.13.5",
-        "@emotion/styled": "^11.13.5",
-        "@mui/icons-material": "^6.3.1",
-        "@mui/material": "^6.3.1",
-        "react": "^18.3.1",
-        "react-dom": "^18.3.1",
-        "react-router-dom": "^7.1.1",
-      },
-      "devDependencies": {
-        "@aws-sdk/client-cloudformation": "^3.975.0",
-        "@aws-sdk/client-cloudfront": "^3.975.0",
-        "@aws-sdk/client-s3": "^3.975.0",
-        "@aws-sdk/credential-providers": "^3.975.0",
-        "@types/bun": "latest",
-        "@types/react": "^18.3.18",
-        "@types/react-dom": "^18.3.5",
-        "@vitejs/plugin-react": "^4.3.4",
-        "typescript": "^5.7.2",
-        "vite": "^6.0.7",
-      },
-    },
-    "packages/image-workshop": {
-      "name": "@agent-web-portal/image-workshop",
-      "version": "0.1.0",
-      "dependencies": {
-        "@agent-web-portal/auth": "workspace:*",
-        "@agent-web-portal/awp-server-core": "workspace:*",
-        "@agent-web-portal/awp-server-lambda": "workspace:*",
-        "@agent-web-portal/cas-client-core": "workspace:*",
-        "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
-        "@aws-sdk/client-dynamodb": "^3.975.0",
-        "@aws-sdk/client-secrets-manager": "^3.975.0",
-        "@aws-sdk/lib-dynamodb": "^3.975.0",
-        "@emotion/react": "^11.13.5",
-        "@emotion/styled": "^11.13.5",
-        "@mui/icons-material": "^6.3.1",
-        "@mui/material": "^6.3.1",
-        "amazon-cognito-identity-js": "^6.3.12",
-        "jose": "^6.1.3",
-        "react": "^18.3.1",
-        "react-dom": "^18.3.1",
-        "react-router-dom": "^7.1.1",
-        "zod": "3",
-      },
-      "devDependencies": {
-        "@aws-sdk/client-cloudformation": "^3.975.0",
-        "@aws-sdk/client-cloudfront": "^3.975.0",
-        "@aws-sdk/client-s3": "^3.975.0",
-        "@aws-sdk/credential-providers": "^3.975.0",
-        "@types/aws-lambda": "^8.10.147",
-        "@types/bun": "latest",
-        "@types/node": "^22.10.5",
-        "@types/react": "^18.3.18",
-        "@types/react-dom": "^18.3.5",
-        "@vitejs/plugin-react": "^4.3.4",
-        "typescript": "^5.7.2",
-        "vite": "^6.0.7",
-      },
-    },
   },
   "packages": {
-    "@agent-web-portal/agent": ["@agent-web-portal/agent@workspace:packages/agent"],
+    "@agent-web-portal/agent": ["@agent-web-portal/agent@workspace:apps/agent"],
 
     "@agent-web-portal/auth": ["@agent-web-portal/auth@workspace:packages/auth"],
 
@@ -482,7 +481,7 @@
 
     "@agent-web-portal/aws-lambda": ["@agent-web-portal/aws-lambda@workspace:packages/aws-lambda"],
 
-    "@agent-web-portal/aws-lambda-fullstack": ["@agent-web-portal/aws-lambda-fullstack@workspace:packages/aws-lambda-fullstack"],
+    "@agent-web-portal/aws-lambda-fullstack": ["@agent-web-portal/aws-lambda-fullstack@workspace:apps/aws-lambda-fullstack"],
 
     "@agent-web-portal/cas-client-browser": ["@agent-web-portal/cas-client-browser@workspace:packages/cas-client-browser"],
 
@@ -490,7 +489,7 @@
 
     "@agent-web-portal/cas-client-nodejs": ["@agent-web-portal/cas-client-nodejs@workspace:packages/cas-client-nodejs"],
 
-    "@agent-web-portal/casfa": ["@agent-web-portal/casfa@workspace:packages/casfa"],
+    "@agent-web-portal/casfa": ["@agent-web-portal/casfa@workspace:apps/casfa"],
 
     "@agent-web-portal/client": ["@agent-web-portal/client@workspace:packages/client"],
 
@@ -502,15 +501,15 @@
 
     "@agent-web-portal/core": ["@agent-web-portal/core@workspace:packages/core"],
 
-    "@agent-web-portal/example-agent": ["@agent-web-portal/example-agent@workspace:packages/example-agent"],
+    "@agent-web-portal/example-agent": ["@agent-web-portal/example-agent@workspace:apps/example-agent"],
 
-    "@agent-web-portal/example-agent-service": ["@agent-web-portal/example-agent-service@workspace:packages/example-agent-service"],
+    "@agent-web-portal/example-agent-service": ["@agent-web-portal/example-agent-service@workspace:apps/example-agent-service"],
 
-    "@agent-web-portal/example-stack": ["@agent-web-portal/example-stack@workspace:packages/example-stack"],
+    "@agent-web-portal/example-stack": ["@agent-web-portal/example-stack@workspace:apps/example-stack"],
 
-    "@agent-web-portal/example-webui": ["@agent-web-portal/example-webui@workspace:packages/example-webui"],
+    "@agent-web-portal/example-webui": ["@agent-web-portal/example-webui@workspace:apps/example-webui"],
 
-    "@agent-web-portal/image-workshop": ["@agent-web-portal/image-workshop@workspace:packages/image-workshop"],
+    "@agent-web-portal/image-workshop": ["@agent-web-portal/image-workshop@workspace:apps/image-workshop"],
 
     "@aws-crypto/crc32": ["@aws-crypto/crc32@5.2.0", "", { "dependencies": { "@aws-crypto/util": "^5.2.0", "@aws-sdk/types": "^3.222.0", "tslib": "^2.6.2" } }, "sha512-nLbCWqQNgUiwwtFsen1AdzAtvuLRsQS8rYgMuxCrdKf9kOssamGLuPwyTY9wyYblNr9+1XM8v6zoDTPPSIeANg=="],
 
@@ -1590,27 +1589,17 @@
 
     "@agent-web-portal/client-nodejs/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
 
-    "@agent-web-portal/client-react/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
-
-    "@agent-web-portal/client-react/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
-
     "@agent-web-portal/example-agent/vite": ["vite@5.4.21", "", { "dependencies": { "esbuild": "^0.21.3", "postcss": "^8.4.43", "rollup": "^4.20.0" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^18.0.0 || >=20.0.0", "less": "*", "lightningcss": "^1.21.0", "sass": "*", "sass-embedded": "*", "stylus": "*", "sugarss": "*", "terser": "^5.4.0" }, "optionalPeers": ["@types/node", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser"], "bin": { "vite": "bin/vite.js" } }, "sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw=="],
-
-    "@agent-web-portal/example-agent-service/@types/bun": ["@types/bun@1.3.7", "", { "dependencies": { "bun-types": "1.3.7" } }, "sha512-lmNuMda+Z9b7tmhA0tohwy8ZWFSnmQm1UDWXtH5r9F7wZCfkeO3Jx7wKQ1EOiKq43yHts7ky6r8SDJQWRNupkA=="],
 
     "@agent-web-portal/example-agent-service/@types/node": ["@types/node@22.19.7", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw=="],
 
     "@agent-web-portal/example-agent-service/jose": ["jose@5.10.0", "", {}, "sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg=="],
-
-    "@agent-web-portal/example-stack/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
 
     "@agent-web-portal/example-stack/@types/node": ["@types/node@22.19.7", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw=="],
 
     "@agent-web-portal/example-webui/@mui/icons-material": ["@mui/icons-material@6.5.0", "", { "dependencies": { "@babel/runtime": "^7.26.0" }, "peerDependencies": { "@mui/material": "^6.5.0", "@types/react": "^17.0.0 || ^18.0.0 || ^19.0.0", "react": "^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-VPuPqXqbBPlcVSA0BmnoE4knW4/xG6Thazo8vCLWkOKusko6DtwFV6B665MMWJ9j0KFohTIf3yx2zYtYacvG1g=="],
 
     "@agent-web-portal/example-webui/@mui/material": ["@mui/material@6.5.0", "", { "dependencies": { "@babel/runtime": "^7.26.0", "@mui/core-downloads-tracker": "^6.5.0", "@mui/system": "^6.5.0", "@mui/types": "~7.2.24", "@mui/utils": "^6.4.9", "@popperjs/core": "^2.11.8", "@types/react-transition-group": "^4.4.12", "clsx": "^2.1.1", "csstype": "^3.1.3", "prop-types": "^15.8.1", "react-is": "^19.0.0", "react-transition-group": "^4.4.5" }, "peerDependencies": { "@emotion/react": "^11.5.0", "@emotion/styled": "^11.3.0", "@mui/material-pigment-css": "^6.5.0", "@types/react": "^17.0.0 || ^18.0.0 || ^19.0.0", "react": "^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@emotion/react", "@emotion/styled", "@mui/material-pigment-css", "@types/react"] }, "sha512-yjvtXoFcrPLGtgKRxFaH6OQPtcLPhkloC0BML6rBG5UeldR0nPULR/2E2BfXdo5JNV7j7lOzrrLX2Qf/iSidow=="],
-
-    "@agent-web-portal/example-webui/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
 
     "@agent-web-portal/image-workshop/@mui/icons-material": ["@mui/icons-material@6.5.0", "", { "dependencies": { "@babel/runtime": "^7.26.0" }, "peerDependencies": { "@mui/material": "^6.5.0", "@types/react": "^17.0.0 || ^18.0.0 || ^19.0.0", "react": "^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-VPuPqXqbBPlcVSA0BmnoE4knW4/xG6Thazo8vCLWkOKusko6DtwFV6B665MMWJ9j0KFohTIf3yx2zYtYacvG1g=="],
 
@@ -1716,21 +1705,13 @@
 
     "@agent-web-portal/client-nodejs/bun-types/@types/node": ["@types/node@22.19.7", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw=="],
 
-    "@agent-web-portal/client-react/bun-types/@types/node": ["@types/node@22.19.7", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw=="],
-
-    "@agent-web-portal/example-agent-service/@types/bun/bun-types": ["bun-types@1.3.7", "", { "dependencies": { "@types/node": "*" } }, "sha512-qyschsA03Qz+gou+apt6HNl6HnI+sJJLL4wLDke4iugsE6584CMupOtTY1n+2YC9nGVrEKUlTs99jjRLKgWnjQ=="],
-
     "@agent-web-portal/example-agent/vite/esbuild": ["esbuild@0.21.5", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.21.5", "@esbuild/android-arm": "0.21.5", "@esbuild/android-arm64": "0.21.5", "@esbuild/android-x64": "0.21.5", "@esbuild/darwin-arm64": "0.21.5", "@esbuild/darwin-x64": "0.21.5", "@esbuild/freebsd-arm64": "0.21.5", "@esbuild/freebsd-x64": "0.21.5", "@esbuild/linux-arm": "0.21.5", "@esbuild/linux-arm64": "0.21.5", "@esbuild/linux-ia32": "0.21.5", "@esbuild/linux-loong64": "0.21.5", "@esbuild/linux-mips64el": "0.21.5", "@esbuild/linux-ppc64": "0.21.5", "@esbuild/linux-riscv64": "0.21.5", "@esbuild/linux-s390x": "0.21.5", "@esbuild/linux-x64": "0.21.5", "@esbuild/netbsd-x64": "0.21.5", "@esbuild/openbsd-x64": "0.21.5", "@esbuild/sunos-x64": "0.21.5", "@esbuild/win32-arm64": "0.21.5", "@esbuild/win32-ia32": "0.21.5", "@esbuild/win32-x64": "0.21.5" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-mg3OPMV4hXywwpoDxu3Qda5xCKQi+vCTZq8S9J/EpkhB2HzKXq4SNFZE3+NK93JYxc8VMSep+lOUSC/RVKaBqw=="],
-
-    "@agent-web-portal/example-stack/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
 
     "@agent-web-portal/example-webui/@mui/material/@mui/core-downloads-tracker": ["@mui/core-downloads-tracker@6.5.0", "", {}, "sha512-LGb8t8i6M2ZtS3Drn3GbTI1DVhDY6FJ9crEey2lZ0aN2EMZo8IZBZj9wRf4vqbZHaWjsYgtbOnJw5V8UWbmK2Q=="],
 
     "@agent-web-portal/example-webui/@mui/material/@mui/system": ["@mui/system@6.5.0", "", { "dependencies": { "@babel/runtime": "^7.26.0", "@mui/private-theming": "^6.4.9", "@mui/styled-engine": "^6.5.0", "@mui/types": "~7.2.24", "@mui/utils": "^6.4.9", "clsx": "^2.1.1", "csstype": "^3.1.3", "prop-types": "^15.8.1" }, "peerDependencies": { "@emotion/react": "^11.5.0", "@emotion/styled": "^11.3.0", "@types/react": "^17.0.0 || ^18.0.0 || ^19.0.0", "react": "^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@emotion/react", "@emotion/styled", "@types/react"] }, "sha512-XcbBYxDS+h/lgsoGe78ExXFZXtuIlSBpn/KsZq8PtZcIkUNJInkuDqcLd2rVBQrDC1u+rvVovdaWPf2FHKJf3w=="],
 
     "@agent-web-portal/example-webui/@mui/material/@mui/utils": ["@mui/utils@6.4.9", "", { "dependencies": { "@babel/runtime": "^7.26.0", "@mui/types": "~7.2.24", "@types/prop-types": "^15.7.14", "clsx": "^2.1.1", "prop-types": "^15.8.1", "react-is": "^19.0.0" }, "peerDependencies": { "@types/react": "^17.0.0 || ^18.0.0 || ^19.0.0", "react": "^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-Y12Q9hbK9g+ZY0T3Rxrx9m2m10gaphDuUMgWxyV5kNJevVxXYCLclYUCC9vXaIk1/NdNDTcW2Yfr2OGvNFNmHg=="],
-
-    "@agent-web-portal/example-webui/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
 
     "@agent-web-portal/image-workshop/@mui/material/@mui/core-downloads-tracker": ["@mui/core-downloads-tracker@6.5.0", "", {}, "sha512-LGb8t8i6M2ZtS3Drn3GbTI1DVhDY6FJ9crEey2lZ0aN2EMZo8IZBZj9wRf4vqbZHaWjsYgtbOnJw5V8UWbmK2Q=="],
 
@@ -1831,8 +1812,6 @@
     "@agent-web-portal/example-webui/@mui/material/@mui/system/@mui/private-theming": ["@mui/private-theming@6.4.9", "", { "dependencies": { "@babel/runtime": "^7.26.0", "@mui/utils": "^6.4.9", "prop-types": "^15.8.1" }, "peerDependencies": { "@types/react": "^17.0.0 || ^18.0.0 || ^19.0.0", "react": "^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-LktcVmI5X17/Q5SkwjCcdOLBzt1hXuc14jYa7NPShog0GBDCDvKtcnP0V7a2s6EiVRlv7BzbWEJzH6+l/zaCxw=="],
 
     "@agent-web-portal/example-webui/@mui/material/@mui/system/@mui/styled-engine": ["@mui/styled-engine@6.5.0", "", { "dependencies": { "@babel/runtime": "^7.26.0", "@emotion/cache": "^11.13.5", "@emotion/serialize": "^1.3.3", "@emotion/sheet": "^1.4.0", "csstype": "^3.1.3", "prop-types": "^15.8.1" }, "peerDependencies": { "@emotion/react": "^11.4.1", "@emotion/styled": "^11.3.0", "react": "^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@emotion/react", "@emotion/styled"] }, "sha512-8woC2zAqF4qUDSPIBZ8v3sakj+WgweolpyM/FXf8jAx6FMls+IE4Y8VDZc+zS805J7PRz31vz73n2SovKGaYgw=="],
-
-    "@agent-web-portal/example-webui/@types/bun/bun-types/@types/node": ["@types/node@22.19.7", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw=="],
 
     "@agent-web-portal/image-workshop/@mui/material/@mui/system/@mui/private-theming": ["@mui/private-theming@6.4.9", "", { "dependencies": { "@babel/runtime": "^7.26.0", "@mui/utils": "^6.4.9", "prop-types": "^15.8.1" }, "peerDependencies": { "@types/react": "^17.0.0 || ^18.0.0 || ^19.0.0", "react": "^17.0.0 || ^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-LktcVmI5X17/Q5SkwjCcdOLBzt1hXuc14jYa7NPShog0GBDCDvKtcnP0V7a2s6EiVRlv7BzbWEJzH6+l/zaCxw=="],
 
