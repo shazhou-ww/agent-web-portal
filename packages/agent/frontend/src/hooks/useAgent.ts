@@ -179,28 +179,30 @@ export function useAgent(options: UseAgentOptions): UseAgentResult {
   const loadMessages = useCallback((msgs: Message[]) => {
     // Update UI state
     setMessages(msgs);
-    
+
     // Also restore the AgentContext message history
     const context = contextRef.current;
     if (context) {
       // Clear existing messages and rebuild from conversation history
       context.clearMessages();
-      
+
       // Convert UI Messages to TrackedMessages and add to context
       for (const msg of msgs) {
-        if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
+        if (msg.role === "user" || msg.role === "assistant" || msg.role === "tool") {
           context.addMessage({
             role: msg.role,
             content: msg.content,
-            toolCalls: msg.toolCalls?.map(tc => ({
+            toolCalls: msg.toolCalls?.map((tc) => ({
               id: tc.id,
               name: tc.name,
               arguments: tc.arguments,
             })),
-            toolResult: msg.toolCallId ? {
-              toolCallId: msg.toolCallId,
-              content: msg.content,
-            } : undefined,
+            toolResult: msg.toolResult?.toolCallId
+              ? {
+                  toolCallId: msg.toolResult.toolCallId,
+                  content: msg.content,
+                }
+              : undefined,
           });
         }
       }

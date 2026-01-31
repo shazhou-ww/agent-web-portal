@@ -72,7 +72,9 @@ OAuth/Cognito → User Token → Agent Token → Ticket
 - 角色存储在 tokens 表中，`pk = user#${userId}`，`type = user_role`，`role = authorized | admin`；无记录或未在 bootstrap 列表中即为未授权。
 - **Bootstrap 管理员**（二选一）：
   - **环境变量**：`CAS_ADMIN_USER_IDS`（逗号分隔的 Cognito `sub`），仅当 DB 中无该用户角色记录时生效。
-  - **脚本**：在 `packages/cas-stack` 下执行 `bun run set-admin-users --list` 列出 Cognito 用户，`bun run set-admin-users --set-admin <email 或 sub>` 将指定用户设为管理员（写入 DynamoDB）。需配置 `COGNITO_USER_POOL_ID`、`TOKENS_TABLE` 及 AWS 凭证（或本地 `DYNAMODB_ENDPOINT`）。
+  - **脚本**：在 `packages/cas-stack` 下执行 `bun run set-admin-users --list` 列出 Cognito 用户，
+    `bun run set-admin-users --set-admin <email 或 sub>` 将指定用户设为管理员（写入 DynamoDB）。
+    需配置 `COGNITO_USER_POOL_ID`、`TOKENS_TABLE` 及 AWS 凭证（或本地 `DYNAMODB_ENDPOINT`）。
 
 ---
 

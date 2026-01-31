@@ -76,7 +76,7 @@ export class BufferedCasClient implements IBufferedCasClient {
   constructor(context: CasBlobContext, storage?: LocalStorageProvider) {
     this.client = CasClient.fromContext(context, storage);
     this.chunkThreshold = context.config.chunkThreshold;
-    
+
     // Log the parsed client configuration for debugging
     const clientEndpoint = (this.client as unknown as { endpoint: string }).endpoint;
     const clientRealm = (this.client as unknown as { realm?: string }).realm;
@@ -402,7 +402,7 @@ export class BufferedCasClient implements IBufferedCasClient {
 
   /**
    * Compute collection node key (deterministic based on children)
-   * 
+   *
    * NOTE: This does NOT match CAS server format exactly (server includes size).
    * The key returned here is used locally, and the actual key is returned by the server.
    * For collections, we rely on the server's returned key after upload.

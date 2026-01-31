@@ -9,15 +9,14 @@ import { createServerHandler } from "@agent-web-portal/awp-server-lambda";
 import { createAuthRoutes } from "./router.ts";
 import { imageWorkshopSkills } from "./skills.ts";
 import { fluxTools } from "./tools/flux/index.ts";
+import { vectorizerTools } from "./tools/vectorizer/index.ts";
 import { loadConfig } from "./types.ts";
 
 // Load configuration
 const config = loadConfig();
 
 // Determine the base URL for skills (from callback URL or default)
-const skillBaseUrl = config.callbackBaseUrl
-  ? `${config.callbackBaseUrl}/api`
-  : "";
+const skillBaseUrl = config.callbackBaseUrl ? `${config.callbackBaseUrl}/api` : "";
 
 // Create the Lambda handler using the builder pattern
 export const handler = createServerHandler({
@@ -30,6 +29,7 @@ export const handler = createServerHandler({
     agentToken: process.env.CAS_AGENT_TOKEN ?? "",
   })
   .registerTools(fluxTools)
+  .registerTools(vectorizerTools)
   .registerSkills(imageWorkshopSkills)
   .withSkillBaseUrl(skillBaseUrl)
   .withRoutes(createAuthRoutes(config))

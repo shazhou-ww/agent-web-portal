@@ -17,7 +17,12 @@ export const searchReplaceTool = defineTool((cas) => ({
     search_prompt: z.string().describe("Description of the object to find and replace"),
     prompt: z.string().describe("Description of what to replace the found object with"),
     negative_prompt: z.string().optional().describe("What to avoid generating"),
-    grow_mask: z.number().min(0).max(100).default(3).describe("Pixels to expand the detected mask by"),
+    grow_mask: z
+      .number()
+      .min(0)
+      .max(100)
+      .default(3)
+      .describe("Pixels to expand the detected mask by"),
     seed: z.number().optional().describe("Random seed for reproducibility"),
     output_format: z.enum(["png", "jpeg", "webp"]).default("png").describe("Output image format"),
   }),

@@ -109,16 +109,23 @@ export class AuthMiddleware {
       req.headers[AWP_AUTH_HEADERS.signature];
 
     if (!pubkey || !timestamp || !signature) {
-      console.log("[Auth] AWP auth failed: Missing headers", { pubkey: !!pubkey, timestamp: !!timestamp, signature: !!signature });
+      console.log("[Auth] AWP auth failed: Missing headers", {
+        pubkey: !!pubkey,
+        timestamp: !!timestamp,
+        signature: !!signature,
+      });
       return null;
     }
 
-    console.log("[Auth] AWP auth attempt for pubkey:", pubkey.substring(0, 20) + "...");
+    console.log("[Auth] AWP auth attempt for pubkey:", `${pubkey.substring(0, 20)}...`);
 
     // Validate timestamp
     if (!validateTimestamp(timestamp, 300)) {
       // 5 minute max clock skew
-      console.log("[Auth] AWP auth failed: Timestamp validation failed", { timestamp, now: Math.floor(Date.now() / 1000) });
+      console.log("[Auth] AWP auth failed: Timestamp validation failed", {
+        timestamp,
+        now: Math.floor(Date.now() / 1000),
+      });
       return null;
     }
 
@@ -135,19 +142,16 @@ export class AuthMiddleware {
     // Convert HttpRequest body to string
     // Note: The handler already decodes base64, so we just need to convert Buffer to string
     const body =
-      typeof req.body === "string"
-        ? req.body
-        : req.body
-          ? req.body.toString("utf-8")
-          : "";
+      typeof req.body === "string" ? req.body : req.body ? req.body.toString("utf-8") : "";
 
     // Build signature payload: timestamp.METHOD.path.bodyHash
     // Use originalPath for signature verification (preserves /api prefix)
-    const queryString = Object.keys(req.query).length > 0
-      ? `?${new URLSearchParams(req.query as Record<string, string>).toString()}`
-      : "";
+    const queryString =
+      Object.keys(req.query).length > 0
+        ? `?${new URLSearchParams(req.query as Record<string, string>).toString()}`
+        : "";
     const signaturePath = (req.originalPath ?? req.path) + queryString;
-    
+
     // Body hash must be base64url encoded (same as client)
     const hashBuffer = createHash("sha256").update(body).digest();
     const bodyHash = hashBuffer.toString("base64url");

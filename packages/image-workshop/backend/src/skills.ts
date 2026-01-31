@@ -5,7 +5,7 @@
  * Content is copied from the skills/ directory.
  */
 
-import { parseSkill, type DefinedSkill } from "@agent-web-portal/awp-server-core";
+import { type DefinedSkill, parseSkill } from "@agent-web-portal/awp-server-core";
 
 // Skill contents embedded as template literals
 // These are generated from the skills/ directory
@@ -147,6 +147,75 @@ This skill provides powerful content replacement capabilities using FLUX's advan
 | flux_kontext | Image + Prompt | Context-aware edits | Highest |
 `;
 
+const imageVectorizationContent = `---
+name: Image Vectorization
+description: Convert bitmap images to vector graphics (SVG, EPS, PDF) and generate line art/sketches
+version: 1.0.0
+allowed-tools:
+  - vectorize
+---
+
+# Image Vectorization
+
+Convert bitmap images (PNG, JPEG, etc.) to high-quality vector graphics using Vectorizer.AI.
+
+## Overview
+
+This skill provides professional-grade bitmap-to-vector conversion, perfect for:
+- Converting logos and graphics to scalable SVG
+- Generating clean line art from photos
+- Creating print-ready vector files (EPS, PDF)
+- Extracting edge drawings and sketches
+
+## Available Tools
+
+- **vectorize**: Convert bitmap to vector with extensive customization options
+
+## Common Use Cases
+
+### 1. Basic Vectorization (Logo/Graphic)
+Convert a logo or graphic to clean SVG:
+\`\`\`
+vectorize(imageKey, output_format="svg")
+\`\`\`
+
+### 2. Line Art / Sketch Generation
+Create line drawings from photos:
+\`\`\`
+vectorize(imageKey, draw_style="stroke_edges", max_colors=1)
+\`\`\`
+
+### 3. Limited Color Illustration
+Create stylized illustrations with limited palette:
+\`\`\`
+vectorize(imageKey, max_colors=8)
+\`\`\`
+
+### 4. Print-Ready Output
+Generate high-quality print files:
+\`\`\`
+vectorize(imageKey, output_format="pdf")
+vectorize(imageKey, output_format="eps")
+\`\`\`
+
+## Parameter Guide
+
+| Parameter | Effect | Recommended For |
+|-----------|--------|-----------------|
+| draw_style="fill_shapes" | Filled regions (default) | Logos, icons, illustrations |
+| draw_style="stroke_edges" | Line art only | Sketches, coloring pages, technical drawings |
+| draw_style="stroke_shapes" | Outlined shapes | Sticker designs, cut files |
+| max_colors=1-2 | Simple line drawings | Clean sketches, minimal art |
+| max_colors=4-16 | Stylized illustrations | Posters, simplified graphics |
+| shape_stacking="stacked" | Layered shapes | Complex illustrations with overlaps |
+
+## Tips
+
+- For best line art results, use high-contrast source images
+- Use \`max_colors=1\` with \`draw_style="stroke_edges"\` for pure line drawings
+- SVG output is best for web, EPS/PDF for professional printing
+`;
+
 /**
  * All image workshop skills
  */
@@ -155,4 +224,5 @@ export const imageWorkshopSkills: DefinedSkill[] = [
   parseSkill("flux-image-generation", fluxImageGenerationContent),
   parseSkill("image-stylization", imageStylizationContent),
   parseSkill("content-replace", contentReplaceContent),
+  parseSkill("image-vectorization", imageVectorizationContent),
 ];

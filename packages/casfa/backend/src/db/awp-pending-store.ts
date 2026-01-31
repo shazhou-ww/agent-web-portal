@@ -12,8 +12,8 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { createDynamoDBClient } from "./client.ts";
 import type { CasConfig } from "../types.ts";
+import { createDynamoDBClient } from "./client.ts";
 
 /**
  * DynamoDB record for pending auth

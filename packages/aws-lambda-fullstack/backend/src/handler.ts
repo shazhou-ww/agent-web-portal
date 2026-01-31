@@ -11,9 +11,7 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from "aws-l
 // Types
 // ============================================================================
 
-interface RouteHandler {
-  (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult>;
-}
+type RouteHandler = (event: APIGatewayProxyEvent) => Promise<APIGatewayProxyResult>;
 
 // ============================================================================
 // Response Helpers

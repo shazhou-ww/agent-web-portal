@@ -165,6 +165,7 @@ export type NodeKind = "collection" | "file" | "chunk";
 export interface CasOwnership {
   realm: string;
   key: string;
+  kind?: NodeKind; // node type: collection, file, or chunk
   createdAt: number;
   createdBy: string;
   contentType?: string;

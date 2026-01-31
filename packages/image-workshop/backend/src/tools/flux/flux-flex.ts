@@ -16,12 +16,7 @@ export const fluxFlexTool = defineTool((cas) => ({
     prompt: z.string().describe("Text prompt describing the image to generate"),
     width: z.number().min(256).max(1440).default(1024).describe("Image width"),
     height: z.number().min(256).max(1440).default(1024).describe("Image height"),
-    guidance: z
-      .number()
-      .min(1)
-      .max(10)
-      .default(3.5)
-      .describe("How closely to follow the prompt"),
+    guidance: z.number().min(1).max(10).default(3.5).describe("How closely to follow the prompt"),
     num_steps: z.number().min(1).max(50).default(28).describe("Number of inference steps"),
     seed: z.number().optional().describe("Random seed for reproducibility"),
     output_format: z.enum(["png", "jpeg"]).default("png").describe("Output image format"),

@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command } from "commander";
 import { checkEnv, printCheckEnvResult } from "../src/check-env.ts";
-import { pullConfig, printConfigResult } from "../src/config.ts";
+import { printConfigResult, pullConfig } from "../src/config.ts";
 import type { AwpConfig } from "../src/types.ts";
 import { uploadSkills } from "../src/upload.ts";
 

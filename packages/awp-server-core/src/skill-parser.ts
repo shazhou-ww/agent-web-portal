@@ -67,7 +67,7 @@ function parseFrontmatter(content: string): SkillFrontmatter {
     if (colonIndex === -1) continue;
 
     const key = trimmed.slice(0, colonIndex).trim();
-    let value: string | string[] = trimmed.slice(colonIndex + 1).trim();
+    const value: string | string[] = trimmed.slice(colonIndex + 1).trim();
 
     // Check if next line starts an array
     if (value === "") {
@@ -92,10 +92,6 @@ function parseFrontmatter(content: string): SkillFrontmatter {
  * @param skillsMap - Map of skill ID to SKILL.md content
  * @returns Array of parsed skills
  */
-export function loadSkillsFromMap(
-  skillsMap: Record<string, string>
-): DefinedSkill[] {
-  return Object.entries(skillsMap).map(([id, content]) =>
-    parseSkill(id, content)
-  );
+export function loadSkillsFromMap(skillsMap: Record<string, string>): DefinedSkill[] {
+  return Object.entries(skillsMap).map(([id, content]) => parseSkill(id, content));
 }

@@ -48,7 +48,7 @@ export class CasClient {
 
   /**
    * Get the API base URL for CAS operations
-   * 
+   *
    * For ticket auth: endpoint is already /api/cas/{realm}/ticket/{ticketId}, use directly
    * For user/agent auth: endpoint is /api, need to append /cas/{realm}
    */
@@ -58,7 +58,7 @@ export class CasClient {
       // CAS server will strip /ticket/{ticketId} and route correctly
       return this.endpoint;
     }
-    
+
     // For user/agent auth, append /cas/{realm}
     const realm = this.realm ?? "@me";
     return `${this.endpoint}/cas/${realm}`;

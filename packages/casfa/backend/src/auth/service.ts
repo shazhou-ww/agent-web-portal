@@ -6,7 +6,7 @@ import {
   CognitoIdentityProviderClient,
   InitiateAuthCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { TokensDb, UserRolesDb } from "../db/index.ts";
+import { TokensDb, type UserRolesDb } from "../db/index.ts";
 import type {
   AuthContext,
   CasConfig,

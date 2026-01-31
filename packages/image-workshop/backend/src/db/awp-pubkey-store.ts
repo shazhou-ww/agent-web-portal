@@ -13,8 +13,8 @@ import {
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { createDynamoDBClient } from "./client.ts";
 import type { Config } from "../types.ts";
+import { createDynamoDBClient } from "./client.ts";
 
 /**
  * DynamoDB record for authorized pubkey

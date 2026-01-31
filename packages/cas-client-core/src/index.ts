@@ -4,9 +4,6 @@
  * Platform-agnostic types and utilities for CAS clients
  */
 
-// Client
-export { CasClient } from "./client.ts";
-
 // Blob reference utilities
 export {
   buildEndpoint,
@@ -17,6 +14,8 @@ export {
   resolvePath,
   resolvePathRaw,
 } from "./blob-ref.ts";
+// Client
+export { CasClient } from "./client.ts";
 
 // Hash utilities
 export { computeChunkKeys, computeKey, extractHash, isValidKey } from "./hash.ts";

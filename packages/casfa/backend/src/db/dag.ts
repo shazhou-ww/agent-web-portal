@@ -8,8 +8,8 @@ import {
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { createDynamoDBClient } from "./client.ts";
 import type { CasConfig, CasDagNode } from "../types.ts";
+import { createDynamoDBClient } from "./client.ts";
 
 export class DagDb {
   private client: DynamoDBDocumentClient;

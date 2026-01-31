@@ -104,13 +104,10 @@ const server = Bun.serve({
       });
     } catch (error) {
       console.error("[Image Workshop] Handler error:", error);
-      return new Response(
-        JSON.stringify({ error: "Internal Server Error" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
   },
 });

@@ -16,7 +16,9 @@ export const removeBgTool = defineTool((cas) => ({
     imageKey: z.string().describe("CAS key of the source image"),
   }),
   outputSchema: z.object({
-    resultKey: z.string().describe("CAS key of the image with background removed (PNG with transparency)"),
+    resultKey: z
+      .string()
+      .describe("CAS key of the image with background removed (PNG with transparency)"),
     metadata: z.object({
       finish_reason: z.string().describe("Reason generation finished"),
     }),

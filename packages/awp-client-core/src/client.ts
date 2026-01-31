@@ -626,19 +626,30 @@ export class AwpClient {
     if (this.casAuth) {
       // Check if we have a valid key for CAS
       const hasKey = await this.casAuth.hasValidKey(this.casEndpoint);
-      console.log("[AwpClient] CAS auth status for", this.casEndpoint, ":", hasKey ? "authenticated" : "NOT authenticated");
-      
+      console.log(
+        "[AwpClient] CAS auth status for",
+        this.casEndpoint,
+        ":",
+        hasKey ? "authenticated" : "NOT authenticated"
+      );
+
       if (!hasKey) {
         console.warn("[AwpClient] Not authenticated to CAS endpoint:", this.casEndpoint);
         console.warn("[AwpClient] Please authenticate to CAS first via the CAS Config panel");
       }
-      
+
       try {
         authHeaders = await this.casAuth.sign(this.casEndpoint, "POST", url, body);
-        console.log("[AwpClient] Successfully signed CAS request with headers:", Object.keys(authHeaders));
+        console.log(
+          "[AwpClient] Successfully signed CAS request with headers:",
+          Object.keys(authHeaders)
+        );
       } catch (error) {
         console.warn("[AwpClient] Failed to sign CAS request:", error);
-        console.warn("[AwpClient] Make sure you are authenticated to the CAS endpoint:", this.casEndpoint);
+        console.warn(
+          "[AwpClient] Make sure you are authenticated to the CAS endpoint:",
+          this.casEndpoint
+        );
         // Continue without auth - will likely fail with 401
       }
     } else {

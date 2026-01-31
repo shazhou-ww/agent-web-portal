@@ -57,7 +57,7 @@ function AppRoutes() {
         >
           <Route index element={<Dashboard />} />
           <Route path="agents" element={<Clients />} />
-          <Route path="nodes" element={<Nodes />} />
+          <Route path="nodes/*" element={<Nodes />} />
           <Route path="tokens" element={<Tokens />} />
           <Route path="tickets" element={<Tickets />} />
           <Route path="users" element={<Users />} />

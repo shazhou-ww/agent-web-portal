@@ -235,7 +235,9 @@ export class AwpCasManager {
       console.log("[AwpCasManager] AWP auth status:", isAuthenticated);
       console.log("[AwpCasManager] CAS auth status:", hasCasKey);
     } else {
-      console.warn("[AwpCasManager] No keyStorage or createAuth provided, auth will not be available");
+      console.warn(
+        "[AwpCasManager] No keyStorage or createAuth provided, auth will not be available"
+      );
     }
 
     // Create CAS-based client
@@ -290,7 +292,7 @@ export class AwpCasManager {
       throw new Error(`Failed to fetch service info: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as { title?: string; description?: string };
     return {
       title: data.title ?? "AWP Service",
       description: data.description ?? "",

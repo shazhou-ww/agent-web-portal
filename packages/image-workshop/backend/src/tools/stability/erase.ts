@@ -11,7 +11,8 @@ import { getStabilityApiKey } from "../../secrets.ts";
 
 export const eraseTool = defineTool((cas) => ({
   name: "erase",
-  description: "Remove objects from an image by erasing the masked regions and filling with background",
+  description:
+    "Remove objects from an image by erasing the masked regions and filling with background",
   inputSchema: z.object({
     imageKey: z.string().describe("CAS key of the source image"),
     maskKey: z.string().describe("CAS key of the mask image (white areas will be erased)"),

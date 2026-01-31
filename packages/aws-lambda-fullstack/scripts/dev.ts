@@ -9,8 +9,8 @@
  *   bun run dev:frontend     # Start only frontend (port 5173)
  */
 
-import { spawn, type Subprocess } from "bun";
-import { join } from "path";
+import { join } from "node:path";
+import { type Subprocess, spawn } from "bun";
 
 const ROOT_DIR = join(import.meta.dir, "..");
 
@@ -35,7 +35,7 @@ function colorize(text: string, color: string): string {
 
 async function startBackend(): Promise<Subprocess> {
   console.log(colorize("[backend] Starting development server...", "cyan"));
-  
+
   const proc = spawn({
     cmd: ["bun", "run", "backend/server.ts"],
     cwd: ROOT_DIR,
@@ -52,7 +52,7 @@ async function startBackend(): Promise<Subprocess> {
 
 async function startFrontend(): Promise<Subprocess> {
   console.log(colorize("[frontend] Starting Vite development server...", "magenta"));
-  
+
   const proc = spawn({
     cmd: ["bun", "run", "vite", "--config", "frontend/vite.config.ts"],
     cwd: ROOT_DIR,
@@ -64,8 +64,8 @@ async function startFrontend(): Promise<Subprocess> {
 }
 
 async function cleanup(): Promise<void> {
-  console.log("\n" + colorize("Shutting down...", "yellow"));
-  
+  console.log(`\n${colorize("Shutting down...", "yellow")}`);
+
   for (const { name, process } of processes) {
     console.log(colorize(`[${name}] Stopping...`, "yellow"));
     process.kill();
@@ -88,10 +88,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", cleanup);
 
   try {
-    const [backendProc, frontendProc] = await Promise.all([
-      startBackend(),
-      startFrontend(),
-    ]);
+    const [backendProc, frontendProc] = await Promise.all([startBackend(), startFrontend()]);
 
     processes.push(
       { name: "backend", process: backendProc, color: "cyan" },
@@ -106,10 +103,7 @@ async function main(): Promise<void> {
     console.log(colorize("Press Ctrl+C to stop all servers", "yellow"));
     console.log();
 
-    await Promise.race([
-      backendProc.exited,
-      frontendProc.exited,
-    ]);
+    await Promise.race([backendProc.exited, frontendProc.exited]);
 
     await cleanup();
   } catch (error) {

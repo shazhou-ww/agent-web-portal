@@ -12,10 +12,4 @@ import { fluxProTool } from "./flux-pro.ts";
 
 export { fluxExpandTool, fluxFillTool, fluxFlexTool, fluxKontextTool, fluxProTool };
 
-export const fluxTools = [
-  fluxProTool,
-  fluxFlexTool,
-  fluxFillTool,
-  fluxExpandTool,
-  fluxKontextTool,
-];
+export const fluxTools = [fluxProTool, fluxFlexTool, fluxFillTool, fluxExpandTool, fluxKontextTool];

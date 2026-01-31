@@ -198,17 +198,29 @@ export class Router {
       // Auth routes (no auth required for some)
       // Preserve originalPath for signature verification
       if (apiPath.startsWith("/auth/")) {
-        return this.handleAuth({ ...req, path: apiPath, originalPath: req.originalPath ?? req.path });
+        return this.handleAuth({
+          ...req,
+          path: apiPath,
+          originalPath: req.originalPath ?? req.path,
+        });
       }
 
       // MCP endpoint (requires Agent Token auth)
       if (apiPath === "/mcp" && req.method === "POST") {
-        return this.handleMcp({ ...req, path: apiPath, originalPath: req.originalPath ?? req.path });
+        return this.handleMcp({
+          ...req,
+          path: apiPath,
+          originalPath: req.originalPath ?? req.path,
+        });
       }
 
       // CAS routes (auth required)
       if (apiPath.startsWith("/cas/")) {
-        return this.handleCas({ ...req, path: apiPath, originalPath: req.originalPath ?? req.path });
+        return this.handleCas({
+          ...req,
+          path: apiPath,
+          originalPath: req.originalPath ?? req.path,
+        });
       }
 
       return errorResponse(404, "Not found");
@@ -272,7 +284,10 @@ export class Router {
     if (req.method === "POST" && path === "/oauth/token") {
       const { cognitoHostedUiUrl, cognitoClientId } = this.config;
       if (!cognitoHostedUiUrl || !cognitoClientId) {
-        return errorResponse(503, "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)");
+        return errorResponse(
+          503,
+          "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)"
+        );
       }
       const body = this.parseJson(req) as { code?: string; redirect_uri?: string };
       if (!body?.code || !body?.redirect_uri) {
@@ -778,10 +793,7 @@ export class Router {
    * No authentication required - the ticket ID itself serves as authorization.
    * This enables traditional MCP clients to use #cas.endpoint URLs.
    */
-  private async handleGetTicketInfo(
-    realm: string,
-    ticketId: string
-  ): Promise<HttpResponse> {
+  private async handleGetTicketInfo(realm: string, ticketId: string): Promise<HttpResponse> {
     try {
       // Look up the ticket
       const ticket = await this.tokensDb.getTicket(ticketId);
@@ -841,6 +853,10 @@ export class Router {
 
   /**
    * GET /cas/{realm}/nodes - List all nodes for a realm
+   * Query params:
+   *   - limit: max number of results (default 100, max 1000)
+   *   - startKey: pagination key
+   *   - kind: filter by node kind (collection, file, chunk)
    */
   private async handleListNodes(
     auth: AuthContext,
@@ -850,8 +866,13 @@ export class Router {
     const url = new URL(req.path, "http://localhost");
     const limit = Math.min(Number.parseInt(url.searchParams.get("limit") ?? "100", 10), 1000);
     const startKey = url.searchParams.get("startKey") ?? undefined;
+    const kindParam = url.searchParams.get("kind") as "collection" | "file" | "chunk" | null;
 
-    const result = await this.ownershipDb.listOwnership(realm, limit, startKey);
+    const result = await this.ownershipDb.listOwnership(realm, {
+      limit,
+      startKey,
+      kind: kindParam ?? undefined,
+    });
 
     return jsonResponse(200, result);
   }
@@ -895,7 +916,14 @@ export class Router {
 
     // Add ownership record
     const tokenId = TokensDb.extractTokenId(auth.token.pk);
-    await this.ownershipDb.addOwnership(realm, result.key, tokenId, contentType, result.size);
+    await this.ownershipDb.addOwnership(
+      realm,
+      result.key,
+      tokenId,
+      contentType,
+      result.size,
+      "chunk"
+    );
 
     return jsonResponse(200, {
       key: result.key,
@@ -984,7 +1012,7 @@ export class Router {
 
     // Add ownership
     const tokenId = TokensDb.extractTokenId(auth.token.pk);
-    await this.ownershipDb.addOwnership(realm, result.key, tokenId, contentType, totalSize);
+    await this.ownershipDb.addOwnership(realm, result.key, tokenId, contentType, totalSize, "file");
 
     // Mark ticket as written if applicable
     if (auth.token.type === "ticket") {
@@ -1058,7 +1086,8 @@ export class Router {
       result.key,
       tokenId,
       "application/vnd.cas.collection",
-      totalSize
+      totalSize,
+      "collection"
     );
 
     // Mark ticket as written if applicable

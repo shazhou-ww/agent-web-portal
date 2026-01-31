@@ -34,7 +34,7 @@ CloudFront Distribution 默认使用 AWS 自带的 `*.cloudfront.net` 证书。�
 aws acm list-certificates --region us-east-1 --query 'CertificateSummaryList[*].[DomainName,CertificateArn,Status]' --output table
 ```
 
-2. **在 SAM 模板中配置 CloudFront 自定义域名**：
+1. **在 SAM 模板中配置 CloudFront 自定义域名**：
 
 ```yaml
 Parameters:
@@ -70,7 +70,7 @@ Resources:
         # ... 其他配置
 ```
 
-3. **部署时传入参数**：
+1. **部署时传入参数**：
 
 ```bash
 sam deploy --parameter-overrides \
@@ -78,7 +78,7 @@ sam deploy --parameter-overrides \
   "CustomDomainCertificateArn=arn:aws:acm:us-east-1:123456789:certificate/xxx-xxx"
 ```
 
-4. **验证证书配置**：
+1. **验证证书配置**：
 
 ```bash
 openssl s_client -connect cas-console.awp.shazhou.me:443 -servername cas-console.awp.shazhou.me 2>/dev/null | openssl x509 -noout -text | grep -A1 "Subject Alternative Name"
@@ -134,7 +134,7 @@ CasApi:
       - "*/*"
 ```
 
-2. **显式添加 OPTIONS 路由到 Lambda**：
+1. **显式添加 OPTIONS 路由到 Lambda**：
 
 ```yaml
 CasFunction:
@@ -169,7 +169,7 @@ CasFunction:
           RestApiId: !Ref CasApi
 ```
 
-3. **确保 Lambda 代码正确处理 OPTIONS 请求**：
+1. **确保 Lambda 代码正确处理 OPTIONS 请求**：
 
 ```typescript
 // router.ts
@@ -186,7 +186,7 @@ if (request.method === "OPTIONS") {
 }
 ```
 
-4. **验证 OPTIONS 请求**：
+1. **验证 OPTIONS 请求**：
 
 ```bash
 curl -v -X OPTIONS "https://cas-console.awp.shazhou.me/api/auth/agent-tokens/init" \

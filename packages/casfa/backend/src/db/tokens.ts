@@ -10,7 +10,6 @@ import {
   QueryCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { createDynamoDBClient } from "./client.ts";
 import type {
   AgentToken,
   CasConfig,
@@ -21,6 +20,7 @@ import type {
   WritableConfig,
 } from "../types.ts";
 import { loadServerConfig } from "../types.ts";
+import { createDynamoDBClient } from "./client.ts";
 
 // ============================================================================
 // Token ID Generation

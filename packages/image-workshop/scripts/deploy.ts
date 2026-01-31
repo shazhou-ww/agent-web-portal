@@ -9,8 +9,8 @@
  *   bun run deploy:frontend     # Deploy only frontend (S3)
  */
 
+import { join } from "node:path";
 import { $ } from "bun";
-import { join } from "path";
 
 const ROOT_DIR = join(import.meta.dir, "..");
 

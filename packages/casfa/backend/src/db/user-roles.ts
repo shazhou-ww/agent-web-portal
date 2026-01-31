@@ -4,8 +4,8 @@
  */
 
 import { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
-import { createDynamoDBClient } from "./client.ts";
 import type { CasConfig, UserRole } from "../types.ts";
+import { createDynamoDBClient } from "./client.ts";
 
 const USER_PK_PREFIX = "user#";
 

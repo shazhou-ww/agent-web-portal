@@ -5,23 +5,17 @@
  * This script expects the frontend to already be built in frontend/dist/
  */
 
+import { readdir, readFile, stat } from "node:fs/promises";
+import { extname, join } from "node:path";
+import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 import {
-  CloudFormationClient,
-  DescribeStacksCommand,
-} from "@aws-sdk/client-cloudformation";
-import {
-  CloudFrontClient,
-  CreateInvalidationCommand,
-} from "@aws-sdk/client-cloudfront";
-import {
-  S3Client,
-  PutObjectCommand,
   DeleteObjectsCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
 } from "@aws-sdk/client-s3";
 import { fromIni } from "@aws-sdk/credential-providers";
-import { readdir, readFile, stat } from "fs/promises";
-import { join, extname } from "path";
 
 // ============================================================================
 // Configuration
@@ -68,12 +62,8 @@ function createClients() {
 // Stack Outputs
 // ============================================================================
 
-async function getStackOutputs(
-  cf: CloudFormationClient
-): Promise<Record<string, string>> {
-  const result = await cf.send(
-    new DescribeStacksCommand({ StackName: STACK_NAME })
-  );
+async function getStackOutputs(cf: CloudFormationClient): Promise<Record<string, string>> {
+  const result = await cf.send(new DescribeStacksCommand({ StackName: STACK_NAME }));
   const stack = result.Stacks?.[0];
   if (!stack) {
     throw new Error(`Stack ${STACK_NAME} not found`);

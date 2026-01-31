@@ -28,9 +28,12 @@
  *   DYNAMODB_ENDPOINT    - optional, for local DynamoDB
  */
 
-import { CognitoIdentityProviderClient, ListUsersCommand } from "@aws-sdk/client-cognito-identity-provider";
-import { loadConfig } from "../backend/src/types.ts";
+import {
+  CognitoIdentityProviderClient,
+  ListUsersCommand,
+} from "@aws-sdk/client-cognito-identity-provider";
 import { UserRolesDb } from "../backend/src/db/user-roles.ts";
+import { loadConfig } from "../backend/src/types.ts";
 
 function parseArgs(): { list: boolean; setAdmin: string[] } {
   const args = process.argv.slice(2);
@@ -57,7 +60,10 @@ function isLikelySub(value: string): boolean {
   return value.length >= 20 && /^[a-f0-9-]+$/i.test(value);
 }
 
-async function listUsers(poolId: string, region: string): Promise<{ sub: string; email: string; name?: string }[]> {
+async function listUsers(
+  poolId: string,
+  region: string
+): Promise<{ sub: string; email: string; name?: string }[]> {
   const client = new CognitoIdentityProviderClient({ region });
   const out: { sub: string; email: string; name?: string }[] = [];
   let paginationToken: string | undefined;

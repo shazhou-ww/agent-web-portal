@@ -137,13 +137,15 @@ export async function pullConfig(options: ConfigOptions = {}): Promise<ConfigRes
     }
     // Local dev: leave VITE_API_URL unset so Vite proxy hits localhost
     if (!("VITE_API_URL" in updated)) {
-      updated["VITE_API_URL"] = "";
+      updated.VITE_API_URL = "";
     }
 
     if (Object.keys(updated).length === 0) {
       const hasStack = cfOutputs.UserPoolId !== undefined;
       if (!hasStack) {
-        errors.push(`Stack "${stackName}" has no outputs (not deployed or wrong name?). Deploy with: cd packages/cas-stack && sam deploy`);
+        errors.push(
+          `Stack "${stackName}" has no outputs (not deployed or wrong name?). Deploy with: cd packages/cas-stack && sam deploy`
+        );
       } else {
         errors.push("No Cognito/API outputs found in stack. Check template Outputs.");
       }
@@ -180,14 +182,16 @@ export function printConfigResult(result: ConfigResult): void {
   if (result.success) {
     console.log(chalk.green("✓ Config pulled from stack"), chalk.cyan(result.stackName));
     for (const [k, v] of Object.entries(result.updated)) {
-      console.log(chalk.dim("  " + k + "="), v);
+      console.log(chalk.dim(`  ${k}=`), v);
     }
     console.log(chalk.dim("  Written to"), result.envPath);
   } else {
     console.error(chalk.red("✗ Failed to pull config"));
     for (const e of result.errors) {
-      console.error(chalk.red("  " + e));
+      console.error(chalk.red(`  ${e}`));
     }
-    console.error(chalk.dim("  Ensure AWS credentials are set (aws configure) and stack is deployed."));
+    console.error(
+      chalk.dim("  Ensure AWS credentials are set (aws configure) and stack is deployed.")
+    );
   }
 }

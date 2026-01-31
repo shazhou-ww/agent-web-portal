@@ -18,7 +18,7 @@ import type {
   ServerPortalConfig,
   SkillsListResponse,
 } from "./types.ts";
-import { CasNotConfiguredError, CasTicketError, TicketCreationError } from "./types.ts";
+import { CasTicketError, TicketCreationError } from "./types.ts";
 
 /**
  * Default ticket provider that creates tickets via CAS API
@@ -289,10 +289,13 @@ export class ServerPortal {
       try {
         // Create a writable ticket with wildcard scope
         context = await this.ticketProvider.createTicket(["*"], true);
-        console.log("[ServerPortal] Created CAS context using server ticket provider (agent realm):", {
-          ticket: context.ticket,
-          realm: context.realm,
-        });
+        console.log(
+          "[ServerPortal] Created CAS context using server ticket provider (agent realm):",
+          {
+            ticket: context.ticket,
+            realm: context.realm,
+          }
+        );
       } catch (error) {
         console.warn("[ServerPortal] Failed to create CAS context using ticket provider:", error);
       }
@@ -406,21 +409,26 @@ export class ServerPortal {
       const response = await fetch(endpointUrl, {
         method: "GET",
         headers: {
-          "Accept": "application/json",
+          Accept: "application/json",
         },
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[ServerPortal] Failed to fetch CAS context: ${response.status} - ${errorText}`);
+        console.error(
+          `[ServerPortal] Failed to fetch CAS context: ${response.status} - ${errorText}`
+        );
         throw new CasTicketError(
           `Failed to fetch ticket info: ${response.status}`,
-          response.status === 404 ? "NOT_FOUND" :
-          response.status === 410 ? "EXPIRED" : "FETCH_FAILED"
+          response.status === 404
+            ? "NOT_FOUND"
+            : response.status === 410
+              ? "EXPIRED"
+              : "FETCH_FAILED"
         );
       }
 
-      const context = await response.json() as CasBlobContext;
+      const context = (await response.json()) as CasBlobContext;
       console.log("[ServerPortal] Successfully fetched CAS context:", {
         ticket: context.ticket,
         realm: context.realm,

@@ -408,12 +408,9 @@ export class AuthRouter {
 export function createAuthRoutes(config: Config) {
   const router = new AuthRouter(config);
 
-  return async (
-    request: Request,
-    _event: unknown
-  ): Promise<Response | null> => {
+  return async (request: Request, _event: unknown): Promise<Response | null> => {
     const url = new URL(request.url);
-    
+
     // Extract headers
     const headers: Record<string, string | undefined> = {};
     request.headers.forEach((value, key) => {

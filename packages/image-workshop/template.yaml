@@ -57,6 +57,10 @@ Parameters:
     Type: String
     Description: ARN of Secrets Manager secret containing Black Forest Labs API key
     Default: ""
+  VectorizerApiKeyArn:
+    Type: String
+    Description: ARN of Secrets Manager secret containing Vectorizer.AI credentials (JSON with apiId and apiSecret)
+    Default: ""
 
 Resources:
   # ============================================================================
@@ -480,6 +484,7 @@ Resources:
           CALLBACK_BASE_URL: !Ref CallbackBaseUrl
           STABILITY_API_KEY_ARN: !Ref StabilityApiKeyArn
           BFL_API_KEY_ARN: !Ref BflApiKeyArn
+          VECTORIZER_API_KEY_ARN: !Ref VectorizerApiKeyArn
           NODE_OPTIONS: "--enable-source-maps"
       Policies:
         - DynamoDBCrudPolicy:

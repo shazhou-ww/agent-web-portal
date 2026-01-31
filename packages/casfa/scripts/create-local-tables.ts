@@ -17,8 +17,8 @@
 
 import {
   CreateTableCommand,
-  DynamoDBClient,
   type CreateTableCommandInput,
+  DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
 
 const endpoint = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8000";
@@ -41,7 +41,12 @@ async function createTable(input: CreateTableCommandInput): Promise<void> {
     await client.send(new CreateTableCommand(input));
     console.log(`Created table: ${name}`);
   } catch (err: unknown) {
-    if (err && typeof err === "object" && "name" in err && (err as { name: string }).name === "ResourceInUseException") {
+    if (
+      err &&
+      typeof err === "object" &&
+      "name" in err &&
+      (err as { name: string }).name === "ResourceInUseException"
+    ) {
       console.log(`Table already exists: ${name}`);
     } else {
       throw err;

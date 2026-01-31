@@ -14,9 +14,9 @@
  *   MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET (for Microsoft sign-in)
  */
 
-import { $ } from "bun";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "path";
+import { join } from "node:path";
+import { $ } from "bun";
 
 const ROOT_DIR = join(import.meta.dir, "..");
 const REPO_ROOT = join(ROOT_DIR, "../..");

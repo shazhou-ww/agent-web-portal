@@ -27,7 +27,10 @@ function loadEnvFile(dir: string): void {
       const eq = t.indexOf("=");
       if (eq > 0) {
         const key = t.slice(0, eq).trim();
-        const value = t.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+        const value = t
+          .slice(eq + 1)
+          .trim()
+          .replace(/^["']|["']$/g, "");
         process.env[key] = value;
       }
     }

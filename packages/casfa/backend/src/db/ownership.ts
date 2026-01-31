@@ -10,8 +10,17 @@ import {
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
+import type { CasConfig, CasOwnership, NodeKind } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
-import type { CasConfig, CasOwnership } from "../types.ts";
+
+/**
+ * Options for listing ownership records
+ */
+export interface ListOwnershipOptions {
+  limit?: number;
+  startKey?: string;
+  kind?: NodeKind; // Filter by node kind
+}
 
 export class OwnershipDb {
   private client: DynamoDBDocumentClient;
@@ -103,11 +112,13 @@ export class OwnershipDb {
     key: string,
     createdBy: string,
     contentType: string,
-    size: number
+    size: number,
+    kind?: NodeKind
   ): Promise<CasOwnership> {
     const ownership: CasOwnership = {
       realm,
       key,
+      kind,
       createdAt: Date.now(),
       createdBy,
       contentType,
@@ -167,19 +178,32 @@ export class OwnershipDb {
    */
   async listOwnership(
     realm: string,
-    limit: number = 100,
-    startKey?: string
+    options: ListOwnershipOptions = {}
   ): Promise<{ nodes: CasOwnership[]; nextKey?: string; total?: number }> {
+    const { limit = 100, startKey, kind } = options;
+
+    const expressionAttributeNames: Record<string, string> = {
+      "#realm": "realm",
+    };
+    const expressionAttributeValues: Record<string, any> = {
+      ":realm": realm,
+    };
+
+    // Build filter expression for kind if specified
+    let filterExpression: string | undefined;
+    if (kind) {
+      expressionAttributeNames["#kind"] = "kind";
+      expressionAttributeValues[":kind"] = kind;
+      filterExpression = "#kind = :kind";
+    }
+
     const result = await this.client.send(
       new QueryCommand({
         TableName: this.tableName,
         KeyConditionExpression: "#realm = :realm",
-        ExpressionAttributeNames: {
-          "#realm": "realm",
-        },
-        ExpressionAttributeValues: {
-          ":realm": realm,
-        },
+        FilterExpression: filterExpression,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
         Limit: limit,
         ExclusiveStartKey: startKey ? { realm, key: startKey } : undefined,
       })
@@ -196,10 +220,9 @@ export class OwnershipDb {
    */
   async listNodes(
     realm: string,
-    limit: number = 10,
-    startKey?: string
+    options: ListOwnershipOptions = {}
   ): Promise<{ nodes: CasOwnership[]; nextKey?: string; total: number }> {
-    const out = await this.listOwnership(realm, limit, startKey);
+    const out = await this.listOwnership(realm, options);
     return {
       nodes: out.nodes,
       nextKey: out.nextKey,

@@ -123,6 +123,53 @@ export async function getBflApiKey(): Promise<string> {
 }
 
 /**
+ * Vectorizer.AI credentials structure
+ */
+export interface VectorizerCredentials {
+  apiId: string;
+  apiSecret: string;
+}
+
+/**
+ * Get Vectorizer.AI credentials
+ * Checks environment variables first, then Secrets Manager
+ * Secret should be JSON: {"apiId": "...", "apiSecret": "..."}
+ */
+export async function getVectorizerCredentials(): Promise<VectorizerCredentials> {
+  // Environment variables take priority
+  const envApiId = process.env.VECTORIZER_API_ID;
+  const envApiSecret = process.env.VECTORIZER_API_SECRET;
+  if (envApiId && envApiSecret) {
+    return { apiId: envApiId, apiSecret: envApiSecret };
+  }
+
+  // Check cache
+  const cacheKey = "VECTORIZER_CREDENTIALS";
+  const cached = getCached(cacheKey);
+  if (cached) {
+    return JSON.parse(cached) as VectorizerCredentials;
+  }
+
+  // Fetch from Secrets Manager using ARN
+  const secretArn = process.env.VECTORIZER_API_KEY_ARN;
+  if (!secretArn) {
+    throw new Error(
+      "VECTORIZER_API_ID/VECTORIZER_API_SECRET or VECTORIZER_API_KEY_ARN must be set"
+    );
+  }
+
+  const secretValue = await getSecretValue(secretArn);
+  const credentials = JSON.parse(secretValue) as VectorizerCredentials;
+
+  if (!credentials.apiId || !credentials.apiSecret) {
+    throw new Error("Vectorizer secret must contain 'apiId' and 'apiSecret' fields");
+  }
+
+  setCache(cacheKey, secretValue);
+  return credentials;
+}
+
+/**
  * Clear all cached secrets (useful for testing)
  */
 export function clearSecretsCache(): void {

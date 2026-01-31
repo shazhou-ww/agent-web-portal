@@ -19,7 +19,7 @@ import {
   verifySignature,
 } from "@agent-web-portal/auth";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import type { CasDagNode, CasOwnership, Ticket, Token, UserToken } from "./src/types.ts";
+import { getCognitoUserMap } from "./src/auth/cognito-users.ts";
 import {
   AwpPendingAuthStore,
   AwpPubkeyStore,
@@ -28,7 +28,7 @@ import {
   TokensDb,
   UserRolesDb,
 } from "./src/db/index.ts";
-import { getCognitoUserMap } from "./src/auth/cognito-users.ts";
+import type { CasDagNode, CasOwnership, Ticket, Token, UserToken } from "./src/types.ts";
 import { loadConfig, loadServerConfig } from "./src/types.ts";
 
 function tokenIdFromPk(pk: string): string {
@@ -442,7 +442,11 @@ function createAgentTokensDbAdapter(
         expiresAt: t.expiresAt,
       }));
     },
-    async create(userId: string, name: string, options?: { description?: string; expiresIn?: number }) {
+    async create(
+      userId: string,
+      name: string,
+      options?: { description?: string; expiresIn?: number }
+    ) {
       const t = await tokensDb.createAgentToken(userId, name, serverConfig, options);
       return {
         id: tokenIdFromPk(t.pk),
@@ -470,7 +474,8 @@ function createAgentTokensDbAdapter(
 
 // Cognito configuration from env (COGNITO_* only)
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID ?? "";
-const COGNITO_REGION = process.env.COGNITO_REGION ?? (COGNITO_USER_POOL_ID.split("_")[0] || "us-east-1");
+const COGNITO_REGION =
+  process.env.COGNITO_REGION ?? (COGNITO_USER_POOL_ID.split("_")[0] || "us-east-1");
 const COGNITO_ISSUER = COGNITO_USER_POOL_ID
   ? `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}`
   : "";
@@ -512,9 +517,7 @@ async function verifyCognitoToken(token: string): Promise<CognitoTokenPayload | 
 
 const useDynamo = !!process.env.DYNAMODB_ENDPOINT;
 
-const tokensDb = useDynamo
-  ? new TokensDb(loadConfig())
-  : new MemoryTokensDb();
+const tokensDb = useDynamo ? new TokensDb(loadConfig()) : new MemoryTokensDb();
 const ownershipDb = useDynamo ? new OwnershipDb(loadConfig()) : new MemoryOwnershipDb();
 const dagDb = useDynamo ? new DagDb(loadConfig()) : new MemoryDagDb();
 const casStorage = new MemoryCasStorage(); // CAS blob storage stays in-memory for local
@@ -708,7 +711,10 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
   // ========================================================================
   if (req.method === "POST" && path === "/oauth/token") {
     if (!COGNITO_HOSTED_UI_URL || !COGNITO_CLIENT_ID) {
-      return errorResponse(503, "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)");
+      return errorResponse(
+        503,
+        "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)"
+      );
     }
     const body = (await req.json()) as { code?: string; redirect_uri?: string };
     if (!body.code || !body.redirect_uri) {
@@ -900,7 +906,8 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
   const authorizePostMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
   if (req.method === "POST" && authorizePostMatch) {
     if (!isAdmin) return errorResponse(403, "Admin access required");
-    if (!userRolesDb) return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
+    if (!userRolesDb)
+      return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
     const targetUserId = decodeURIComponent(authorizePostMatch[1]!);
     const body = (await req.json()) as { role?: string };
     const role = body.role === "admin" ? "admin" : "authorized";
@@ -912,7 +919,8 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
   const authorizeDeleteMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
   if (req.method === "DELETE" && authorizeDeleteMatch) {
     if (!isAdmin) return errorResponse(403, "Admin access required");
-    if (!userRolesDb) return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
+    if (!userRolesDb)
+      return errorResponse(503, "User role management requires DynamoDB (set DYNAMODB_ENDPOINT)");
     const targetUserId = decodeURIComponent(authorizeDeleteMatch[1]!);
     await userRolesDb.revoke(targetUserId);
     return jsonResponse(200, { userId: targetUserId, revoked: true });
