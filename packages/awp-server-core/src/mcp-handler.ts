@@ -120,6 +120,10 @@ export class McpHandler {
         case "tools/call":
           return await this.handleToolsCall(id, params as unknown as McpToolsCallParams);
 
+        // CAS-compatible: return empty skills list for clients expecting CAS endpoints
+        case "skills/list":
+          return this.handleSkillsList(id);
+
         default:
           return {
             jsonrpc: "2.0",
@@ -167,6 +171,20 @@ export class McpHandler {
       jsonrpc: "2.0",
       id,
       result: toolsList,
+    };
+  }
+
+  /**
+   * Handle skills/list request
+   *
+   * Returns registered skills from the portal.
+   * The expected format is a map of skillName -> { url, frontmatter }.
+   */
+  private handleSkillsList(id: string | number): JsonRpcResponse {
+    return {
+      jsonrpc: "2.0",
+      id,
+      result: this.portal.listSkills(),
     };
   }
 

@@ -178,7 +178,7 @@ export function EndpointManager({
                     gap: 0.5, 
                     flexWrap: 'wrap',
                   }}>
-                    <Typography variant="body2" fontWeight="medium" noWrap>
+                    <Typography component="span" variant="body2" fontWeight="medium" noWrap>
                       {endpoint.alias || endpoint.endpointId}
                     </Typography>
                     <Chip
@@ -196,12 +196,14 @@ export function EndpointManager({
                   </Box>
                 }
                 secondary={
-                  <Box>
+                  <Box component="span" sx={{ display: 'block' }}>
                     <Typography
+                      component="span"
                       variant="body2"
                       color="text.secondary"
                       noWrap
                       sx={{ 
+                        display: 'block',
                         fontFamily: 'monospace', 
                         fontSize: { xs: '0.65rem', sm: '0.75rem' },
                         overflow: 'hidden',
@@ -212,10 +214,12 @@ export function EndpointManager({
                       AWP: {endpoint.url}
                     </Typography>
                     <Typography
+                      component="span"
                       variant="body2"
                       color="text.secondary"
                       noWrap
                       sx={{ 
+                        display: 'block',
                         fontFamily: 'monospace', 
                         fontSize: { xs: '0.65rem', sm: '0.75rem' },
                         overflow: 'hidden',
@@ -227,6 +231,8 @@ export function EndpointManager({
                     </Typography>
                   </Box>
                 }
+                primaryTypographyProps={{ component: 'div' }}
+                secondaryTypographyProps={{ component: 'div' }}
                 sx={{ my: 0, minWidth: 0, flex: 1 }}
               />
               <Box sx={{

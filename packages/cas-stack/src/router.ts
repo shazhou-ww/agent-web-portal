@@ -196,18 +196,19 @@ export class Router {
       }
 
       // Auth routes (no auth required for some)
+      // Preserve originalPath for signature verification
       if (apiPath.startsWith("/auth/")) {
-        return this.handleAuth({ ...req, path: apiPath });
+        return this.handleAuth({ ...req, path: apiPath, originalPath: req.originalPath ?? req.path });
       }
 
       // MCP endpoint (requires Agent Token auth)
       if (apiPath === "/mcp" && req.method === "POST") {
-        return this.handleMcp({ ...req, path: apiPath });
+        return this.handleMcp({ ...req, path: apiPath, originalPath: req.originalPath ?? req.path });
       }
 
       // CAS routes (auth required)
       if (apiPath.startsWith("/cas/")) {
-        return this.handleCas({ ...req, path: apiPath });
+        return this.handleCas({ ...req, path: apiPath, originalPath: req.originalPath ?? req.path });
       }
 
       return errorResponse(404, "Not found");

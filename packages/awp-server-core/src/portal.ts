@@ -12,9 +12,11 @@ import { ToolRegistry } from "./tool-registry.ts";
 import type {
   CasConfig,
   CasTicketProvider,
+  DefinedSkill,
   DefinedTool,
   McpToolsListResponse,
   ServerPortalConfig,
+  SkillsListResponse,
 } from "./types.ts";
 import { CasNotConfiguredError, TicketCreationError } from "./types.ts";
 
@@ -87,6 +89,8 @@ export class ServerPortal {
   private mcpHandler: McpHandler;
   private ticketProvider?: CasTicketProvider;
   private storage?: LocalStorageProvider;
+  private skills: Map<string, DefinedSkill> = new Map();
+  private skillBaseUrl?: string;
 
   constructor(config: ServerPortalConfig) {
     this.config = config;
@@ -174,38 +178,109 @@ export class ServerPortal {
   }
 
   // ============================================================================
+  // Skill Registration
+  // ============================================================================
+
+  /**
+   * Set the base URL for skill downloads
+   * Skills will be accessible at {baseUrl}/skills/{skillId}.md
+   *
+   * @param baseUrl - Base URL (e.g., "https://example.com/api")
+   * @returns this for method chaining
+   */
+  setSkillBaseUrl(baseUrl: string): this {
+    this.skillBaseUrl = baseUrl.replace(/\/$/, "");
+    return this;
+  }
+
+  /**
+   * Register a skill
+   *
+   * @param skill - The defined skill to register
+   * @returns this for method chaining
+   */
+  registerSkill(skill: DefinedSkill): this {
+    this.skills.set(skill.id, skill);
+    return this;
+  }
+
+  /**
+   * Register multiple skills at once
+   *
+   * @param skills - Array of defined skills
+   * @returns this for method chaining
+   */
+  registerSkills(skills: DefinedSkill[]): this {
+    for (const skill of skills) {
+      this.skills.set(skill.id, skill);
+    }
+    return this;
+  }
+
+  /**
+   * Check if a skill is registered
+   */
+  hasSkill(id: string): boolean {
+    return this.skills.has(id);
+  }
+
+  /**
+   * Get a skill by ID
+   */
+  getSkill(id: string): DefinedSkill | undefined {
+    return this.skills.get(id);
+  }
+
+  /**
+   * Get all registered skill IDs
+   */
+  getSkillIds(): string[] {
+    return Array.from(this.skills.keys());
+  }
+
+  /**
+   * Get the skills list in MCP format (for skills/list response)
+   */
+  listSkills(): SkillsListResponse {
+    const result: SkillsListResponse = {};
+    const baseUrl = this.skillBaseUrl ?? "";
+
+    for (const [id, skill] of this.skills) {
+      result[id] = {
+        url: `${baseUrl}/skills/${id}.md`,
+        frontmatter: skill.frontmatter,
+      };
+    }
+
+    return result;
+  }
+
+  // ============================================================================
   // Tool Execution
   // ============================================================================
 
   /**
    * Execute a tool with CAS context
    *
-   * If casContext is not provided, a new ticket will be created using
-   * the configured ticket provider (requires CAS configuration).
+   * CAS context can be provided in two ways:
+   * 1. AWP Client: passes _casBlobContext in the request params
+   * 2. Traditional MCP Client: uses #cas-endpoint in tool arguments
+   *
+   * If neither is provided, a dummy CAS client is used (operations will fail
+   * if the tool actually needs CAS access).
    *
    * @param name - Tool name
    * @param args - Tool arguments
-   * @param casContext - Optional CAS context (if not provided, creates new ticket)
+   * @param casContext - Optional CAS context from AWP client (_casBlobContext)
    * @returns Tool result
    */
   async executeTool(name: string, args: unknown, casContext?: CasBlobContext): Promise<unknown> {
-    // Get or create CAS context
+    // Try to get CAS context from various sources
     let context = casContext;
 
+    // If no context provided, try to extract from #cas-endpoint in arguments
     if (!context) {
-      // Extract CAS keys from args to determine scope
-      const scope = this.extractCasKeys(args);
-
-      if (scope.length > 0 || this.toolMayWrite(name)) {
-        // Need CAS access - create a ticket
-        if (!this.ticketProvider) {
-          throw new CasNotConfiguredError();
-        }
-        context = await this.ticketProvider.createTicket(
-          scope.length > 0 ? scope : ["*"], // Use wildcard if no specific scope
-          true // Enable writes
-        );
-      }
+      context = this.extractCasContextFromArgs(args);
     }
 
     // Create BufferedCasClient if we have a context
@@ -215,6 +290,7 @@ export class ServerPortal {
     }
 
     // Create a dummy CAS client if none available
+    // (tools that don't need CAS will work, others will fail with clear error)
     if (!cas) {
       cas = this.createDummyCasClient();
     }
@@ -266,40 +342,79 @@ export class ServerPortal {
   // ============================================================================
 
   /**
-   * Extract CAS keys from tool arguments
+   * Extract CAS context from #cas-endpoint in tool arguments
    *
-   * Looks for string values that look like CAS keys (sha256:...)
+   * Looks for objects with "#cas-endpoint" field which contains a full
+   * CAS endpoint URL with embedded ticket:
+   * https://cas.example.com/api/cas/{shard}/ticket/{ticketId}
    */
-  private extractCasKeys(args: unknown): string[] {
-    const keys: string[] = [];
-
-    function traverse(value: unknown): void {
-      if (typeof value === "string" && value.startsWith("sha256:")) {
-        keys.push(value);
-      } else if (Array.isArray(value)) {
-        for (const item of value) {
-          traverse(item);
-        }
-      } else if (typeof value === "object" && value !== null) {
-        for (const prop of Object.values(value)) {
-          traverse(prop);
-        }
-      }
+  private extractCasContextFromArgs(args: unknown): CasBlobContext | undefined {
+    if (typeof args !== "object" || args === null) {
+      return undefined;
     }
 
-    traverse(args);
-    return keys;
+    // Look for #cas-endpoint in top-level object
+    const argsObj = args as Record<string, unknown>;
+    const casEndpoint = argsObj["#cas-endpoint"];
+
+    if (typeof casEndpoint !== "string") {
+      // Also check nested objects for blob refs
+      for (const value of Object.values(argsObj)) {
+        if (typeof value === "object" && value !== null) {
+          const nested = value as Record<string, unknown>;
+          const nestedEndpoint = nested["#cas-endpoint"];
+          if (typeof nestedEndpoint === "string") {
+            return this.parseCasEndpoint(nestedEndpoint);
+          }
+        }
+      }
+      return undefined;
+    }
+
+    return this.parseCasEndpoint(casEndpoint);
   }
 
   /**
-   * Check if a tool might write to CAS
+   * Parse a #cas-endpoint URL into CasBlobContext
    *
-   * For now, assume all tools might write.
-   * In the future, we could analyze the tool definition.
+   * URL format: https://cas.example.com/api/cas/{shard}/ticket/{ticketId}
    */
-  private toolMayWrite(_name: string): boolean {
-    // TODO: Analyze tool output schema for CAS key fields
-    return true;
+  private parseCasEndpoint(endpointUrl: string): CasBlobContext | undefined {
+    try {
+      const url = new URL(endpointUrl);
+      const pathParts = url.pathname.split("/").filter(Boolean);
+
+      // Expected path: /api/cas/{shard}/ticket/{ticketId}
+      // or: /cas/{shard}/ticket/{ticketId}
+      const casIndex = pathParts.indexOf("cas");
+      if (casIndex === -1 || pathParts.length < casIndex + 4) {
+        return undefined;
+      }
+
+      const shard = pathParts[casIndex + 1];
+      const ticketId = pathParts[casIndex + 3];
+
+      if (!shard || !ticketId || pathParts[casIndex + 2] !== "ticket") {
+        return undefined;
+      }
+
+      // Extract base endpoint (everything before /cas/{shard}/ticket/{ticketId})
+      const baseEndpoint = `${url.origin}${pathParts.slice(0, casIndex + 1).map((p) => `/${p}`).join("")}`;
+
+      return {
+        ticket: ticketId,
+        endpoint: baseEndpoint,
+        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(), // Assume 1 hour
+        shard,
+        scope: ["*"],
+        writable: true,
+        config: {
+          chunkThreshold: 1048576,
+        },
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   /**

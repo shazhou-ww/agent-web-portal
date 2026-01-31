@@ -529,6 +529,11 @@ Resources:
               - { Prefix: !Ref CognitoDomain, Region: !Ref AWS::Region }
             - ""
           NODE_OPTIONS: "--enable-source-maps"
+          # CAS_BASE_URL is required for ticket endpoint URLs
+          CAS_BASE_URL: !If
+            - HasCallbackBaseUrl
+            - !Ref CallbackBaseUrl
+            - !Sub "https://${CloudFrontDistribution.DomainName}"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TokensTable

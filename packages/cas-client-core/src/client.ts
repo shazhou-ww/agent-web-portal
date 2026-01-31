@@ -20,7 +20,6 @@ import type {
   CasRawFileNode,
   CasRawNode,
   LocalStorageProvider,
-  PathResolution,
   PathResolver,
 } from "./types.ts";
 
@@ -80,8 +79,10 @@ export class CasClient {
   }
 
   static fromContext(context: CasBlobContext, storage?: LocalStorageProvider): CasClient {
+    // Parse the endpoint URL to extract base URL (context.endpoint is the full ticket endpoint)
+    const { baseUrl } = parseEndpoint(context.endpoint);
     return new CasClient({
-      endpoint: context.endpoint,
+      endpoint: baseUrl,
       auth: { type: "ticket", id: context.ticket },
       storage,
       chunkThreshold: context.config.chunkThreshold,

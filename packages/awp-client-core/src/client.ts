@@ -80,6 +80,7 @@ export class AwpClient {
   private endpoint: string;
   private casEndpoint: string;
   private auth: AwpAuth | null;
+  private casAuth: AwpAuth | null;
   private casStorage?: LocalStorageProvider;
   private casInterceptor: CasInterceptor;
   private fetchFn: typeof fetch;
@@ -92,6 +93,8 @@ export class AwpClient {
     this.endpoint = options.endpoint.replace(/\/$/, "");
     this.casEndpoint = options.casEndpoint.replace(/\/$/, "");
     this.auth = options.auth ?? null;
+    // Use casAuth if provided, otherwise fall back to auth (for shared auth scenarios)
+    this.casAuth = options.casAuth ?? options.auth ?? null;
     this.casStorage = options.casStorage;
     // Bind fetch to globalThis to prevent "Illegal invocation" in browsers
     this.fetchFn = options.fetch ?? fetch.bind(globalThis);
@@ -344,10 +347,47 @@ export class AwpClient {
       blobContext = result.blobContext;
     }
 
-    // Send the request with Tool-facing arguments
+    // Extract CAS keys from args (strings starting with "sha256:")
+    // This handles both old-style blob refs and new simple string CAS keys
+    const casKeys = this.extractCasKeys(toolArgs);
+
+    // Create CAS context if there are CAS keys or if tool may produce output
+    // (tools typically write results to CAS)
+    let serverCasBlobContext: {
+      ticket: string;
+      endpoint: string;
+      expiresAt: string;
+      shard: string;
+      scope: string | string[];
+      writable: boolean | { quota?: number; accept?: string[] };
+      config: { chunkThreshold: number };
+    } | undefined;
+
+    // Always try to create a ticket for tools (they typically need to write outputs)
+    try {
+      const scope = casKeys.length > 0 ? casKeys : ["*"];
+      const ticketResponse = await this.createTicketForTool(scope, true);
+      // Transform CreateTicketResponse to server's CasBlobContext format
+      serverCasBlobContext = {
+        ticket: ticketResponse.id,  // Map 'id' to 'ticket'
+        endpoint: ticketResponse.endpoint,
+        expiresAt: ticketResponse.expiresAt,
+        shard: ticketResponse.shard,
+        scope: ticketResponse.scope,
+        writable: ticketResponse.writable,
+        config: ticketResponse.config,
+      };
+    } catch (error) {
+      // If ticket creation fails, continue without CAS context
+      // (tool may not need CAS, or will fail with a clear error)
+      console.warn("[AwpClient] Failed to create CAS ticket:", error);
+    }
+
+    // Send the request with Tool-facing arguments and CAS context
     const response = (await this.sendRequest("tools/call", {
       name,
       arguments: toolArgs,
+      _casBlobContext: serverCasBlobContext,
     })) as {
       content: Array<{ type: string; text?: string }>;
       isError?: boolean;
@@ -547,5 +587,90 @@ export class AwpClient {
    */
   getCasStorage(): LocalStorageProvider | undefined {
     return this.casStorage;
+  }
+
+  // ============================================================================
+  // Private Helpers
+  // ============================================================================
+
+  /**
+   * Extract CAS keys from tool arguments
+   *
+   * Looks for string values that look like CAS keys (sha256:...)
+   */
+  private extractCasKeys(args: unknown): string[] {
+    const keys: string[] = [];
+
+    function traverse(value: unknown): void {
+      if (typeof value === "string" && value.startsWith("sha256:")) {
+        keys.push(value);
+      } else if (Array.isArray(value)) {
+        for (const item of value) {
+          traverse(item);
+        }
+      } else if (typeof value === "object" && value !== null) {
+        for (const prop of Object.values(value)) {
+          traverse(prop);
+        }
+      }
+    }
+
+    traverse(args);
+    return keys;
+  }
+
+  /**
+   * Create a CAS ticket for tool execution
+   */
+  private async createTicketForTool(
+    scope: string | string[],
+    writable: boolean
+  ): Promise<CreateTicketResponse> {
+    const url = `${this.casEndpoint}/auth/ticket`;
+    const body = JSON.stringify({
+      scope,
+      writable,
+      expiresIn: 3600, // 1 hour
+    });
+
+    // Get signed headers for CAS authentication
+    let authHeaders: Record<string, string> = {};
+    if (this.casAuth) {
+      // Check if we have a valid key for CAS
+      const hasKey = await this.casAuth.hasValidKey(this.casEndpoint);
+      console.log("[AwpClient] CAS auth status for", this.casEndpoint, ":", hasKey ? "authenticated" : "NOT authenticated");
+      
+      if (!hasKey) {
+        console.warn("[AwpClient] Not authenticated to CAS endpoint:", this.casEndpoint);
+        console.warn("[AwpClient] Please authenticate to CAS first via the CAS Config panel");
+      }
+      
+      try {
+        authHeaders = await this.casAuth.sign(this.casEndpoint, "POST", url, body);
+        console.log("[AwpClient] Successfully signed CAS request with headers:", Object.keys(authHeaders));
+      } catch (error) {
+        console.warn("[AwpClient] Failed to sign CAS request:", error);
+        console.warn("[AwpClient] Make sure you are authenticated to the CAS endpoint:", this.casEndpoint);
+        // Continue without auth - will likely fail with 401
+      }
+    } else {
+      console.warn("[AwpClient] No CAS auth configured, ticket creation may fail");
+    }
+
+    const res = await this.fetchFn(url, {
+      method: "POST",
+      headers: {
+        ...authHeaders,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Failed to create CAS ticket: ${res.status} - ${error}`);
+    }
+
+    return (await res.json()) as CreateTicketResponse;
   }
 }

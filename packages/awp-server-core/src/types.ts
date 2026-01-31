@@ -135,6 +135,46 @@ export interface DefinedTool<
 }
 
 // ============================================================================
+// Skill Definition Types
+// ============================================================================
+
+/**
+ * Skill frontmatter parsed from SKILL.md
+ */
+export interface SkillFrontmatter {
+  /** Display name */
+  name: string;
+  /** Short description */
+  description?: string;
+  /** Version */
+  version?: string;
+  /** List of allowed tool names */
+  "allowed-tools"?: string[];
+}
+
+/**
+ * A defined skill ready for registration
+ */
+export interface DefinedSkill {
+  /** Skill identifier (used in URL path) */
+  id: string;
+  /** Skill frontmatter */
+  frontmatter: SkillFrontmatter;
+  /** Full SKILL.md content */
+  content: string;
+}
+
+/**
+ * Skills list response format (map of skill ID to skill info)
+ */
+export interface SkillsListResponse {
+  [skillId: string]: {
+    url: string;
+    frontmatter: SkillFrontmatter;
+  };
+}
+
+// ============================================================================
 // MCP Protocol Types
 // ============================================================================
 

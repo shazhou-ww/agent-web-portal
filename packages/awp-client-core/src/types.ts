@@ -109,8 +109,10 @@ export interface AwpClientOptions {
   endpoint: string;
   /** CAS server endpoint */
   casEndpoint: string;
-  /** Auth handler for authentication (optional) */
+  /** Auth handler for AWP server authentication (optional) */
   auth?: AwpAuth;
+  /** Auth handler for CAS authentication (optional, uses auth if not provided) */
+  casAuth?: AwpAuth;
   /** CAS local storage provider for caching (optional) */
   casStorage?: LocalStorageProvider;
   /** Additional headers to include in requests */

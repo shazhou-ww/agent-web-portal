@@ -207,11 +207,23 @@ export class AwpCasManager {
 
     // Create auth instance if keyStorage and createAuth are provided
     let auth: AwpAuth | undefined;
+    let casAuth: AwpAuth | undefined;
     let isAuthenticated = false;
 
     if (this.keyStorage && this.createAuth) {
+      // Auth for AWP server
       auth = this.createAuth(this.keyStorage, this.clientName);
       isAuthenticated = await auth.hasValidKey(normalizedUrl);
+      // Separate auth for CAS (uses same auth instance but different endpoint keys)
+      casAuth = this.createAuth(this.keyStorage, this.clientName);
+      // Check if CAS auth is available
+      const hasCasKey = await casAuth.hasValidKey(normalizedCasEndpoint);
+      console.log("[AwpCasManager] Registering endpoint:", normalizedUrl);
+      console.log("[AwpCasManager] CAS endpoint:", normalizedCasEndpoint);
+      console.log("[AwpCasManager] AWP auth status:", isAuthenticated);
+      console.log("[AwpCasManager] CAS auth status:", hasCasKey);
+    } else {
+      console.warn("[AwpCasManager] No keyStorage or createAuth provided, auth will not be available");
     }
 
     // Create CAS-based client
@@ -219,6 +231,7 @@ export class AwpCasManager {
       endpoint: normalizedUrl,
       casEndpoint: normalizedCasEndpoint,
       auth,
+      casAuth,
       casStorage: this.casStorage,
     });
 

@@ -44,6 +44,7 @@ function toHttpRequest(event: APIGatewayProxyEvent | APIGatewayProxyEventV2): Ht
   return {
     method,
     path,
+    originalPath: path, // Preserve original path for signature verification
     headers,
     query: event.queryStringParameters ?? {},
     pathParams: (event.pathParameters ?? {}) as Record<string, string>,

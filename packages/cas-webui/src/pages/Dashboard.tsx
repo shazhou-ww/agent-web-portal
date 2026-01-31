@@ -7,11 +7,17 @@ import {
   Grid,
   CircularProgress,
   Alert,
+  IconButton,
+  Tooltip,
+  Snackbar,
 } from "@mui/material";
 import {
   Key as KeyIcon,
   Storage as StorageIcon,
   TrendingUp as TrendingUpIcon,
+  ContentCopy as CopyIcon,
+  Check as CheckIcon,
+  Link as LinkIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 import { apiRequest } from "../utils/api";
@@ -75,6 +81,20 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  // Get the endpoint URL (current origin + /api/)
+  // Note: trailing slash is required for CloudFront routing
+  const endpointUrl = `${window.location.origin}/api/`;
+
+  const handleCopyEndpoint = async () => {
+    try {
+      await navigator.clipboard.writeText(endpointUrl);
+      setCopied(true);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
 
   const fetchStats = useCallback(async () => {
     try {
@@ -150,6 +170,70 @@ export default function Dashboard() {
           Overview of your Content Addressable Storage
         </Typography>
       </Box>
+
+      {/* Endpoint URL Card */}
+      <Card
+        sx={{
+          mb: 3,
+          background: "linear-gradient(135deg, #1976d2 0%, #7c4dff 100%)",
+          color: "white",
+        }}
+      >
+        <CardContent sx={{ py: 3 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1 }}>
+            <LinkIcon />
+            <Typography variant="h6" fontWeight={600}>
+              CAS API Endpoint
+            </Typography>
+          </Box>
+          <Typography variant="body2" sx={{ opacity: 0.9, mb: 2 }}>
+            Use this URL to configure your AI agent for content-addressable storage
+          </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              bgcolor: "rgba(255,255,255,0.15)",
+              borderRadius: 2,
+              px: 2,
+              py: 1.5,
+            }}
+          >
+            <Typography
+              variant="body1"
+              sx={{
+                fontFamily: "monospace",
+                fontSize: "1.1rem",
+                flexGrow: 1,
+                wordBreak: "break-all",
+              }}
+            >
+              {endpointUrl}
+            </Typography>
+            <Tooltip title={copied ? "Copied!" : "Copy to clipboard"}>
+              <IconButton
+                onClick={handleCopyEndpoint}
+                sx={{
+                  color: "white",
+                  bgcolor: "rgba(255,255,255,0.2)",
+                  "&:hover": { bgcolor: "rgba(255,255,255,0.3)" },
+                }}
+              >
+                {copied ? <CheckIcon /> : <CopyIcon />}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Snackbar
+        open={copied}
+        autoHideDuration={2000}
+        onClose={() => setCopied(false)}
+        message="Endpoint URL copied to clipboard"
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      />
 
       {userRole === "unauthorized" && (
         <Alert severity="warning" sx={{ mb: 3 }}>

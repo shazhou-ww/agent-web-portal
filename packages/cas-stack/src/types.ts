@@ -293,6 +293,8 @@ export interface AuthContext {
 export interface HttpRequest {
   method: string;
   path: string;
+  /** Original path before any prefix stripping (for signature verification) */
+  originalPath?: string;
   headers: Record<string, string | undefined>;
   query: Record<string, string | undefined>;
   pathParams: Record<string, string>;

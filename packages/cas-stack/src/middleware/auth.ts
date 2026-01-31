@@ -95,6 +95,7 @@ export class AuthMiddleware {
    */
   private async authenticateAwp(req: HttpRequest): Promise<AuthContext | null> {
     if (!this.awpPubkeyStore) {
+      console.log("[Auth] AWP auth failed: No pubkey store configured");
       return null;
     }
 
@@ -108,46 +109,66 @@ export class AuthMiddleware {
       req.headers[AWP_AUTH_HEADERS.signature];
 
     if (!pubkey || !timestamp || !signature) {
+      console.log("[Auth] AWP auth failed: Missing headers", { pubkey: !!pubkey, timestamp: !!timestamp, signature: !!signature });
       return null;
     }
+
+    console.log("[Auth] AWP auth attempt for pubkey:", pubkey.substring(0, 20) + "...");
 
     // Validate timestamp
     if (!validateTimestamp(timestamp, 300)) {
       // 5 minute max clock skew
+      console.log("[Auth] AWP auth failed: Timestamp validation failed", { timestamp, now: Math.floor(Date.now() / 1000) });
       return null;
     }
 
     // Look up the pubkey
     const authorizedPubkey = await this.awpPubkeyStore.lookup(pubkey);
     if (!authorizedPubkey) {
+      console.log("[Auth] AWP auth failed: Pubkey not found in store");
       return null;
     }
 
+    console.log("[Auth] AWP pubkey found for user:", authorizedPubkey.userId);
+
     // Verify the signature
     // Convert HttpRequest body to string
+    // Note: The handler already decodes base64, so we just need to convert Buffer to string
     const body =
       typeof req.body === "string"
         ? req.body
         : req.body
-          ? req.isBase64Encoded
-            ? Buffer.from(req.body.toString(), "base64").toString("utf-8")
-            : req.body.toString("utf-8")
+          ? req.body.toString("utf-8")
           : "";
 
     // Build signature payload: timestamp.METHOD.path.bodyHash
-    const path =
-      req.path +
-      (Object.keys(req.query).length > 0
-        ? `?${new URLSearchParams(req.query as Record<string, string>).toString()}`
-        : "");
-    const bodyHash = createHash("sha256").update(body).digest("hex");
-    const signaturePayload = `${timestamp}.${req.method.toUpperCase()}.${path}.${bodyHash}`;
+    // Use originalPath for signature verification (preserves /api prefix)
+    const queryString = Object.keys(req.query).length > 0
+      ? `?${new URLSearchParams(req.query as Record<string, string>).toString()}`
+      : "";
+    const signaturePath = (req.originalPath ?? req.path) + queryString;
+    
+    // Body hash must be base64url encoded (same as client)
+    const hashBuffer = createHash("sha256").update(body).digest();
+    const bodyHash = hashBuffer.toString("base64url");
+    const signaturePayload = `${timestamp}.${req.method.toUpperCase()}.${signaturePath}.${bodyHash}`;
+
+    console.log("[Auth] AWP signature verification:", {
+      signaturePath,
+      method: req.method,
+      bodyLength: body.length,
+      bodyHash,
+      signaturePayload,
+    });
 
     const isValid = await verifySignature(pubkey, signaturePayload, signature);
 
     if (!isValid) {
+      console.log("[Auth] AWP auth failed: Signature verification failed");
       return null;
     }
+
+    console.log("[Auth] AWP auth successful for user:", authorizedPubkey.userId);
 
     const ctx = this.buildAwpAuthContext(authorizedPubkey);
     return this.applyUserRole(ctx);

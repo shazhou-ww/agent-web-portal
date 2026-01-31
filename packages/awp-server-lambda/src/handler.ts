@@ -58,15 +58,18 @@ export function createLambdaHandler(
       const request = eventToRequest(event);
 
       // Try custom routes first
+      // Note: We clone the request for each route handler because Request.body can only be read once
       for (const routeHandler of customRoutes) {
-        const response = await routeHandler(request, event, context);
+        const clonedRequest = request.clone();
+        const response = await routeHandler(clonedRequest, event, context);
         if (response) {
           return responseToResult(response, cors, corsOrigin);
         }
       }
 
       // Handle MCP endpoint (default route)
-      const response = await portal.handleRequest(request);
+      // Clone the request in case custom routes read the body (Request.body can only be read once)
+      const response = await portal.handleRequest(request.clone());
 
       return responseToResult(response, cors, corsOrigin);
     } catch (error) {

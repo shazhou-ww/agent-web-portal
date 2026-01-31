@@ -14,6 +14,8 @@ export { defineSimpleTool, defineTool } from "./define-tool.ts";
 export { McpHandler } from "./mcp-handler.ts";
 // ServerPortal
 export { createServerPortal, ServerPortal } from "./portal.ts";
+// Skill Parser
+export { loadSkillsFromMap, parseSkill } from "./skill-parser.ts";
 
 // ToolRegistry
 export { ToolRegistry } from "./tool-registry.ts";
@@ -26,6 +28,7 @@ export type {
   CasNode,
   CasRawNode,
   CasTicketProvider,
+  DefinedSkill,
   DefinedTool,
   IBufferedCasClient,
   JsonRpcRequest,
@@ -36,6 +39,8 @@ export type {
   McpToolsListResponse,
   PathResolver,
   ServerPortalConfig,
+  SkillFrontmatter,
+  SkillsListResponse,
   ToolDefinitionOptions,
   ToolHandler,
 } from "./types.ts";

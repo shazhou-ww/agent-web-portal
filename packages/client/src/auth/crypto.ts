@@ -151,6 +151,15 @@ export async function signRequest(
 
   // Create signature payload
   const payload = `${timestamp}.${method.toUpperCase()}.${path}.${bodyHash}`;
+  
+  console.log("[AWP Auth] Signing request:", {
+    path,
+    method: method.toUpperCase(),
+    bodyLength: body.length,
+    bodyHash,
+    payload,
+  });
+  
   const signature = await sign(keyPair, payload);
 
   return {
