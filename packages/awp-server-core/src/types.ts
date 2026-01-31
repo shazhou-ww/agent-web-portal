@@ -4,7 +4,7 @@
 
 import type {
   ByteStream,
-  CasBlobContext,
+  CasEndpointInfo,
   CasFileHandle,
   CasNode,
   CasRawNode,
@@ -15,7 +15,7 @@ import type { ZodSchema, z } from "zod";
 // Re-export useful types from cas-client-core
 export type {
   ByteStream,
-  CasBlobContext,
+  CasEndpointInfo,
   CasFileHandle,
   CasNode,
   CasRawNode,
@@ -39,6 +39,15 @@ export interface CasConfig {
 }
 
 /**
+ * Ticket creation result with endpoint info
+ */
+export interface TicketResult {
+  ticketId: string;
+  endpoint: string;
+  info: CasEndpointInfo;
+}
+
+/**
  * Provider interface for obtaining CAS tickets
  */
 export interface CasTicketProvider {
@@ -47,12 +56,12 @@ export interface CasTicketProvider {
    *
    * @param scope - CAS keys to include in the scope
    * @param writable - Whether write access is needed
-   * @returns CasBlobContext with ticket info
+   * @returns TicketResult with ticket info and CasEndpointInfo
    */
   createTicket(
     scope: string | string[],
     writable?: boolean | { quota?: number; accept?: string[] }
-  ): Promise<CasBlobContext>;
+  ): Promise<TicketResult>;
 }
 
 // ============================================================================

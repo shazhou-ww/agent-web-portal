@@ -145,7 +145,8 @@ export class TokensDb {
       createdAt: now,
       expiresAt,
       config: {
-        chunkThreshold: serverConfig.chunkThreshold,
+        chunkSize: serverConfig.chunkSize,
+        maxChildren: serverConfig.maxChildren,
       },
     };
 

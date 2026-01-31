@@ -22,8 +22,8 @@ export { ToolRegistry } from "./tool-registry.ts";
 // Types
 export type {
   ByteStream,
-  CasBlobContext,
   CasConfig,
+  CasEndpointInfo,
   CasFileHandle,
   CasNode,
   CasRawNode,

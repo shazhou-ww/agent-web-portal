@@ -79,6 +79,7 @@ class MemoryTokensDb {
   ): Promise<Ticket> {
     const ticketId = `tkt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const defaultExpiry = writable ? 300 : 3600;
+    const serverConfig = loadServerConfig();
     const ticket: Ticket = {
       pk: `token#${ticketId}`,
       type: "ticket",
@@ -87,7 +88,8 @@ class MemoryTokensDb {
       scope,
       writable,
       config: {
-        chunkThreshold: 1048576, // 1MB default
+        chunkSize: serverConfig.chunkSize,
+        maxChildren: serverConfig.maxChildren,
       },
       createdAt: Date.now(),
       expiresAt: Date.now() + (expiresIn ?? defaultExpiry) * 1000,
@@ -640,6 +642,22 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
   return null;
 }
 
+async function authenticateByTicketId(ticketId: string): Promise<AuthContext | null> {
+  const token = await tokensDb.getToken(ticketId);
+  if (!token || token.type !== "ticket") return null;
+
+  const id = tokenIdFromPk(token.pk);
+  return {
+    userId: "",
+    scope: token.realm,
+    canRead: true,
+    canWrite: !!token.writable,
+    canIssueTicket: false,
+    tokenId: id,
+    allowedKey: Array.isArray(token.scope) ? token.scope[0] : token.scope,
+  };
+}
+
 async function authenticateAwp(req: Request): Promise<AuthContext | null> {
   const pubkey = req.headers.get(AWP_AUTH_HEADERS.pubkey);
   const timestamp = req.headers.get(AWP_AUTH_HEADERS.timestamp);
@@ -1072,28 +1090,105 @@ async function handleAdmin(req: Request, path: string): Promise<Response> {
   return errorResponse(404, "Admin endpoint not found");
 }
 
-async function handleCas(req: Request, scope: string, subPath: string): Promise<Response> {
-  const auth = await authenticate(req);
+async function handleCas(req: Request, requestedRealm: string, subPath: string): Promise<Response> {
+  const serverConfig = loadServerConfig();
+
+  // GET /cas/{realm} - Return endpoint info
+  if (req.method === "GET" && subPath === "") {
+    // Ticket realm - no auth required
+    if (requestedRealm.startsWith("tkt_")) {
+      const ticketId = requestedRealm;
+      const token = await tokensDb.getToken(ticketId);
+      if (!token || token.type !== "ticket") {
+        return errorResponse(404, "Ticket not found");
+      }
+      if (token.expiresAt < Date.now()) {
+        return errorResponse(410, "Ticket expired");
+      }
+
+      // Build read permission
+      const read: boolean | string[] = Array.isArray(token.scope)
+        ? token.scope
+        : [token.scope];
+
+      // Build write permission
+      let write: false | { quota?: number; accept?: string[] } = false;
+      if (token.writable && !token.written) {
+        if (token.writable === true) {
+          write = {};
+        } else {
+          write = {
+            quota: (token.writable as any).quota,
+            accept: (token.writable as any).accept,
+          };
+        }
+      }
+
+      return jsonResponse(200, {
+        realm: token.realm,
+        read,
+        write,
+        expiresAt: new Date(token.expiresAt).toISOString(),
+        config: {
+          chunkSize: serverConfig.chunkSize,
+          maxChildren: serverConfig.maxChildren,
+        },
+      });
+    }
+
+    // User realm - requires auth
+    const auth = await authenticate(req);
+    if (!auth) {
+      return errorResponse(401, "Unauthorized");
+    }
+
+    let effectiveScope: string;
+    if (requestedRealm === "@me" || requestedRealm === "~") {
+      effectiveScope = auth.scope;
+    } else {
+      if (requestedRealm !== auth.scope) {
+        return errorResponse(403, "Access denied to this scope");
+      }
+      effectiveScope = requestedRealm;
+    }
+
+    return jsonResponse(200, {
+      realm: effectiveScope,
+      read: true,
+      write: auth.canWrite ? {} : false,
+      config: {
+        chunkSize: serverConfig.chunkSize,
+        maxChildren: serverConfig.maxChildren,
+      },
+    });
+  }
+
+  // Authenticate - ticket realm uses ticket ID directly, otherwise standard auth
+  let auth: AuthContext | null;
+  if (requestedRealm.startsWith("tkt_")) {
+    auth = await authenticateByTicketId(requestedRealm);
+  } else {
+    auth = await authenticate(req);
+  }
   if (!auth) {
     return errorResponse(401, "Unauthorized");
   }
 
   // Resolve scope:
   // - @me or ~ resolves to user's scope
-  // - ticket ID (tkt_xxx) uses the ticket's realm (already in auth.scope)
+  // - tkt_ realm uses the ticket's actual realm
   // - explicit scope must match auth.scope
   let effectiveScope: string;
-  if (scope === "@me" || scope === "~") {
+  if (requestedRealm === "@me" || requestedRealm === "~") {
     effectiveScope = auth.scope;
-  } else if (scope.startsWith("tkt_")) {
-    // Ticket access - use the ticket's realm
-    effectiveScope = auth.scope;
+  } else if (requestedRealm.startsWith("tkt_")) {
+    effectiveScope = auth.scope; // ticket's realm
   } else {
     // Explicit scope - must match
-    if (scope !== auth.scope) {
+    if (requestedRealm !== auth.scope) {
       return errorResponse(403, "Access denied to this scope");
     }
-    effectiveScope = scope;
+    effectiveScope = requestedRealm;
   }
 
   // GET /cas/{scope}/nodes - List all nodes in scope

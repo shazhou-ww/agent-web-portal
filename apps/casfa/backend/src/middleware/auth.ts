@@ -346,6 +346,17 @@ export class AuthMiddleware {
   }
 
   /**
+   * Authenticate directly by ticket ID (for ticket URL paths)
+   */
+  async authenticateByTicketId(ticketId: string): Promise<AuthContext | null> {
+    const token = await this.tokensDb.getToken(ticketId);
+    if (!token || token.type !== "ticket") {
+      return null;
+    }
+    return this.buildAuthContext(token);
+  }
+
+  /**
    * Check if auth context can access the requested realm
    */
   checkRealmAccess(auth: AuthContext, requestedRealm: string): boolean {

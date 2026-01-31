@@ -31,28 +31,40 @@ export type CasAuth =
 export interface CasClientConfig {
   endpoint: string;
   auth: CasAuth;
-  chunkThreshold?: number;
+  chunkSize?: number;
+  maxChildren?: number;
 }
 
 // ============================================================================
-// Context Types (from Agent Runtime)
+// Endpoint Info (from GET /cas/{realm})
 // ============================================================================
 
-export interface CasBlobContext {
-  ticket: string;
-  endpoint: string;
-  expiresAt: string;
+/**
+ * CasEndpointInfo - describes endpoint capabilities and configuration
+ * Returned by GET /cas/{realm}
+ */
+export interface CasEndpointInfo {
+  /** The actual realm (e.g., "usr_xxx" for tickets) */
   realm: string;
-  scope: string | string[];
-  writable:
+
+  /** Read permission: true=full access, string[]=only these keys */
+  read: boolean | string[];
+
+  /** Write permission: false=no write, object=write config */
+  write:
     | false
-    | true
     | {
         quota?: number;
         accept?: string[];
       };
+
+  /** Expiration time (for tickets) */
+  expiresAt?: string;
+
+  /** Required configuration for chunking */
   config: {
-    chunkThreshold: number;
+    chunkSize: number;
+    maxChildren: number;
   };
 }
 
@@ -115,14 +127,14 @@ export type CasNode = CasCollectionNode | CasFileNode;
  * @example
  * ```typescript
  * const ref: CasBlobRef = {
- *   "#cas-endpoint": "https://cas.example.com/api/cas/usr_123/ticket/tkt_abc",
+ *   "#cas-endpoint": "https://cas.example.com/api/cas/tkt_abc",
  *   "cas-node": "sha256:...",
  *   "path": "."
  * };
  * ```
  */
 export interface CasBlobRef {
-  /** CAS endpoint URL with embedded ticket: https://host/api/cas/{realm}/ticket/{ticketId} */
+  /** CAS endpoint URL with ticket as realm: https://host/api/cas/{ticketId} */
   "#cas-endpoint": string;
   /** DAG root node key */
   "cas-node": string;
@@ -136,10 +148,8 @@ export interface CasBlobRef {
 export interface ParsedEndpoint {
   /** Base URL without path (e.g., "https://cas.example.com") */
   baseUrl: string;
-  /** Realm identifier (user namespace) */
+  /** Realm identifier (ticket ID or user realm) */
   realm: string;
-  /** Ticket ID */
-  ticketId: string;
 }
 
 // ============================================================================
@@ -217,7 +227,8 @@ export interface LocalStorageProvider {
 // ============================================================================
 
 export interface CasConfigResponse {
-  chunkThreshold: number;
+  chunkSize: number;
+  maxChildren: number;
   maxCollectionChildren: number;
   maxPayloadSize: number;
 }

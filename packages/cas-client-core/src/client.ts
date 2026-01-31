@@ -10,10 +10,10 @@ import { collectBytes, concatStreamFactories, needsChunking, splitIntoChunks } f
 import type {
   ByteStream,
   CasAuth,
-  CasBlobContext,
   CasBlobRef,
   CasClientConfig,
   CasConfigResponse,
+  CasEndpointInfo,
   CasFileHandle,
   CasNode,
   CasRawCollectionNode,
@@ -35,28 +35,31 @@ export class CasClient {
   private endpoint: string;
   private auth: CasAuth;
   private storage?: LocalStorageProvider;
-  private chunkThreshold: number;
+  private chunkSize: number;
+  private maxChildren: number;
   private realm?: string;
 
-  constructor(config: CasClientConfig & { storage?: LocalStorageProvider; realm?: string }) {
+  constructor(
+    config: CasClientConfig & { storage?: LocalStorageProvider; realm?: string; maxChildren?: number }
+  ) {
     this.endpoint = config.endpoint.replace(/\/$/, "");
     this.auth = config.auth;
     this.storage = config.storage;
-    this.chunkThreshold = config.chunkThreshold ?? 1048576; // Default 1MB
+    this.chunkSize = config.chunkSize ?? 262144; // Default 256KB
+    this.maxChildren = config.maxChildren ?? 256; // Default 256
     this.realm = config.realm;
   }
 
   /**
    * Get the API base URL for CAS operations
    *
-   * For ticket auth: endpoint is already /api/cas/{realm}/ticket/{ticketId}, use directly
-   * For user/agent auth: endpoint is /api, need to append /cas/{realm}
+   * For ticket auth: realm is the ticket ID (tkt_xxx)
+   * For user/agent auth: realm is @me or usr_{id}
    */
   private getApiBase(): string {
     if (this.auth.type === "ticket") {
-      // Ticket endpoint already contains /cas/{realm}/ticket/{ticketId}
-      // CAS server will strip /ticket/{ticketId} and route correctly
-      return this.endpoint;
+      // Ticket ID is the realm
+      return `${this.endpoint}/cas/${this.auth.id}`;
     }
 
     // For user/agent auth, append /cas/{realm}
@@ -103,30 +106,39 @@ export class CasClient {
     });
   }
 
-  static fromContext(context: CasBlobContext, storage?: LocalStorageProvider): CasClient {
-    // Use the full ticket endpoint URL directly - CAS server supports ticket URL as endpoint base
-    // The ticket URL format is: https://host/api/cas/{realm}/ticket/{ticketId}
-    // The server will strip /ticket/{ticketId} and route to the appropriate handler
+  /**
+   * Create a CasClient from endpoint info (returned by GET /cas/{realm})
+   */
+  static fromEndpointInfo(
+    baseUrl: string,
+    realm: string,
+    info: CasEndpointInfo,
+    storage?: LocalStorageProvider
+  ): CasClient {
+    // For ticket realms, the realm IS the ticket ID
+    const isTicket = realm.startsWith("tkt_");
     return new CasClient({
-      endpoint: context.endpoint,
-      auth: { type: "ticket", id: context.ticket },
+      endpoint: baseUrl,
+      auth: isTicket ? { type: "ticket", id: realm } : { type: "user", token: "" },
       storage,
-      chunkThreshold: context.config.chunkThreshold,
-      realm: context.realm,
+      chunkSize: info.config.chunkSize,
+      maxChildren: info.config.maxChildren,
+      realm: info.realm,
     });
   }
 
   /**
    * Create a CasClient from a #cas-endpoint URL
    *
-   * @param endpointUrl - Full endpoint URL: https://host/api/cas/{realm}/ticket/{ticketId}
+   * @param endpointUrl - Full endpoint URL: https://host/api/cas/{realm}
    * @param storage - Optional local storage provider for caching
    */
   static fromEndpoint(endpointUrl: string, storage?: LocalStorageProvider): CasClient {
-    const { baseUrl, realm, ticketId } = parseEndpoint(endpointUrl);
+    const { baseUrl, realm } = parseEndpoint(endpointUrl);
+    const isTicket = realm.startsWith("tkt_");
     return new CasClient({
       endpoint: baseUrl,
-      auth: { type: "ticket", id: ticketId },
+      auth: isTicket ? { type: "ticket", id: realm } : { type: "user", token: "" },
       storage,
       realm,
     });
@@ -143,8 +155,8 @@ export class CasClient {
     if (this.auth.type !== "ticket") {
       throw new Error("Blob refs can only be created with ticket auth");
     }
-    const realm = this.realm ?? "@me";
-    const endpointUrl = buildEndpoint(this.endpoint, realm, this.auth.id);
+    // For ticket auth, the ticket ID is the realm
+    const endpointUrl = buildEndpoint(this.endpoint, this.auth.id);
     return createBlobRef(endpointUrl, casNode, path, pathKey);
   }
 
@@ -350,14 +362,14 @@ export class CasClient {
     const bytes = content instanceof Uint8Array ? content : await collectBytes(content);
 
     // Check if chunking is needed
-    if (!needsChunking(bytes.length, this.chunkThreshold)) {
+    if (!needsChunking(bytes.length, this.chunkSize)) {
       // Small file: upload as single chunk, then create file node
       const chunkKey = await this.uploadChunk(bytes);
       return this.createFileNode([chunkKey], contentType, bytes.length);
     }
 
     // Large file: split into chunks and upload
-    const chunks = splitIntoChunks(bytes, this.chunkThreshold);
+    const chunks = splitIntoChunks(bytes, this.chunkSize);
     const chunkKeys: string[] = [];
 
     for (const chunk of chunks) {

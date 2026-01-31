@@ -20,6 +20,7 @@ import type {
   AuthContext,
   CasConfig,
   CasConfigResponse,
+  CasEndpointInfo,
   HttpRequest,
   HttpResponse,
 } from "./types.ts";
@@ -274,7 +275,8 @@ export class Router {
   private handleGetConfig(): HttpResponse {
     const serverConfig = loadServerConfig();
     const response: CasConfigResponse = {
-      chunkThreshold: serverConfig.chunkThreshold,
+      chunkSize: serverConfig.chunkSize,
+      maxChildren: serverConfig.maxChildren,
       maxCollectionChildren: serverConfig.maxCollectionChildren,
       maxPayloadSize: serverConfig.maxPayloadSize,
     };
@@ -566,8 +568,8 @@ export class Router {
         );
 
         const ticketId = TokensDb.extractTokenId(ticket.pk);
-        // Build endpoint URL for #cas-endpoint
-        const endpoint = `${serverConfig.baseUrl}/api/cas/${ticket.realm}/ticket/${ticketId}`;
+        // Build endpoint URL - ticket ID is the realm
+        const endpoint = `${serverConfig.baseUrl}/api/cas/${ticketId}`;
 
         return jsonResponse(201, {
           id: ticketId,
@@ -733,27 +735,20 @@ export class Router {
     }
 
     const requestedRealm = casMatch[1]!;
-    let subPath = casMatch[2] ?? "";
+    const subPath = casMatch[2] ?? "";
 
-    // Support ticket URL as endpoint base: /cas/{realm}/ticket/{ticketId}/...
-    // Handle GET /cas/{realm}/ticket/{ticketId} - return ticket info (no auth required)
-    // Or strip the /ticket/{ticketId} prefix for other operations
-    const ticketPathMatch = subPath.match(/^\/ticket\/([^/]+)(\/.*)?$/);
-    if (ticketPathMatch) {
-      const ticketId = ticketPathMatch[1]!;
-      const remainingPath = ticketPathMatch[2] ?? "";
-
-      // GET /cas/{realm}/ticket/{ticketId} - Return ticket info for #cas.endpoint
-      if (req.method === "GET" && remainingPath === "") {
-        return this.handleGetTicketInfo(requestedRealm, ticketId);
-      }
-
-      // For other operations, strip the ticket path prefix
-      subPath = remainingPath;
+    // GET /cas/{realm} - Return endpoint info (no auth required for ticket realms)
+    if (req.method === "GET" && subPath === "") {
+      return this.handleGetEndpointInfo(req, requestedRealm);
     }
 
-    // Authenticate
-    const auth = await this.authMiddleware.authenticate(req);
+    // Authenticate - ticket realm uses ticket ID directly, otherwise standard auth
+    let auth: AuthContext | null;
+    if (requestedRealm.startsWith("tkt_")) {
+      auth = await this.authMiddleware.authenticateByTicketId(requestedRealm);
+    } else {
+      auth = await this.authMiddleware.authenticate(req);
+    }
     if (!auth) {
       return errorResponse(401, "Unauthorized");
     }
@@ -831,46 +826,87 @@ export class Router {
   }
 
   /**
-   * GET /cas/{realm}/ticket/{ticketId} - Return ticket info for #cas.endpoint
+   * GET /cas/{realm} - Return endpoint info (CasEndpointInfo)
    *
-   * This endpoint returns CasBlobContext-compatible information for a ticket.
-   * No authentication required - the ticket ID itself serves as authorization.
-   * This enables traditional MCP clients to use #cas.endpoint URLs.
+   * Works for all realm types:
+   * - tkt_{id}: Ticket realm - no auth required, ticket ID is the credential
+   * - @me / ~: User realm - requires auth
+   * - usr_{id}: Explicit user realm - requires auth
    */
-  private async handleGetTicketInfo(realm: string, ticketId: string): Promise<HttpResponse> {
-    try {
-      // Look up the ticket
+  private async handleGetEndpointInfo(
+    req: HttpRequest,
+    requestedRealm: string
+  ): Promise<HttpResponse> {
+    const serverConfig = loadServerConfig();
+
+    // Ticket realm - no auth required
+    if (requestedRealm.startsWith("tkt_")) {
+      const ticketId = requestedRealm;
       const ticket = await this.tokensDb.getTicket(ticketId);
 
       if (!ticket) {
         return errorResponse(404, "Ticket not found");
       }
 
-      // Check if ticket is expired
       if (ticket.expiresAt < Date.now()) {
         return errorResponse(410, "Ticket expired");
       }
 
-      // Verify realm matches
-      if (ticket.realm !== realm) {
-        return errorResponse(403, "Ticket realm mismatch");
+      // Build read permission
+      const read: boolean | string[] = Array.isArray(ticket.scope)
+        ? ticket.scope
+        : [ticket.scope];
+
+      // Build write permission
+      let write: false | { quota?: number; accept?: string[] } = false;
+      if (ticket.writable && !ticket.written) {
+        if (ticket.writable === true) {
+          write = {};
+        } else {
+          write = {
+            quota: ticket.writable.quota,
+            accept: ticket.writable.accept,
+          };
+        }
       }
 
-      const serverConfig = loadServerConfig();
-
-      // Return CasBlobContext-compatible info
-      return jsonResponse(200, {
-        ticket: ticketId,
-        endpoint: `${serverConfig.baseUrl}/api/cas/${ticket.realm}/ticket/${ticketId}`,
-        expiresAt: new Date(ticket.expiresAt).toISOString(),
+      const info: CasEndpointInfo = {
         realm: ticket.realm,
-        scope: ticket.scope,
-        writable: ticket.writable ?? false,
-        config: ticket.config,
-      });
-    } catch (error: any) {
-      return errorResponse(500, error.message ?? "Failed to get ticket info");
+        read,
+        write,
+        expiresAt: new Date(ticket.expiresAt).toISOString(),
+        config: {
+          chunkSize: ticket.config.chunkSize,
+          maxChildren: ticket.config.maxChildren,
+        },
+      };
+
+      return jsonResponse(200, info);
     }
+
+    // User realm - requires auth
+    const auth = await this.authMiddleware.authenticate(req);
+    if (!auth) {
+      return errorResponse(401, "Unauthorized");
+    }
+
+    if (!this.authMiddleware.checkRealmAccess(auth, requestedRealm)) {
+      return errorResponse(403, "Access denied to this realm");
+    }
+
+    const realm = this.authMiddleware.resolveRealm(auth, requestedRealm);
+
+    const info: CasEndpointInfo = {
+      realm,
+      read: true,
+      write: auth.canWrite ? {} : false,
+      config: {
+        chunkSize: serverConfig.chunkSize,
+        maxChildren: serverConfig.maxChildren,
+      },
+    };
+
+    return jsonResponse(200, info);
   }
 
   /**

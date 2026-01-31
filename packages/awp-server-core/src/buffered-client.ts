@@ -7,8 +7,8 @@
 
 import {
   type ByteStream,
-  type CasBlobContext,
   CasClient,
+  type CasEndpointInfo,
   type CasFileHandle,
   type CasNode,
   type CasRawChunkNode,
@@ -60,7 +60,7 @@ interface PendingCollection {
  */
 export class BufferedCasClient implements IBufferedCasClient {
   private client: CasClient;
-  private chunkThreshold: number;
+  private chunkSize: number;
 
   // Buffered writes
   private pendingChunks: Map<string, PendingChunk> = new Map();
@@ -73,18 +73,15 @@ export class BufferedCasClient implements IBufferedCasClient {
   // Root key of the last write operation (for single-root commit)
   private rootKey: string | null = null;
 
-  constructor(context: CasBlobContext, storage?: LocalStorageProvider) {
-    this.client = CasClient.fromContext(context, storage);
-    this.chunkThreshold = context.config.chunkThreshold;
+  constructor(endpointInfo: CasEndpointInfo, baseUrl: string, realm: string, storage?: LocalStorageProvider) {
+    this.client = CasClient.fromEndpointInfo(baseUrl, realm, endpointInfo, storage);
+    this.chunkSize = endpointInfo.config.chunkSize;
 
-    // Log the parsed client configuration for debugging
-    const clientEndpoint = (this.client as unknown as { endpoint: string }).endpoint;
-    const clientRealm = (this.client as unknown as { realm?: string }).realm;
     console.log("[BufferedCasClient] Created with:", {
-      parsedEndpoint: clientEndpoint,
-      parsedRealm: clientRealm,
-      originalContextEndpoint: context.endpoint,
-      originalContextRealm: context.realm,
+      baseUrl,
+      realm,
+      actualRealm: endpointInfo.realm,
+      chunkSize: this.chunkSize,
     });
   }
 
@@ -186,7 +183,7 @@ export class BufferedCasClient implements IBufferedCasClient {
     const bytes = content instanceof Uint8Array ? content : await collectBytes(content);
 
     // Check if chunking is needed
-    if (!needsChunking(bytes.length, this.chunkThreshold)) {
+    if (!needsChunking(bytes.length, this.chunkSize)) {
       // Small file: single chunk
       const chunkKey = await computeKey(bytes);
       this.pendingChunks.set(chunkKey, { key: chunkKey, data: bytes });
@@ -207,7 +204,7 @@ export class BufferedCasClient implements IBufferedCasClient {
     }
 
     // Large file: split into chunks
-    const chunkDataList = splitIntoChunks(bytes, this.chunkThreshold);
+    const chunkDataList = splitIntoChunks(bytes, this.chunkSize);
     const chunkKeys: string[] = [];
 
     for (const chunkData of chunkDataList) {

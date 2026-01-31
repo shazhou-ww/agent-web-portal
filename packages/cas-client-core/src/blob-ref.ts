@@ -9,7 +9,7 @@ import type { CasBlobRef, CasNode, CasRawCollectionNode, ParsedEndpoint } from "
 /**
  * Create a CAS blob reference
  *
- * @param endpoint - Full endpoint URL with ticket: https://host/api/cas/{realm}/ticket/{ticketId}
+ * @param endpoint - Full endpoint URL: https://host/api/cas/{realm}
  * @param casNode - DAG root node key (e.g., "sha256:...")
  * @param path - Path to the blob ("." for node itself, "./path/to/file" for collection child)
  * @param pathKey - Optional custom path key name (default: "path")
@@ -30,29 +30,29 @@ export function createBlobRef(
 /**
  * Parse the #cas-endpoint URL to extract components
  *
- * Expected format: https://host/api/cas/{realm}/ticket/{ticketId}
+ * Expected format: https://host/api/cas/{realm}
+ * where realm can be tkt_{id} for tickets or usr_{id} for users
  *
  * @throws Error if URL format is invalid
  */
 export function parseEndpoint(endpointUrl: string): ParsedEndpoint {
   const url = new URL(endpointUrl);
 
-  // Match pattern: /api/cas/{realm}/ticket/{ticketId}
-  const match = url.pathname.match(/^\/api\/cas\/([^/]+)\/ticket\/([^/]+)$/);
+  // Match pattern: /api/cas/{realm}
+  const match = url.pathname.match(/^\/api\/cas\/([^/]+)$/);
   if (!match) {
     throw new Error(
-      `Invalid CAS endpoint URL format: ${endpointUrl}. Expected: https://host/api/cas/{realm}/ticket/{ticketId}`
+      `Invalid CAS endpoint URL format: ${endpointUrl}. Expected: https://host/api/cas/{realm}`
     );
   }
 
-  const [, realm, ticketId] = match;
+  const [, realm] = match;
   // Include /api in baseUrl since CAS API routes are under /api/cas/...
   const baseUrl = `${url.protocol}//${url.host}/api`;
 
   return {
     baseUrl,
     realm: realm!,
-    ticketId: ticketId!,
   };
 }
 
@@ -60,10 +60,11 @@ export function parseEndpoint(endpointUrl: string): ParsedEndpoint {
  * Build a CAS endpoint URL from components
  *
  * @param baseUrl - Base URL ending with /api (e.g., https://host/api)
+ * @param realm - Realm identifier (tkt_{id} for tickets, usr_{id} for users)
  */
-export function buildEndpoint(baseUrl: string, realm: string, ticketId: string): string {
+export function buildEndpoint(baseUrl: string, realm: string): string {
   const base = baseUrl.replace(/\/$/, "");
-  return `${base}/cas/${encodeURIComponent(realm)}/ticket/${encodeURIComponent(ticketId)}`;
+  return `${base}/cas/${encodeURIComponent(realm)}`;
 }
 
 /**

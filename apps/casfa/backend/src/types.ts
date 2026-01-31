@@ -53,7 +53,8 @@ export interface Ticket extends BaseToken {
   writable?: WritableConfig; // write permission config
   written?: string; // root key after write (ensures single write)
   config: {
-    chunkThreshold: number; // chunk size threshold in bytes
+    chunkSize: number; // chunk size in bytes
+    maxChildren: number; // max B-tree children per node
   };
 }
 
@@ -140,13 +141,14 @@ export interface CreateTicketRequest {
 
 export interface CreateTicketResponse {
   id: string;
-  endpoint: string; // Full endpoint URL for #cas-endpoint
+  endpoint: string; // Full endpoint URL: /api/cas/{ticketId}
   expiresAt: string;
   realm: string;
   scope: string | string[];
   writable: WritableConfig | false;
   config: {
-    chunkThreshold: number;
+    chunkSize: number;
+    maxChildren: number;
   };
 }
 
@@ -315,8 +317,9 @@ export interface HttpResponse {
 // ============================================================================
 
 export interface CasServerConfig {
-  chunkThreshold: number; // default 1MB
-  maxCollectionChildren: number; // default 10000
+  chunkSize: number; // chunk size in bytes, default 256KB
+  maxChildren: number; // max B-tree children per node, default 256
+  maxCollectionChildren: number; // max collection children, default 10000
   maxPayloadSize: number; // default 10MB
   maxTicketTtl: number; // max ticket TTL in seconds, default 86400 (24h)
   maxAgentTokenTtl: number; // max agent token TTL in seconds, default 2592000 (30d)
@@ -338,7 +341,8 @@ export interface CasConfig {
 
 export function loadServerConfig(): CasServerConfig {
   return {
-    chunkThreshold: parseInt(process.env.CAS_CHUNK_THRESHOLD ?? "1048576", 10), // 1MB
+    chunkSize: parseInt(process.env.CAS_CHUNK_SIZE ?? "262144", 10), // 256KB
+    maxChildren: parseInt(process.env.CAS_MAX_CHILDREN ?? "256", 10), // 256
     maxCollectionChildren: parseInt(process.env.CAS_MAX_COLLECTION_CHILDREN ?? "10000", 10),
     maxPayloadSize: parseInt(process.env.CAS_MAX_PAYLOAD_SIZE ?? "10485760", 10), // 10MB
     maxTicketTtl: parseInt(process.env.CAS_MAX_TICKET_TTL ?? "86400", 10), // 24 hours
@@ -365,8 +369,38 @@ export function loadConfig(): CasConfig {
 // CAS API Request/Response Types
 // ============================================================================
 
+/**
+ * CasEndpointInfo - describes endpoint capabilities and configuration
+ * Returned by GET /cas/{realm}
+ */
+export interface CasEndpointInfo {
+  /** The actual realm (e.g., "usr_xxx" for tickets) */
+  realm: string;
+
+  /** Read permission: true=full access, string[]=only these keys */
+  read: boolean | string[];
+
+  /** Write permission: false=no write, object=write config */
+  write:
+    | false
+    | {
+        quota?: number; // bytes limit
+        accept?: string[]; // allowed MIME types
+      };
+
+  /** Expiration time (for tickets) */
+  expiresAt?: string;
+
+  /** Required configuration for chunking */
+  config: {
+    chunkSize: number; // chunk size in bytes
+    maxChildren: number; // max B-tree children per node
+  };
+}
+
 export interface CasConfigResponse {
-  chunkThreshold: number;
+  chunkSize: number;
+  maxChildren: number;
   maxCollectionChildren: number;
   maxPayloadSize: number;
 }
