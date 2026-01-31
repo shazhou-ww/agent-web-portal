@@ -4,12 +4,14 @@ import { defineConfig } from "vite";
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  root: "frontend",
   base: "./",
   build: {
-    outDir: "dist",
+    outDir: "../dist",
+    emptyOutDir: true,
     sourcemap: true,
   },
   server: {
-    port: 5174,
+    port: 5175,
   },
 });

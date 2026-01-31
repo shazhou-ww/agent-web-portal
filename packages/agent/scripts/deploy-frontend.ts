@@ -1,20 +1,14 @@
 #!/usr/bin/env bun
 
 /**
- * Deploy AWP Agent WebUI to S3 and invalidate CloudFront
+ * Deploy AWP Agent Frontend to S3 and invalidate CloudFront
  *
  * Usage:
- *   bun run deploy              # Auto-detect from stack
- *   bun run deploy <stack-name> # Use specific CloudFormation stack
- *
- * Environment:
- *   AWS_PROFILE - AWS profile to use (uses default credential chain if not set)
- *   AWS_REGION  - AWS region (default: us-east-1)
- *   STACK_NAME  - CloudFormation stack name (default: awp-agent-webui)
+ *   bun run scripts/deploy-frontend.ts              # Auto-detect from stack
+ *   bun run scripts/deploy-frontend.ts <stack-name> # Use specific stack
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { spawn } from "node:child_process";
 import { extname, join } from "node:path";
 import {
   CloudFormationClient,
@@ -32,13 +26,11 @@ import {
 } from "@aws-sdk/client-s3";
 
 const UI_DIST_DIR = join(import.meta.dir, "../dist");
-const DEFAULT_STACK_NAME = process.env.STACK_NAME || "awp-agent";
+const DEFAULT_STACK_NAME = process.env.STACK_NAME || "agent";
 const AWS_REGION = process.env.AWS_REGION || "us-east-1";
 
-// AWS client config
 const awsConfig = { region: AWS_REGION };
 
-// MIME type mapping
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -75,12 +67,9 @@ async function getStackOutputs(stackName: string): Promise<StackOutputs> {
 
     return {
       uiBucket: outputs.find((o) => o.OutputKey === "UiBucketName")?.OutputValue,
-      cloudFrontId: outputs.find((o) => o.OutputKey === "CloudFrontDistributionId")
-        ?.OutputValue,
-      cloudFrontUrl: outputs.find((o) => o.OutputKey === "CloudFrontUrl")
-        ?.OutputValue,
-      customDomainUrl: outputs.find((o) => o.OutputKey === "CustomDomainUrl")
-        ?.OutputValue,
+      cloudFrontId: outputs.find((o) => o.OutputKey === "CloudFrontDistributionId")?.OutputValue,
+      cloudFrontUrl: outputs.find((o) => o.OutputKey === "CloudFrontUrl")?.OutputValue,
+      customDomainUrl: outputs.find((o) => o.OutputKey === "CustomDomainUrl")?.OutputValue,
     };
   } catch (error) {
     console.error(`Failed to get stack ${stackName}:`, (error as Error).message);
@@ -106,7 +95,7 @@ function getAllFiles(dir: string, basePath = ""): { path: string; key: string }[
 }
 
 async function clearBucket(s3: S3Client, bucket: string): Promise<void> {
-  console.log(`🗑️  Clearing existing files from ${bucket}...`);
+  console.log(`Clearing existing files from ${bucket}...`);
 
   let continuationToken: string | undefined;
 
@@ -128,7 +117,7 @@ async function clearBucket(s3: S3Client, bucket: string): Promise<void> {
           },
         })
       );
-      console.log(`   Deleted ${objects.length} objects`);
+      console.log(`  Deleted ${objects.length} objects`);
     }
 
     continuationToken = listResult.NextContinuationToken;
@@ -138,69 +127,41 @@ async function clearBucket(s3: S3Client, bucket: string): Promise<void> {
 async function main() {
   const stackName = process.argv[2] || DEFAULT_STACK_NAME;
 
-  console.log("=".repeat(60));
-  console.log("AWP Agent WebUI Deploy");
-  console.log("=".repeat(60));
+  console.log("============================================================");
+  console.log("AWP Agent Frontend Deploy");
+  console.log("============================================================");
   console.log();
 
-  console.log(`🔍 Looking up UI bucket from CloudFormation stack: ${stackName}`);
+  console.log(`Getting outputs from stack: ${stackName}`);
   const { uiBucket, cloudFrontId, cloudFrontUrl, customDomainUrl } =
     await getStackOutputs(stackName);
 
   if (!uiBucket) {
-    console.error("❌ Could not find UiBucketName in stack outputs.");
-    console.error("   Make sure the stack is deployed first.");
-    console.error("");
-    console.error("   To deploy the stack:");
-    console.error("   cd packages/awp-agent-webui-stack");
-    console.error("   sam deploy --guided");
+    console.error("Could not find UiBucketName in stack outputs.");
+    console.error("Make sure the stack is deployed first.");
     process.exit(1);
   }
 
-  console.log(`✅ Found UI bucket: ${uiBucket}`);
-  if (cloudFrontId) {
-    console.log(`✅ Found CloudFront distribution: ${cloudFrontId}`);
-  }
-  console.log("");
+  console.log();
 
-  // Build the UI
-  console.log("🔨 Building UI...");
-  const build = spawn("bun", ["run", "build"], {
-    cwd: join(import.meta.dir, ".."),
-    stdio: "inherit",
-  });
-  const buildExit = await new Promise<number | null>((resolve) => {
-    build.on("exit", (code) => resolve(code ?? null));
-  });
-  if (buildExit !== 0) {
-    console.error("❌ Build failed.");
-    process.exit(1);
-  }
-  console.log("✅ Build complete.");
-  console.log("");
-
-  // Check if dist exists
   if (!existsSync(UI_DIST_DIR)) {
-    console.error(`❌ ${UI_DIST_DIR} does not exist.`);
+    console.error(`${UI_DIST_DIR} does not exist. Run build first.`);
     process.exit(1);
   }
 
   const s3 = new S3Client(awsConfig);
 
-  // Clear existing files
   await clearBucket(s3, uiBucket);
-  console.log("");
+  console.log();
 
-  // Get all files
   const files = getAllFiles(UI_DIST_DIR);
-  console.log(`📦 Uploading ${files.length} files to S3...`);
+  console.log(`Uploading ${files.length} files to ${uiBucket}...`);
 
   for (const file of files) {
     const ext = extname(file.key);
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
     const content = readFileSync(file.path);
 
-    // Set cache control based on file type
     const cacheControl =
       file.key === "index.html"
         ? "no-cache, no-store, must-revalidate"
@@ -220,16 +181,12 @@ async function main() {
       })
     );
 
-    console.log(`   → ${file.key} (${contentType})`);
+    console.log(`  ${file.key} (${contentType.split(";")[0]})`);
   }
 
-  console.log("");
-  console.log("✅ UI files uploaded to S3!");
-
-  // Invalidate CloudFront cache
   if (cloudFrontId) {
-    console.log("");
-    console.log("🔄 Invalidating CloudFront cache...");
+    console.log();
+    console.log(`Invalidating CloudFront cache for ${cloudFrontId}...`);
 
     const cloudfront = new CloudFrontClient(awsConfig);
 
@@ -246,19 +203,19 @@ async function main() {
       })
     );
 
-    console.log("✅ CloudFront invalidation created!");
+    console.log("  Invalidation created");
   }
 
-  console.log("");
-  console.log("=".repeat(60));
-  console.log("🎉 UI deployment complete!");
-  console.log(`   Files uploaded: ${files.length}`);
+  console.log();
+  console.log("============================================================");
+  console.log("Deploy complete!");
+  console.log(`  Files uploaded: ${files.length}`);
   if (customDomainUrl) {
-    console.log(`🌐 URL: ${customDomainUrl}`);
+    console.log(`  URL: ${customDomainUrl}`);
   } else if (cloudFrontUrl) {
-    console.log(`🌐 URL: ${cloudFrontUrl}`);
+    console.log(`  URL: ${cloudFrontUrl}`);
   }
-  console.log("=".repeat(60));
+  console.log("============================================================");
 }
 
 main().catch((error) => {

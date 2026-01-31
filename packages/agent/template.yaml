@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: AWP Agent Stack - WebUI hosting and backend services for browser-based AI agent
+Description: AWP Agent - Browser-based AI agent with CAS integration
 
 Parameters:
   CustomDomainName:

@@ -1,15 +1,17 @@
 {
-  "name": "@agent-web-portal/awp-agent-webui",
-  "version": "0.0.1",
-  "description": "Browser-based AI agent with AWP CAS integration",
+  "name": "@agent-web-portal/agent",
+  "version": "0.1.0",
+  "description": "AWP Agent - Browser-based AI agent with CAS integration (fullstack)",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "lint": "biome check src",
+    "dev": "vite --config frontend/vite.config.ts",
+    "build": "bun run build:frontend",
+    "build:frontend": "vite build --config frontend/vite.config.ts",
+    "preview": "vite preview --config frontend/vite.config.ts",
+    "lint": "biome check frontend/src",
     "typecheck": "tsc --noEmit",
-    "deploy": "bun run scripts/deploy.ts"
+    "deploy": "bun run scripts/deploy.ts",
+    "deploy:frontend": "bun run scripts/deploy-frontend.ts"
   },
   "dependencies": {
     "@agent-web-portal/awp-client-browser": "workspace:*",
@@ -34,6 +36,6 @@
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
     "typescript": "^5.3.3",
-    "vite": "^5.1.0"
+    "vite": "^6.4.1"
   }
 }

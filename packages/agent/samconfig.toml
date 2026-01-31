@@ -1,0 +1,11 @@
+# AWP Agent Stack - SAM CLI Configuration
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "agent"
+resolve_s3 = true
+s3_prefix = "agent"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "CustomDomainName=\"agent.awp.shazhou.me\" CustomDomainCertificateArn=\"arn:aws:acm:us-east-1:914369185440:certificate/755d1707-063a-4256-91c6-31cddac32799\""
