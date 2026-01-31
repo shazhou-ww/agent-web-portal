@@ -232,6 +232,7 @@ export class LambdaHandlerBuilder {
     }
 
     // Create and return the Lambda handler
+    // Note: GET /api/awp is handled by awp-server-core's ServerPortal
     return createLambdaHandler(portal, {
       ...finalOptions,
       customRoutes: [...skillRoutes, ...this.customRoutes],

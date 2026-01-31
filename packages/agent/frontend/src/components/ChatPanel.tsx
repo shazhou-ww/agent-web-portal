@@ -4,7 +4,7 @@
  * Main chat interface with message display and input
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import {
   Box,
   TextField,
@@ -66,37 +66,55 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const shouldScrollRef = useRef(true);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottom = useCallback(() => {
+    if (shouldScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
+
+  // Track if user has scrolled up
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    // If user is near bottom (within 100px), auto-scroll is enabled
+    shouldScrollRef.current = scrollHeight - scrollTop - clientHeight < 100;
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingMessage]);
-
-  const handleSend = async () => {
-    const content = input.trim();
-    if (!content || state !== 'idle' || !hasModel) return;
-
-    setInput('');
-    await onSendMessage(content);
-    inputRef.current?.focus();
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  }, [messages, streamingMessage, scrollToBottom]);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isProcessing = state !== 'idle' && state !== 'error';
   const hasModel = selectedModel !== null;
   const canSend = hasModel && input.trim() && !isProcessing;
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    const content = input.trim();
+    if (!content || state !== 'idle' || !hasModel) return;
+
+    setInput('');
+    await onSendMessage(content);
+    inputRef.current?.focus();
+  }, [input, state, hasModel, onSendMessage]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }, [handleSend]);
 
   return (
     <Box sx={{ 
@@ -108,12 +126,16 @@ export function ChatPanel({
       bgcolor: 'background.paper',
     }}>
       {/* Messages - scrollable area */}
-      <Box sx={{ 
-        flex: 1, 
-        overflow: 'auto', 
-        minHeight: 0,
-        p: { xs: 1, sm: 2 },
-      }}>
+      <Box 
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        sx={{ 
+          flex: 1, 
+          overflow: 'auto', 
+          minHeight: 0,
+          p: { xs: 1, sm: 2 },
+        }}
+      >
             {messages.length === 0 && !streamingMessage && (
               <Box
                 sx={{
@@ -194,7 +216,7 @@ export function ChatPanel({
           <TextField
             inputRef={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             multiline
@@ -232,7 +254,7 @@ export function ChatPanel({
 /**
  * Message Component
  */
-function MessageBubble({ message }: { message: Message; isMobile?: boolean }) {
+const MessageBubble = memo(function MessageBubble({ message }: { message: Message; isMobile?: boolean }) {
   const [toolExpanded, setToolExpanded] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
 
@@ -403,11 +425,11 @@ function MessageBubble({ message }: { message: Message; isMobile?: boolean }) {
       )}
     </Box>
   );
-}
+});
 /**
  * Streaming Message Component
  */
-function StreamingMessageBubble({ streamingMessage }: { streamingMessage: StreamingMessage; isMobile?: boolean }) {
+const StreamingMessageBubble = memo(function StreamingMessageBubble({ streamingMessage }: { streamingMessage: StreamingMessage; isMobile?: boolean }) {
   return (
     <Box sx={{ mb: 2 }}>
       {/* Role label */}
@@ -451,4 +473,4 @@ function StreamingMessageBubble({ streamingMessage }: { streamingMessage: Stream
       )}
     </Box>
   );
-}
+});

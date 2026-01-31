@@ -9,7 +9,6 @@ import { createServerHandler } from "@agent-web-portal/awp-server-lambda";
 import { createAuthRoutes } from "./router.ts";
 import { imageWorkshopSkills } from "./skills.ts";
 import { fluxTools } from "./tools/flux/index.ts";
-import { stabilityTools } from "./tools/stability/index.ts";
 import { loadConfig } from "./types.ts";
 
 // Load configuration
@@ -22,7 +21,7 @@ const skillBaseUrl = config.callbackBaseUrl
 
 // Create the Lambda handler using the builder pattern
 export const handler = createServerHandler({
-  name: "image-workshop",
+  name: "Image Workshop",
   version: "1.0.0",
   description: "AI Image Generation and Editing Workshop",
 })
@@ -30,7 +29,7 @@ export const handler = createServerHandler({
     endpoint: config.casEndpoint ?? "",
     agentToken: process.env.CAS_AGENT_TOKEN ?? "",
   })
-  .registerTools([...fluxTools, ...stabilityTools])
+  .registerTools(fluxTools)
   .registerSkills(imageWorkshopSkills)
   .withSkillBaseUrl(skillBaseUrl)
   .withRoutes(createAuthRoutes(config))

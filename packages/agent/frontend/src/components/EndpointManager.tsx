@@ -30,9 +30,8 @@ import type { RegisteredEndpoint } from '../core';
 export interface EndpointManagerProps {
   endpoints: RegisteredEndpoint[];
   isLoading: boolean;
-  defaultCasEndpoint: string;
-  onRegister: (url: string, casEndpoint: string, alias?: string) => Promise<unknown>;
-  onUpdate: (endpointId: string, url: string, casEndpoint: string, alias?: string) => Promise<unknown>;
+  onRegister: (url: string, alias?: string) => Promise<unknown>;
+  onUpdate: (endpointId: string, url: string, alias?: string) => Promise<unknown>;
   onUnregister: (endpointId: string) => void;
   onRefresh: () => Promise<void>;
 }
@@ -40,7 +39,6 @@ export interface EndpointManagerProps {
 export function EndpointManager({
   endpoints,
   isLoading,
-  defaultCasEndpoint,
   onRegister,
   onUpdate,
   onUnregister,
@@ -51,14 +49,12 @@ export function EndpointManager({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEndpoint, setEditingEndpoint] = useState<RegisteredEndpoint | null>(null);
   const [url, setUrl] = useState('');
-  const [casEndpoint, setCasEndpoint] = useState(defaultCasEndpoint);
   const [alias, setAlias] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const resetForm = () => {
     setUrl('');
-    setCasEndpoint(defaultCasEndpoint);
     setAlias('');
     setEditingEndpoint(null);
     setError(null);
@@ -72,7 +68,6 @@ export function EndpointManager({
   const handleOpenEdit = (endpoint: RegisteredEndpoint) => {
     setEditingEndpoint(endpoint);
     setUrl(endpoint.url);
-    setCasEndpoint(endpoint.casEndpoint);
     setAlias(endpoint.alias || '');
     setError(null);
     setDialogOpen(true);
@@ -89,22 +84,10 @@ export function EndpointManager({
       return;
     }
 
-    if (!casEndpoint.trim()) {
-      setError('CAS URL is required');
-      return;
-    }
-
     try {
       new URL(url);
     } catch {
       setError('Invalid AWP URL format');
-      return;
-    }
-
-    try {
-      new URL(casEndpoint);
-    } catch {
-      setError('Invalid CAS URL format');
       return;
     }
 
@@ -113,9 +96,9 @@ export function EndpointManager({
 
     try {
       if (editingEndpoint) {
-        await onUpdate(editingEndpoint.endpointId, url.trim(), casEndpoint.trim(), alias.trim() || undefined);
+        await onUpdate(editingEndpoint.endpointId, url.trim(), alias.trim() || undefined);
       } else {
-        await onRegister(url.trim(), casEndpoint.trim(), alias.trim() || undefined);
+        await onRegister(url.trim(), alias.trim() || undefined);
       }
       handleClose();
     } catch (err) {
@@ -179,7 +162,7 @@ export function EndpointManager({
                     flexWrap: 'wrap',
                   }}>
                     <Typography component="span" variant="body2" fontWeight="medium" noWrap>
-                      {endpoint.alias || endpoint.endpointId}
+                      {endpoint.alias || endpoint.title || endpoint.endpointId}
                     </Typography>
                     <Chip
                       label={endpoint.isAuthenticated ? 'Auth' : 'No Auth'}
@@ -187,16 +170,24 @@ export function EndpointManager({
                       color={endpoint.isAuthenticated ? 'success' : 'warning'}
                       sx={{ fontSize: '0.65rem', height: 20 }}
                     />
-                    <Chip
-                      label="CAS"
-                      size="small"
-                      color="info"
-                      sx={{ fontSize: '0.65rem', height: 20 }}
-                    />
                   </Box>
                 }
                 secondary={
                   <Box component="span" sx={{ display: 'block' }}>
+                    {endpoint.description && (
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ 
+                          display: 'block',
+                          fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                          mb: 0.5,
+                        }}
+                      >
+                        {endpoint.description}
+                      </Typography>
+                    )}
                     <Typography
                       component="span"
                       variant="body2"
@@ -211,23 +202,7 @@ export function EndpointManager({
                       }}
                       title={endpoint.url}
                     >
-                      AWP: {endpoint.url}
-                    </Typography>
-                    <Typography
-                      component="span"
-                      variant="body2"
-                      color="text.secondary"
-                      noWrap
-                      sx={{ 
-                        display: 'block',
-                        fontFamily: 'monospace', 
-                        fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                      title={endpoint.casEndpoint}
-                    >
-                      CAS: {endpoint.casEndpoint}
+                      {endpoint.url}
                     </Typography>
                   </Box>
                 }
@@ -280,20 +255,6 @@ export function EndpointManager({
               fullWidth
               placeholder="https://example.com/api/awp"
               autoFocus
-              sx={{
-                '& .MuiInputBase-root': {
-                  fontSize: { xs: '16px', sm: 'inherit' },
-                },
-              }}
-            />
-
-            <TextField
-              label="CAS Endpoint URL"
-              value={casEndpoint}
-              onChange={(e) => setCasEndpoint(e.target.value)}
-              fullWidth
-              placeholder="https://cas.example.com/api"
-              helperText="The CAS server endpoint for blob storage"
               sx={{
                 '& .MuiInputBase-root': {
                   fontSize: { xs: '16px', sm: 'inherit' },

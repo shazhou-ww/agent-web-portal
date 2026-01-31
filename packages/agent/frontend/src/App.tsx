@@ -86,7 +86,6 @@ export function App() {
     updateEndpoint,
     unregisterEndpoint,
     refresh,
-    defaultCasEndpoint,
   } = useAwpManager();
   const {
     conversations,
@@ -237,9 +236,8 @@ export function App() {
             <EndpointManager
               endpoints={endpoints}
               isLoading={endpointsLoading}
-              defaultCasEndpoint={defaultCasEndpoint}
-              onRegister={registerEndpoint}
-              onUpdate={updateEndpoint}
+              onRegister={(url, alias) => registerEndpoint(url, casEndpoint, alias)}
+              onUpdate={(id, url, alias) => updateEndpoint(id, url, casEndpoint, alias)}
               onUnregister={unregisterEndpoint}
               onRefresh={refresh}
             />

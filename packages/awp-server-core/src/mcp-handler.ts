@@ -48,7 +48,12 @@ export class McpHandler {
    * @returns HTTP response
    */
   async handle(request: Request): Promise<Response> {
-    // Only accept POST requests
+    // Handle GET requests - return service info
+    if (request.method === "GET") {
+      return this.handleGetInfo();
+    }
+
+    // Only accept POST requests for JSON-RPC
     if (request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,
@@ -293,5 +298,25 @@ export class McpHandler {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  /**
+   * Handle GET request - return service info
+   */
+  private handleGetInfo(): Response {
+    const config = this.portal.getConfig();
+    return new Response(
+      JSON.stringify({
+        title: config.name,
+        description: config.description ?? `${config.name} AWP Service`,
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=3600",
+        },
+      }
+    );
   }
 }

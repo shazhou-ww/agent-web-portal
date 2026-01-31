@@ -70,12 +70,24 @@ export interface RegisteredEndpoint {
   casEndpoint: string;
   /** Optional alias for display */
   alias?: string;
+  /** Service title (from server) */
+  title?: string;
+  /** Service description (from server) */
+  description?: string;
   /** AWP client instance */
   client: AwpClient;
   /** Auth instance (optional) */
   auth?: AwpAuth;
   /** Whether currently authenticated */
   isAuthenticated: boolean;
+}
+
+/**
+ * Service info returned from GET /api/awp
+ */
+export interface ServiceInfo {
+  title: string;
+  description: string;
 }
 
 /**
@@ -235,11 +247,24 @@ export class AwpCasManager {
       casStorage: this.casStorage,
     });
 
+    // Fetch service info from server
+    let title: string | undefined;
+    let description: string | undefined;
+    try {
+      const info = await this.fetchServiceInfo(normalizedUrl);
+      title = info.title;
+      description = info.description;
+    } catch (error) {
+      console.warn("[AwpCasManager] Failed to fetch service info:", error);
+    }
+
     const registered: RegisteredEndpoint = {
       endpointId,
       url: normalizedUrl,
       casEndpoint: normalizedCasEndpoint,
       alias,
+      title,
+      description,
       client,
       auth,
       isAuthenticated,
@@ -247,6 +272,29 @@ export class AwpCasManager {
 
     this.endpoints.set(endpointId, registered);
     return registered;
+  }
+
+  /**
+   * Fetch service info from AWP endpoint
+   * GET /api/awp returns { title, description }
+   */
+  async fetchServiceInfo(url: string): Promise<ServiceInfo> {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch service info: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      title: data.title ?? "AWP Service",
+      description: data.description ?? "",
+    };
   }
 
   /**

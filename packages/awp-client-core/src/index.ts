@@ -41,6 +41,7 @@ export {
   type AwpCasManagerOptions,
   type PrefixedTool,
   type RegisteredEndpoint,
+  type ServiceInfo,
   type SkillFrontmatter,
   type SkillInfo,
 } from "./manager.ts";
