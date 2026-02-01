@@ -1389,14 +1389,15 @@ ${authInfo}
 ║                                                              ║
 ${storageInfo.padEnd(58)}║
 ║  Endpoints:                                                  ║
-║    GET  /api/health            - Health check                ║
-║    GET  /api/oauth/config      - Cognito config              ║
-║    GET  /api/oauth/me          - Current user info           ║
-║    GET  /api/auth/clients      - List AWP clients            ║
-║    GET  /api/auth/tokens       - List agent tokens           ║
-║    POST /api/auth/ticket       - Create ticket               ║
-║    GET  /api/admin/users       - List users (admin)          ║
-║    POST /api/cas/{scope}/...   - CAS operations              ║
+║    GET  /api/health             - Health check               ║
+║    GET  /api/oauth/config       - Cognito config             ║
+║    GET  /api/oauth/me           - Current user info          ║
+║    GET  /api/auth/clients       - List AWP clients           ║
+║    GET  /api/auth/tokens        - List agent tokens          ║
+║    POST /api/auth/ticket        - Create ticket              ║
+║    GET  /api/admin/users        - List users (admin)         ║
+║    */api/realm/{realmId}/...   - Realm operations (auth)    ║
+║    */api/ticket/{ticketId}/... - Ticket operations (no auth)║
 ╚══════════════════════════════════════════════════════════════╝
 `);
 

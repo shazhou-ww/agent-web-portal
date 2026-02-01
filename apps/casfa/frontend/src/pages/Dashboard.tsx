@@ -77,7 +77,7 @@ function StatCard({ title, value, icon, color }: StatCardProps) {
 }
 
 export default function Dashboard() {
-  const { getAccessToken, userRole } = useAuth();
+  const { getAccessToken, userRole, realm } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -97,6 +97,8 @@ export default function Dashboard() {
   };
 
   const fetchStats = useCallback(async () => {
+    if (!realm) return; // Wait for realm to be loaded
+    
     try {
       setLoading(true);
       setError("");
@@ -117,7 +119,7 @@ export default function Dashboard() {
       }
 
       // Fetch nodes stats - get first page to count
-      const nodesResponse = await apiRequest("/api/cas/~/nodes?limit=100", {}, token);
+      const nodesResponse = await apiRequest(`/api/realm/${realm}/nodes?limit=100`, {}, token);
 
       let nodeCount: number | string = 0;
       let totalSize = 0;
@@ -146,7 +148,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [getAccessToken]);
+  }, [getAccessToken, realm]);
 
   useEffect(() => {
     fetchStats();

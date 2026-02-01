@@ -56,6 +56,8 @@ interface AuthContextType {
   authConfig: AuthConfig | null;
   /** Current user role from GET /api/oauth/me (null while loading or not logged in) */
   userRole: UserRole | null;
+  /** Current user's realm ID from GET /api/oauth/me (null while loading or not logged in) */
+  realm: string | null;
   isAdmin: boolean;
   loginWithGoogle: () => void;
   loginWithMicrosoft: () => void;
@@ -119,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [tokens, setTokens] = useState<AuthTokens | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [realm, setRealm] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Create user pool when config is loaded
@@ -223,6 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setTokens(null);
     setUserRole(null);
+    setRealm(null);
   }, []);
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
@@ -275,10 +279,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkSession();
   }, [authConfig, refreshSession]);
 
-  // Fetch current user role from GET /api/auth/me when user is logged in
+  // Fetch current user role and realm from GET /api/oauth/me when user is logged in
   useEffect(() => {
     if (!user || !tokens) {
       setUserRole(null);
+      setRealm(null);
       return;
     }
     let cancelled = false;
@@ -291,8 +296,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { role?: UserRole };
-        if (!cancelled && data.role) setUserRole(data.role);
+        const data = (await res.json()) as { role?: UserRole; realm?: string };
+        if (!cancelled) {
+          if (data.role) setUserRole(data.role);
+          if (data.realm) setRealm(data.realm);
+        }
       } catch {
         // ignore
       }
@@ -312,6 +320,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         authConfig,
         userRole,
+        realm,
         isAdmin: userRole === "admin",
         loginWithGoogle,
         loginWithMicrosoft,

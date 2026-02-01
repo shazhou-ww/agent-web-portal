@@ -360,12 +360,8 @@ export class AuthMiddleware {
    * Check if auth context can access the requested realm
    */
   checkRealmAccess(auth: AuthContext, requestedRealm: string): boolean {
-    // Resolve @me or ~ alias
-    const effectiveRealm =
-      requestedRealm === "@me" || requestedRealm === "~" ? auth.realm : requestedRealm;
-
     // Check if auth realm matches requested realm
-    return auth.realm === effectiveRealm;
+    return auth.realm === requestedRealm;
   }
 
   /**
@@ -460,10 +456,11 @@ export class AuthMiddleware {
   }
 
   /**
-   * Resolve realm alias (@me or ~ -> actual realm)
+   * Resolve realm - returns the realm as-is (aliases removed)
+   * @deprecated No longer needed as aliases are not supported. Use requestedRealm directly.
    */
   resolveRealm(auth: AuthContext, requestedRealm: string): string {
-    return requestedRealm === "@me" || requestedRealm === "~" ? auth.realm : requestedRealm;
+    return requestedRealm;
   }
 
   /**
@@ -474,9 +471,9 @@ export class AuthMiddleware {
   }
 
   /**
-   * @deprecated Use resolveRealm instead
+   * @deprecated Use requestedRealm directly instead
    */
   resolveScope(auth: AuthContext, requestedScope: string): string {
-    return this.resolveRealm(auth, requestedScope);
+    return requestedScope;
   }
 }

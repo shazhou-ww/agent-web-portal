@@ -156,7 +156,7 @@ async function handleGetTicket(params: {
 
   const data = await response.json();
   // The server returns the full endpoint URL in the format:
-  // https://cas.example.com/api/cas/{realm}/ticket/{ticketId}
+  // https://cas.example.com/api/ticket/{ticketId}
   // Use it directly for #cas.endpoint compatibility
   return {
     endpoint: data.endpoint,
@@ -256,11 +256,16 @@ async function handleWrite(params: {
   };
 }
 
-async function handleListNodes(params: { limit?: number }): Promise<{
+async function handleListNodes(params: { limit?: number; realm?: string }): Promise<{
   nodes: Array<{ key: string; contentType?: string; size: number; createdAt: number }>;
 }> {
   const limit = params.limit || 100;
-  const response = await apiRequest(`/api/cas/@me/nodes?limit=${limit}`);
+  // Note: realm must be provided when using this function
+  // In SSE context, the realm should be obtained from the authenticated session
+  if (!params.realm) {
+    throw new Error("realm parameter is required for listing nodes");
+  }
+  const response = await apiRequest(`/api/realm/${params.realm}/nodes?limit=${limit}`);
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));

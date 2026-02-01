@@ -141,7 +141,7 @@ export interface CreateTicketRequest {
 
 export interface CreateTicketResponse {
   id: string;
-  endpoint: string; // Full endpoint URL: /api/cas/{ticketId}
+  endpoint: string; // Full endpoint URL: /api/ticket/{ticketId}
   expiresAt: string;
   realm: string;
   scope: string | string[];

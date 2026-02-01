@@ -25,8 +25,16 @@ if (!CAS_AGENT_TOKEN) {
   process.exit(1);
 }
 
-// Default endpoint for direct agent access
-const DEFAULT_ENDPOINT = `${CAS_ENDPOINT}/api/cas/@me`;
+// User realm - fetched on initialization
+let USER_REALM: string | null = null;
+
+// Helper to get the realm endpoint
+function getRealmEndpoint(): string {
+  if (!USER_REALM) {
+    throw new Error("User realm not initialized. Wait for initialization.");
+  }
+  return `${CAS_ENDPOINT}/api/realm/${USER_REALM}`;
+}
 
 // MCP Tool definitions
 const MCP_TOOLS = [
@@ -219,7 +227,7 @@ async function handleRead(params: {
   key: string;
   path?: string;
 }): Promise<{ content: string; contentType: string; size: number }> {
-  const endpoint = params.endpoint || DEFAULT_ENDPOINT;
+  const endpoint = params.endpoint || getRealmEndpoint();
   const path = params.path || ".";
   const url =
     path === "."
@@ -262,7 +270,7 @@ async function handleWrite(params: {
   contentType?: string;
   isBase64?: boolean;
 }): Promise<{ key: string; size: number }> {
-  const endpoint = params.endpoint || DEFAULT_ENDPOINT;
+  const endpoint = params.endpoint || getRealmEndpoint();
   const contentType = params.contentType || "text/plain";
   const content = params.isBase64
     ? Buffer.from(params.content, "base64")
@@ -294,7 +302,8 @@ async function handleListNodes(params: { limit?: number }): Promise<{
   nodes: Array<{ key: string; contentType?: string; size: number; createdAt: number }>;
 }> {
   const limit = params.limit || 100;
-  const response = await apiRequest(`/api/cas/@me/nodes?limit=${limit}`);
+  const endpoint = getRealmEndpoint();
+  const response = await apiRequest(`${endpoint}/nodes?limit=${limit}`.replace(CAS_ENDPOINT, ""));
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -312,6 +321,21 @@ async function handleRequest(request: McpRequest): Promise<void> {
   try {
     switch (method) {
       case "initialize":
+        // Fetch user realm on initialization
+        try {
+          const meResponse = await apiRequest("/api/oauth/me");
+          if (meResponse.ok) {
+            const meData = await meResponse.json();
+            USER_REALM = meData.realm;
+          } else {
+            throw new Error("Failed to get user realm");
+          }
+        } catch (err) {
+          console.error("Failed to initialize realm:", err);
+          sendResponse(mcpError(id, -32603, "Failed to initialize: could not get user realm"));
+          return;
+        }
+        
         sendResponse(
           mcpSuccess(id, {
             protocolVersion: "2024-11-05",

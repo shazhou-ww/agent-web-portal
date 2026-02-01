@@ -293,7 +293,7 @@ export class McpHandler {
     );
 
     const ticketId = TokensDb.extractTokenId(ticket.pk);
-    const endpoint = `${this.serverConfig.baseUrl}/api/cas/${ticket.realm}/ticket/${ticketId}`;
+    const endpoint = `${this.serverConfig.baseUrl}/api/ticket/${ticketId}`;
 
     return mcpSuccess(id, {
       content: [

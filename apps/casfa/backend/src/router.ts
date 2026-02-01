@@ -19,7 +19,6 @@ import { AuthMiddleware } from "./middleware/auth.ts";
 import type {
   AuthContext,
   CasConfig,
-  CasConfigResponse,
   CasEndpointInfo,
   HttpRequest,
   HttpResponse,
@@ -191,11 +190,6 @@ export class Router {
         return jsonResponse(200, { status: "ok", service: "casfa" });
       }
 
-      // Config endpoint (no auth required)
-      if (apiPath === "/cas/config" && req.method === "GET") {
-        return this.handleGetConfig();
-      }
-
       // OAuth routes (login/authentication - no auth required for most)
       if (apiPath.startsWith("/oauth/")) {
         return this.handleOAuth({
@@ -233,9 +227,18 @@ export class Router {
         });
       }
 
-      // CAS routes (auth required)
-      if (apiPath.startsWith("/cas/")) {
-        return this.handleCas({
+      // Realm routes (requires Authorization header)
+      if (apiPath.startsWith("/realm/")) {
+        return this.handleRealm({
+          ...req,
+          path: apiPath,
+          originalPath: req.originalPath ?? req.path,
+        });
+      }
+
+      // Ticket routes (ticket ID in path is the credential, no header needed)
+      if (apiPath.startsWith("/ticket/")) {
+        return this.handleTicket({
           ...req,
           path: apiPath,
           originalPath: req.originalPath ?? req.path,
@@ -266,21 +269,6 @@ export class Router {
     }
 
     return this.mcpHandler.handle(req, auth);
-  }
-
-  // ============================================================================
-  // Config Route
-  // ============================================================================
-
-  private handleGetConfig(): HttpResponse {
-    const serverConfig = loadServerConfig();
-    const response: CasConfigResponse = {
-      chunkSize: serverConfig.chunkSize,
-      maxChildren: serverConfig.maxChildren,
-      maxCollectionChildren: serverConfig.maxCollectionChildren,
-      maxPayloadSize: serverConfig.maxPayloadSize,
-    };
-    return jsonResponse(200, response);
   }
 
   // ============================================================================
@@ -568,8 +556,8 @@ export class Router {
         );
 
         const ticketId = TokensDb.extractTokenId(ticket.pk);
-        // Build endpoint URL - ticket ID is the realm
-        const endpoint = `${serverConfig.baseUrl}/api/cas/${ticketId}`;
+        // Build endpoint URL - ticket ID is the credential
+        const endpoint = `${serverConfig.baseUrl}/api/ticket/${ticketId}`;
 
         return jsonResponse(201, {
           id: ticketId,
@@ -724,185 +712,190 @@ export class Router {
   }
 
   // ============================================================================
-  // CAS Routes
+  // Realm Routes (requires Authorization header)
   // ============================================================================
 
-  private async handleCas(req: HttpRequest): Promise<HttpResponse> {
-    // Parse path: /cas/{realm}/...
-    const casMatch = req.path.match(/^\/cas\/([^/]+)(.*)$/);
-    if (!casMatch) {
-      return errorResponse(404, "Invalid CAS path");
+  private async handleRealm(req: HttpRequest): Promise<HttpResponse> {
+    // Parse path: /realm/{realmId}/...
+    const realmMatch = req.path.match(/^\/realm\/([^/]+)(.*)$/);
+    if (!realmMatch) {
+      return errorResponse(404, "Invalid realm path");
     }
 
-    const requestedRealm = casMatch[1]!;
-    const subPath = casMatch[2] ?? "";
+    const realmId = realmMatch[1]!;
+    const subPath = realmMatch[2] ?? "";
 
-    // GET /cas/{realm} - Return endpoint info (no auth required for ticket realms)
-    if (req.method === "GET" && subPath === "") {
-      return this.handleGetEndpointInfo(req, requestedRealm);
-    }
-
-    // Authenticate - ticket realm uses ticket ID directly, otherwise standard auth
-    let auth: AuthContext | null;
-    if (requestedRealm.startsWith("tkt_")) {
-      auth = await this.authMiddleware.authenticateByTicketId(requestedRealm);
-    } else {
-      auth = await this.authMiddleware.authenticate(req);
-    }
+    // Authenticate - requires Authorization header
+    const auth = await this.authMiddleware.authenticate(req);
     if (!auth) {
-      return errorResponse(401, "Unauthorized");
+      return errorResponse(401, "Authorization required");
     }
 
-    // Check realm access
-    if (!this.authMiddleware.checkRealmAccess(auth, requestedRealm)) {
+    // Check realm access - user can only access their own realm
+    if (!this.authMiddleware.checkRealmAccess(auth, realmId)) {
       return errorResponse(403, "Access denied to this realm");
     }
 
-    const realm = this.authMiddleware.resolveRealm(auth, requestedRealm);
+    // GET /realm/{realmId} - Return endpoint info
+    if (req.method === "GET" && subPath === "") {
+      return this.handleGetRealmInfo(auth, realmId);
+    }
 
-    // POST /cas/{realm}/resolve
+    return this.handleCasOperations(auth, realmId, subPath, req);
+  }
+
+  // ============================================================================
+  // Ticket Routes (ticket ID in path is the credential)
+  // ============================================================================
+
+  private async handleTicket(req: HttpRequest): Promise<HttpResponse> {
+    // Parse path: /ticket/{ticketId}/...
+    const ticketMatch = req.path.match(/^\/ticket\/([^/]+)(.*)$/);
+    if (!ticketMatch) {
+      return errorResponse(404, "Invalid ticket path");
+    }
+
+    const ticketId = ticketMatch[1]!;
+    const subPath = ticketMatch[2] ?? "";
+
+    // GET /ticket/{ticketId} - Return endpoint info (no auth header needed)
+    if (req.method === "GET" && subPath === "") {
+      return this.handleGetTicketInfo(ticketId);
+    }
+
+    // Authenticate by ticket ID - no header needed, ticket ID is the credential
+    const auth = await this.authMiddleware.authenticateByTicketId(ticketId);
+    if (!auth) {
+      return errorResponse(401, "Invalid or expired ticket");
+    }
+
+    // Use the ticket's realm for operations
+    const realm = auth.realm;
+
+    return this.handleCasOperations(auth, realm, subPath, req);
+  }
+
+  // ============================================================================
+  // Shared CAS Operations
+  // ============================================================================
+
+  private async handleCasOperations(
+    auth: AuthContext,
+    realm: string,
+    subPath: string,
+    req: HttpRequest
+  ): Promise<HttpResponse> {
+    // POST /resolve
     if (req.method === "POST" && subPath === "/resolve") {
       return this.handleResolve(auth, realm, req);
     }
 
-    // GET /cas/{realm}/nodes - List all nodes
+    // GET /nodes - List all nodes
     if (req.method === "GET" && subPath === "/nodes") {
       return this.handleListNodes(auth, realm, req);
     }
 
-    // PUT /cas/{realm}/chunk/:key - Upload chunk (client-side chunking)
+    // PUT /chunk/:key - Upload chunk (client-side chunking)
     const putChunkMatch = subPath.match(/^\/chunk\/(.+)$/);
     if (req.method === "PUT" && putChunkMatch) {
       const key = decodeURIComponent(putChunkMatch[1]!);
       return this.handlePutChunk(auth, realm, key, req);
     }
 
-    // GET /cas/{realm}/chunk/:key - Get chunk data
+    // GET /chunk/:key - Get chunk data
     const getChunkMatch = subPath.match(/^\/chunk\/(.+)$/);
     if (req.method === "GET" && getChunkMatch) {
       const key = decodeURIComponent(getChunkMatch[1]!);
       return this.handleGetChunk(auth, realm, key);
     }
 
-    // PUT /cas/{realm}/file - Upload file node (references chunks)
+    // PUT /file - Upload file node (references chunks)
     if (req.method === "PUT" && subPath === "/file") {
       return this.handlePutFile(auth, realm, req);
     }
 
-    // PUT /cas/{realm}/collection - Upload collection node
+    // PUT /collection - Upload collection node
     if (req.method === "PUT" && subPath === "/collection") {
       return this.handlePutCollection(auth, realm, req);
     }
 
-    // GET /cas/{realm}/node/:key - Get application layer node
+    // GET /node/:key - Get application layer node
     const getNodeMatch = subPath.match(/^\/node\/(.+)$/);
     if (req.method === "GET" && getNodeMatch) {
       const key = decodeURIComponent(getNodeMatch[1]!);
       return this.handleGetNode(auth, realm, key);
     }
 
-    // GET /cas/{realm}/raw/:key - Get storage layer node
+    // GET /raw/:key - Get storage layer node
     const getRawMatch = subPath.match(/^\/raw\/(.+)$/);
     if (req.method === "GET" && getRawMatch) {
       const key = decodeURIComponent(getRawMatch[1]!);
       return this.handleGetRawNode(auth, realm, key);
     }
 
-    // Legacy: PUT /cas/{realm}/node/:key (for backward compatibility)
-    const putNodeMatch = subPath.match(/^\/node\/(.+)$/);
-    if (req.method === "PUT" && putNodeMatch) {
-      const key = decodeURIComponent(putNodeMatch[1]!);
-      return this.handlePutChunk(auth, realm, key, req);
-    }
-
-    // Legacy: GET /cas/{realm}/dag/:key
-    const getDagMatch = subPath.match(/^\/dag\/(.+)$/);
-    if (req.method === "GET" && getDagMatch) {
-      const key = decodeURIComponent(getDagMatch[1]!);
-      return this.handleGetDag(auth, realm, key);
-    }
-
-    return errorResponse(404, "CAS endpoint not found");
+    return errorResponse(404, "Endpoint not found");
   }
 
   /**
-   * GET /cas/{realm} - Return endpoint info (CasEndpointInfo)
-   *
-   * Works for all realm types:
-   * - tkt_{id}: Ticket realm - no auth required, ticket ID is the credential
-   * - @me / ~: User realm - requires auth
-   * - usr_{id}: Explicit user realm - requires auth
+   * GET /realm/{realmId} - Return endpoint info for user realm
    */
-  private async handleGetEndpointInfo(
-    req: HttpRequest,
-    requestedRealm: string
-  ): Promise<HttpResponse> {
+  private handleGetRealmInfo(auth: AuthContext, realmId: string): HttpResponse {
     const serverConfig = loadServerConfig();
 
-    // Ticket realm - no auth required
-    if (requestedRealm.startsWith("tkt_")) {
-      const ticketId = requestedRealm;
-      const ticket = await this.tokensDb.getTicket(ticketId);
-
-      if (!ticket) {
-        return errorResponse(404, "Ticket not found");
-      }
-
-      if (ticket.expiresAt < Date.now()) {
-        return errorResponse(410, "Ticket expired");
-      }
-
-      // Build read permission
-      const read: boolean | string[] = Array.isArray(ticket.scope)
-        ? ticket.scope
-        : [ticket.scope];
-
-      // Build write permission
-      let write: false | { quota?: number; accept?: string[] } = false;
-      if (ticket.writable && !ticket.written) {
-        if (ticket.writable === true) {
-          write = {};
-        } else {
-          write = {
-            quota: ticket.writable.quota,
-            accept: ticket.writable.accept,
-          };
-        }
-      }
-
-      const info: CasEndpointInfo = {
-        realm: ticket.realm,
-        read,
-        write,
-        expiresAt: new Date(ticket.expiresAt).toISOString(),
-        config: {
-          chunkSize: ticket.config.chunkSize,
-          maxChildren: ticket.config.maxChildren,
-        },
-      };
-
-      return jsonResponse(200, info);
-    }
-
-    // User realm - requires auth
-    const auth = await this.authMiddleware.authenticate(req);
-    if (!auth) {
-      return errorResponse(401, "Unauthorized");
-    }
-
-    if (!this.authMiddleware.checkRealmAccess(auth, requestedRealm)) {
-      return errorResponse(403, "Access denied to this realm");
-    }
-
-    const realm = this.authMiddleware.resolveRealm(auth, requestedRealm);
-
     const info: CasEndpointInfo = {
-      realm,
+      realm: realmId,
       read: true,
       write: auth.canWrite ? {} : false,
       config: {
         chunkSize: serverConfig.chunkSize,
         maxChildren: serverConfig.maxChildren,
+      },
+    };
+
+    return jsonResponse(200, info);
+  }
+
+  /**
+   * GET /ticket/{ticketId} - Return endpoint info for ticket
+   * No auth header needed - ticket ID is the credential
+   */
+  private async handleGetTicketInfo(ticketId: string): Promise<HttpResponse> {
+    const ticket = await this.tokensDb.getTicket(ticketId);
+
+    if (!ticket) {
+      return errorResponse(404, "Ticket not found");
+    }
+
+    if (ticket.expiresAt < Date.now()) {
+      return errorResponse(410, "Ticket expired");
+    }
+
+    // Build read permission
+    const read: boolean | string[] = Array.isArray(ticket.scope)
+      ? ticket.scope
+      : [ticket.scope];
+
+    // Build write permission
+    let write: false | { quota?: number; accept?: string[] } = false;
+    if (ticket.writable && !ticket.written) {
+      if (ticket.writable === true) {
+        write = {};
+      } else {
+        write = {
+          quota: ticket.writable.quota,
+          accept: ticket.writable.accept,
+        };
+      }
+    }
+
+    const info: CasEndpointInfo = {
+      realm: ticket.realm,
+      read,
+      write,
+      expiresAt: new Date(ticket.expiresAt).toISOString(),
+      config: {
+        chunkSize: ticket.config.chunkSize,
+        maxChildren: ticket.config.maxChildren,
       },
     };
 
@@ -1297,58 +1290,6 @@ export class Router {
 
     // Chunk nodes are not exposed in app layer
     return rawNode;
-  }
-
-  /**
-   * GET /cas/{realm}/dag/:key (legacy, for backward compatibility)
-   */
-  private async handleGetDag(auth: AuthContext, realm: string, key: string): Promise<HttpResponse> {
-    if (!this.authMiddleware.checkReadAccess(auth, key)) {
-      return errorResponse(403, "Read access denied");
-    }
-
-    // Check ownership of root
-    const hasAccess = await this.ownershipDb.hasOwnership(realm, key);
-    if (!hasAccess) {
-      return errorResponse(404, "Not found");
-    }
-
-    // Collect all DAG nodes and content types
-    const nodes: Record<string, any> = {};
-    const contentTypes: Record<string, string> = {};
-
-    const collectNodes = async (nodeKey: string): Promise<void> => {
-      if (nodes[nodeKey]) return; // Already visited
-
-      const rawNode = await this.getRawNodeData(nodeKey);
-      if (!rawNode) return;
-
-      nodes[nodeKey] = rawNode;
-
-      if (rawNode.kind === "file" && rawNode.contentType) {
-        contentTypes[nodeKey] = rawNode.contentType;
-      }
-
-      if (rawNode.kind === "collection" && rawNode.children) {
-        for (const childKey of Object.values(rawNode.children as Record<string, string>)) {
-          await collectNodes(childKey);
-        }
-      }
-
-      if (rawNode.kind === "file" && rawNode.chunks) {
-        for (const chunkKey of rawNode.chunks) {
-          await collectNodes(chunkKey);
-        }
-      }
-    };
-
-    await collectNodes(key);
-
-    return jsonResponse(200, {
-      root: key,
-      nodes,
-      contentTypes,
-    });
   }
 
   // ============================================================================

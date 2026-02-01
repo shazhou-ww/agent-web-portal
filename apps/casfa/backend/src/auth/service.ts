@@ -159,7 +159,7 @@ export class AuthService {
     const ticketId = TokensDb.extractTokenId(ticket.pk);
 
     // Construct endpoint URL
-    const endpoint = `${serverConfig.baseUrl}/api/cas/${ticket.realm}/ticket/${ticketId}`;
+    const endpoint = `${serverConfig.baseUrl}/api/ticket/${ticketId}`;
 
     return {
       id: ticketId,

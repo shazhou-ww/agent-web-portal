@@ -127,7 +127,7 @@ async function computeHash(content: ArrayBuffer): Promise<string> {
 }
 
 export default function FileExplorer({ onError }: FileExplorerProps) {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, realm } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -165,6 +165,8 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
 
   // Fetch root level nodes (all collections and files not inside other collections)
   const fetchRootNodes = useCallback(async () => {
+    if (!realm) return; // Wait for realm to be loaded
+    
     try {
       setLoading(true);
       setError("");
@@ -176,7 +178,7 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
       }
 
       // Fetch all nodes, we'll filter/sort on client
-      const response = await apiRequest("/api/cas/@me/nodes?limit=1000", {}, accessToken);
+      const response = await apiRequest(`/api/realm/${realm}/nodes?limit=1000`, {}, accessToken);
 
       if (response.ok) {
         const data = await response.json();
@@ -201,17 +203,19 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
     } finally {
       setLoading(false);
     }
-  }, [getAccessToken]);
+  }, [getAccessToken, realm]);
 
   // Fetch node details (for navigating into collections)
   const fetchNode = useCallback(
     async (key: string): Promise<CasNode | null> => {
+      if (!realm) return null; // Wait for realm to be loaded
+      
       try {
         const accessToken = await getAccessToken();
         if (!accessToken) return null;
 
         const response = await apiRequest(
-          `/api/cas/@me/node/${encodeURIComponent(key)}`,
+          `/api/realm/${realm}/node/${encodeURIComponent(key)}`,
           {},
           accessToken
         );
@@ -224,7 +228,7 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
         return null;
       }
     },
-    [getAccessToken]
+    [getAccessToken, realm]
   );
 
   // Parse URL path to get current key
@@ -353,6 +357,8 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
 
   // Download file
   const handleDownload = async (key: string, contentType: string, name?: string) => {
+    if (!realm) return;
+    
     try {
       setDownloading(key);
 
@@ -362,7 +368,7 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/cas/@me/chunk/${encodeURIComponent(key)}`, {
+      const response = await fetch(`${API_URL}/api/realm/${realm}/chunk/${encodeURIComponent(key)}`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -392,6 +398,8 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
 
   // Delete node
   const handleDelete = async (key: string) => {
+    if (!realm) return;
+    
     try {
       setDeleting(key);
 
@@ -402,7 +410,7 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
       }
 
       const response = await apiRequest(
-        `/api/cas/@me/node/${encodeURIComponent(key)}`,
+        `/api/realm/${realm}/node/${encodeURIComponent(key)}`,
         { method: "DELETE" },
         accessToken
       );
@@ -434,6 +442,8 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
 
   // Upload file
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!realm) return;
+    
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -455,7 +465,7 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
       const key = `sha256:${hash}`;
       setUploadProgress(50);
 
-      const response = await fetch(`${API_URL}/api/cas/@me/chunk/${encodeURIComponent(key)}`, {
+      const response = await fetch(`${API_URL}/api/realm/${realm}/chunk/${encodeURIComponent(key)}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${accessToken}`,
