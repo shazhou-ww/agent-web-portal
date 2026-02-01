@@ -628,6 +628,33 @@ class MemoryCommitsDb {
 // ============================================================================
 
 const EMPTY_COLLECTION_KEY = "sha256:a78577c5cfc47ab3e4b116f01902a69e2e015b40cdef52f9b552cfb5104e769a";
+const EMPTY_COLLECTION_DATA = Buffer.from(JSON.stringify({ children: {} }), "utf-8");
+
+/**
+ * Ensure empty collection exists in storage and ownership
+ */
+async function ensureEmptyCollection(realm: string, tokenId: string): Promise<void> {
+  // Check if already exists
+  const exists = await casStorage.get(EMPTY_COLLECTION_KEY);
+  if (!exists) {
+    await casStorage.putWithKey(
+      EMPTY_COLLECTION_KEY,
+      EMPTY_COLLECTION_DATA,
+      "application/vnd.cas.collection"
+    );
+  }
+  // Ensure ownership
+  const hasOwnership = await ownershipDb.hasOwnership(realm, EMPTY_COLLECTION_KEY);
+  if (!hasOwnership) {
+    await ownershipDb.addOwnership(
+      realm,
+      EMPTY_COLLECTION_KEY,
+      tokenId,
+      "application/vnd.cas.collection",
+      EMPTY_COLLECTION_DATA.length
+    );
+  }
+}
 
 interface MemoryDepotRecord {
   realm: string;
@@ -1755,7 +1782,8 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
     if (!auth.canRead) {
       return errorResponse(403, "Read access required");
     }
-    // Ensure main depot exists
+    // Ensure empty collection and main depot exist
+    await ensureEmptyCollection(realm, auth.tokenId);
     await depotDb.ensureMainDepot(realm, EMPTY_COLLECTION_KEY);
     const result = await depotDb.list(realm);
     return jsonResponse(200, {
@@ -1787,6 +1815,9 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
     if (existing) {
       return errorResponse(409, `Depot with name '${body.name}' already exists`);
     }
+
+    // Ensure empty collection exists
+    await ensureEmptyCollection(realm, auth.tokenId);
 
     const depot = await depotDb.create(realm, {
       name: body.name,
