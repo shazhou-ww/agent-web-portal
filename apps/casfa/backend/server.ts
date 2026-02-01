@@ -630,32 +630,6 @@ class MemoryCommitsDb {
 const EMPTY_COLLECTION_KEY = "sha256:a78577c5cfc47ab3e4b116f01902a69e2e015b40cdef52f9b552cfb5104e769a";
 const EMPTY_COLLECTION_DATA = Buffer.from(JSON.stringify({ children: {} }), "utf-8");
 
-/**
- * Ensure empty collection exists in storage and ownership
- */
-async function ensureEmptyCollection(realm: string, tokenId: string): Promise<void> {
-  // Check if already exists
-  const exists = await casStorage.get(EMPTY_COLLECTION_KEY);
-  if (!exists) {
-    await casStorage.putWithKey(
-      EMPTY_COLLECTION_KEY,
-      EMPTY_COLLECTION_DATA,
-      "application/vnd.cas.collection"
-    );
-  }
-  // Ensure ownership
-  const hasOwnership = await ownershipDb.hasOwnership(realm, EMPTY_COLLECTION_KEY);
-  if (!hasOwnership) {
-    await ownershipDb.addOwnership(
-      realm,
-      EMPTY_COLLECTION_KEY,
-      tokenId,
-      "application/vnd.cas.collection",
-      EMPTY_COLLECTION_DATA.length
-    );
-  }
-}
-
 interface MemoryDepotRecord {
   realm: string;
   depotId: string;
@@ -940,6 +914,32 @@ const agentTokensDb = useDynamo
   ? createAgentTokensDbAdapter(tokensDb as TokensDb, loadServerConfig())
   : new MemoryAgentTokensDb();
 const userRolesDb = useDynamo ? new UserRolesDb(loadConfig()) : null;
+
+/**
+ * Ensure empty collection exists in storage and ownership
+ */
+async function ensureEmptyCollection(realm: string, tokenId: string): Promise<void> {
+  // Check if already exists
+  const exists = await casStorage.get(EMPTY_COLLECTION_KEY);
+  if (!exists) {
+    await casStorage.putWithKey(
+      EMPTY_COLLECTION_KEY,
+      EMPTY_COLLECTION_DATA,
+      "application/vnd.cas.collection"
+    );
+  }
+  // Ensure ownership
+  const hasOwnership = await ownershipDb.hasOwnership(realm, EMPTY_COLLECTION_KEY);
+  if (!hasOwnership) {
+    await ownershipDb.addOwnership(
+      realm,
+      EMPTY_COLLECTION_KEY,
+      tokenId,
+      "application/vnd.cas.collection",
+      EMPTY_COLLECTION_DATA.length
+    );
+  }
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -1734,9 +1734,13 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
     // Build tree recursively
     const buildTree = async (key: string): Promise<Record<string, unknown> | null> => {
       const blob = await casStorage.get(key);
-      if (!blob) return null;
+      if (!blob) {
+        console.log(`[tree] blob not found for key: ${key}`);
+        return null;
+      }
 
       const { content, contentType, metadata } = blob;
+      console.log(`[tree] key=${key}, contentType=${contentType}, size=${content.length}`);
 
       if (contentType === "application/vnd.cas.collection") {
         try {
@@ -1756,7 +1760,8 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
             }
           }
           return result;
-        } catch {
+        } catch (e) {
+          console.log(`[tree] JSON parse error for ${key}:`, e);
           return null;
         }
       } else {
