@@ -306,24 +306,12 @@ Resources:
           CAS_REALM_TABLE: !Ref CasRealmTable
           CAS_DAG_TABLE: !Ref CasDagTable
           CAS_BUCKET: !Ref CasBucket
-          COGNITO_USER_POOL_ID: !Ref UserPool
-          COGNITO_CLIENT_ID: !If
-            - BothIdP
-            - !Ref UserPoolClientBothIdP
-            - !If
-              - OnlyGoogleIdP
-              - !Ref UserPoolClientOnlyGoogle
-              - !If
-                - OnlyMicrosoftIdP
-                - !Ref UserPoolClientOnlyMicrosoft
-                - !Ref UserPoolClientNoIdP
+          COGNITO_USER_POOL_ID: !ImportValue
+            Fn::Sub: "${AuthStackName}-UserPoolId"
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
           COGNITO_REGION: !Ref AWS::Region
-          COGNITO_HOSTED_UI_URL: !If
-            - HasCognitoDomain
-            - !Sub
-              - "https://${Prefix}.auth.${Region}.amazoncognito.com"
-              - { Prefix: !Ref CognitoDomain, Region: !Ref AWS::Region }
-            - ""
+          COGNITO_HOSTED_UI_URL: !ImportValue
+            Fn::Sub: "${AuthStackName}-CognitoHostedUiUrl"
           NODE_OPTIONS: "--enable-source-maps"
           # CAS_BASE_URL is required for ticket endpoint URLs
           CAS_BASE_URL: !If
@@ -344,7 +332,8 @@ Resources:
             - Effect: Allow
               Action:
                 - cognito-idp:ListUsers
-              Resource: !GetAtt UserPool.Arn
+              Resource: !ImportValue
+                Fn::Sub: "${AuthStackName}-UserPoolArn"
       Events:
         ProxyRoute:
           Type: Api

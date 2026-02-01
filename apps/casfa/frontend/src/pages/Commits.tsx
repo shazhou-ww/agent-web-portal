@@ -153,7 +153,7 @@ export default function Commits() {
       setRenameTitle(menuCommit.title || "");
       setRenameDialogOpen(true);
     }
-    handleMenuClose();
+    setMenuAnchor(null); // Only close menu, keep menuCommit
   };
 
   // Submit rename
@@ -197,7 +197,7 @@ export default function Commits() {
   // Open delete dialog
   const handleDeleteClick = () => {
     setDeleteDialogOpen(true);
-    handleMenuClose();
+    setMenuAnchor(null); // Only close menu, keep menuCommit
   };
 
   // Submit delete

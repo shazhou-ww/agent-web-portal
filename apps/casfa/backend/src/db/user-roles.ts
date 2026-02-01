@@ -3,7 +3,7 @@
  * Reuses tokens table with pk = user#${userId}.
  */
 
-import { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import type { CasConfig, UserRole } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
 
@@ -130,23 +130,15 @@ export class UserRolesDb {
   }
 
   /**
-   * Revoke user (set role to unauthorized).
+   * Revoke user - delete the user record from DynamoDB.
    */
   async revoke(userId: string): Promise<void> {
-    const now = Date.now();
-    const record: UserRoleRecord = {
-      pk: `${USER_PK_PREFIX}${userId}`,
-      type: "user_role",
-      userId,
-      role: "unauthorized",
-      createdAt: now,
-      updatedAt: now,
-    };
+    const pk = `${USER_PK_PREFIX}${userId}`;
 
     await this.client.send(
-      new PutCommand({
+      new DeleteCommand({
         TableName: this.tableName,
-        Item: record,
+        Key: { pk },
       })
     );
   }
