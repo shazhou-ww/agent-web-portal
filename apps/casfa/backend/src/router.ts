@@ -1685,10 +1685,12 @@ export class Router {
     await this.ensureEmptyCollection();
 
     // Increment ref for empty collection
-    await this.refCountDb.incrementRef(realm, EMPTY_COLLECTION_KEY, [], {
-      physicalSize: EMPTY_COLLECTION_BYTES.length,
-      logicalSize: 0,
-    });
+    await this.refCountDb.incrementRef(
+      realm,
+      EMPTY_COLLECTION_KEY,
+      EMPTY_COLLECTION_BYTES.length,
+      0
+    );
 
     // Create the depot
     const depot = await this.depotDb.create(realm, {
@@ -1772,23 +1774,17 @@ export class Router {
     }
 
     // Get children of new root for ref counting
-    const newRootData = await this.casStorage.get(newRoot);
-    if (!newRootData) {
+    const newRootResult = await this.casStorage.get(newRoot);
+    if (!newRootResult) {
       return errorResponse(400, "Failed to read new root node");
     }
 
-    const decoded = decodeNode(new Uint8Array(newRootData));
-    const children = decoded.kind === "collection"
-      ? Object.values(decoded.children)
-      : decoded.kind === "file"
-      ? decoded.chunks
-      : [];
+    const decoded = decodeNode(new Uint8Array(newRootResult.content));
+    const physicalSize = newRootResult.content.length;
+    const logicalSize = decoded.kind === "chunk" ? decoded.size : 0;
 
     // Increment ref for new root
-    await this.refCountDb.incrementRef(realm, newRoot, children, {
-      physicalSize: newRootData.length,
-      logicalSize: decoded.kind === "chunk" ? decoded.size : 0,
-    });
+    await this.refCountDb.incrementRef(realm, newRoot, physicalSize, logicalSize);
 
     // Decrement ref for old root
     await this.refCountDb.decrementRef(realm, oldRoot);
@@ -1933,23 +1929,17 @@ export class Router {
     }
 
     // Get children of target root for ref counting
-    const newRootData = await this.casStorage.get(newRoot);
-    if (!newRootData) {
+    const newRootResult = await this.casStorage.get(newRoot);
+    if (!newRootResult) {
       return errorResponse(500, "Failed to read target root node");
     }
 
-    const decoded = decodeNode(new Uint8Array(newRootData));
-    const children = decoded.kind === "collection"
-      ? Object.values(decoded.children)
-      : decoded.kind === "file"
-      ? decoded.chunks
-      : [];
+    const decoded = decodeNode(new Uint8Array(newRootResult.content));
+    const physicalSize = newRootResult.content.length;
+    const logicalSize = decoded.kind === "chunk" ? decoded.size : 0;
 
     // Increment ref for target root
-    await this.refCountDb.incrementRef(realm, newRoot, children, {
-      physicalSize: newRootData.length,
-      logicalSize: decoded.kind === "chunk" ? decoded.size : 0,
-    });
+    await this.refCountDb.incrementRef(realm, newRoot, physicalSize, logicalSize);
 
     // Decrement ref for old root
     await this.refCountDb.decrementRef(realm, oldRoot);
