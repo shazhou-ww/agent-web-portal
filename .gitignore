@@ -47,3 +47,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Skill cache (local dev)
 .skill-cache/
 temp-*.bin
+
+# Local CAS blob storage (casfa dev)
+.local-cas-storage/

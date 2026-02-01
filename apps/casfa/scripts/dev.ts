@@ -14,11 +14,14 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { type Subprocess, spawn } from "bun";
 
 const ROOT_DIR = join(import.meta.dir, "..");
 const REPO_ROOT = join(ROOT_DIR, "../..");
+
+// Track which directory each env var came from (for relative path resolution)
+const envVarSourceDir = new Map<string, string>();
 
 // Load .env files (repo root first, then package root - later overrides earlier)
 function loadEnvFile(dir: string): void {
@@ -36,6 +39,7 @@ function loadEnvFile(dir: string): void {
           .trim()
           .replace(/^["']|["']$/g, "");
         process.env[key] = value;
+        envVarSourceDir.set(key, dir);
       }
     }
   }
@@ -47,6 +51,22 @@ loadEnvFile(ROOT_DIR);
 // Port configuration from environment
 const PORT_WEBUI = process.env.PORT_CASFA_WEBUI || "5550";
 const PORT_API = process.env.PORT_CASFA_API || "3550";
+
+// Resolve CAS_STORAGE_DIR: if relative path, resolve relative to the .env file that defined it
+function resolveCasStorageDir(): string {
+  const envValue = process.env.CAS_STORAGE_DIR;
+  if (!envValue) {
+    // Default: .local-cas-storage in apps/casfa
+    return join(ROOT_DIR, ".local-cas-storage");
+  }
+  if (isAbsolute(envValue)) {
+    return envValue;
+  }
+  // Relative path: resolve relative to the .env file's directory
+  const sourceDir = envVarSourceDir.get("CAS_STORAGE_DIR") || ROOT_DIR;
+  return join(sourceDir, envValue);
+}
+const CAS_STORAGE_DIR = resolveCasStorageDir();
 
 interface ProcessInfo {
   name: string;
@@ -69,6 +89,7 @@ function colorize(text: string, color: string): string {
 
 async function startBackend(): Promise<Subprocess> {
   console.log(colorize(`[backend] Starting development server on port ${PORT_API}...`, "cyan"));
+  console.log(colorize(`[backend] CAS storage directory: ${CAS_STORAGE_DIR}`, "cyan"));
 
   const proc = spawn({
     cmd: ["bun", "run", "backend/server.ts"],
@@ -78,6 +99,7 @@ async function startBackend(): Promise<Subprocess> {
     env: {
       ...process.env,
       PORT: PORT_API,
+      CAS_STORAGE_DIR,
     },
   });
 

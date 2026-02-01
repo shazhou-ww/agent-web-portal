@@ -3,6 +3,9 @@
  *
  * Commits are user-visible top-level management units that track
  * the root nodes uploaded to a realm.
+ *
+ * Uses CasRealmTable with key prefix "COMMIT#" to distinguish from ownership records.
+ * Key structure: realm (HASH) + "COMMIT#${root}" (RANGE)
  */
 
 import {
@@ -17,19 +20,28 @@ import type { CasConfig } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Prefix for commit keys in CasRealmTable */
+const COMMIT_KEY_PREFIX = "COMMIT#";
+
+// ============================================================================
 // Types
 // ============================================================================
 
 /**
  * Commit record - tracks a commit (upload) to a realm
+ *
+ * Stored in CasRealmTable with:
+ * - realm: partition key (same as ownership)
+ * - key: sort key with "COMMIT#" prefix
  */
 export interface CommitRecord {
-  /** Primary key: REALM#{realm}#COMMIT#{root} */
-  pk: string;
-  /** Sort key for GSI queries: createdAt timestamp */
-  sk: number;
-  /** The realm this commit belongs to */
+  /** Partition key: realm ID (e.g., "usr_xxx") */
   realm: string;
+  /** Sort key: "COMMIT#${root}" (e.g., "COMMIT#sha256:abc...") */
+  key: string;
   /** Root node key (the top-level file or collection) */
   root: string;
   /** Optional user-visible title */
@@ -65,8 +77,6 @@ export class CommitsDb {
   private tableName: string;
 
   constructor(config: CasConfig, client?: DynamoDBDocumentClient) {
-    // Use the same table as ownership (cas-realm table)
-    // Commits are stored with a different pk format
     this.tableName = config.casRealmTable;
     this.client =
       client ??
@@ -76,19 +86,18 @@ export class CommitsDb {
   }
 
   /**
-   * Build primary key for commit record
+   * Build the sort key for a commit record
    */
-  private buildPk(realm: string, root: string): string {
-    return `REALM#${realm}#COMMIT#${root}`;
+  private buildKey(root: string): string {
+    return `${COMMIT_KEY_PREFIX}${root}`;
   }
 
   /**
-   * Parse realm and root from primary key
+   * Extract root from sort key
    */
-  private parsePk(pk: string): { realm: string; root: string } | null {
-    const match = pk.match(/^REALM#(.+)#COMMIT#(.+)$/);
-    if (!match) return null;
-    return { realm: match[1]!, root: match[2]! };
+  private parseKey(key: string): string | null {
+    if (!key.startsWith(COMMIT_KEY_PREFIX)) return null;
+    return key.slice(COMMIT_KEY_PREFIX.length);
   }
 
   /**
@@ -102,9 +111,8 @@ export class CommitsDb {
   ): Promise<CommitRecord> {
     const now = Date.now();
     const commit: CommitRecord = {
-      pk: this.buildPk(realm, root),
-      sk: now,
       realm,
+      key: this.buildKey(root),
       root,
       title,
       createdAt: now,
@@ -128,7 +136,7 @@ export class CommitsDb {
     const result = await this.client.send(
       new GetCommand({
         TableName: this.tableName,
-        Key: { pk: this.buildPk(realm, root) },
+        Key: { realm, key: this.buildKey(root) },
       })
     );
 
@@ -136,74 +144,48 @@ export class CommitsDb {
   }
 
   /**
-   * List commits for a realm, ordered by creation time (newest first)
+   * List commits for a realm, ordered by key (which includes root hash)
    *
-   * Note: This uses a Scan with filter since we're using a composite pk.
-   * For production scale, consider adding a GSI on (realm, createdAt).
+   * Uses Query with begins_with on the sort key to find all COMMIT# entries.
    */
   async list(realm: string, options: ListCommitsOptions = {}): Promise<ListCommitsResult> {
     const { limit = 100, startKey } = options;
 
-    // Query using pk prefix pattern
-    // Since DynamoDB doesn't support prefix queries on pk directly,
-    // we need to scan with a filter or use a GSI.
-    // For now, we use a scan with filter for simplicity.
-    // TODO: Add GSI (realm-createdAt-index) for better performance at scale.
-
-    const pkPrefix = `REALM#${realm}#COMMIT#`;
-
     const result = await this.client.send(
       new QueryCommand({
         TableName: this.tableName,
-        KeyConditionExpression: "begins_with(pk, :pkPrefix)",
+        KeyConditionExpression: "#realm = :realm AND begins_with(#key, :prefix)",
+        ExpressionAttributeNames: {
+          "#realm": "realm",
+          "#key": "key",
+        },
         ExpressionAttributeValues: {
-          ":pkPrefix": pkPrefix,
+          ":realm": realm,
+          ":prefix": COMMIT_KEY_PREFIX,
         },
         Limit: limit,
-        ScanIndexForward: false, // newest first
-        ExclusiveStartKey: startKey ? { pk: startKey } : undefined,
+        ScanIndexForward: false, // Descending order by key
+        ExclusiveStartKey: startKey ? { realm, key: startKey } : undefined,
       })
     );
 
     const commits = (result.Items ?? []) as CommitRecord[];
 
+    // Sort by createdAt descending (newest first) since key order isn't time-based
+    commits.sort((a, b) => b.createdAt - a.createdAt);
+
     return {
       commits,
-      nextKey: result.LastEvaluatedKey?.pk as string | undefined,
+      nextKey: result.LastEvaluatedKey?.key as string | undefined,
     };
   }
 
   /**
-   * List commits for a realm using scan (fallback method)
+   * List commits using scan - fallback method for compatibility
+   * This is equivalent to list() but named for API compatibility with MemoryCommitsDb
    */
   async listByScan(realm: string, options: ListCommitsOptions = {}): Promise<ListCommitsResult> {
-    const { limit = 100 } = options;
-
-    const pkPrefix = `REALM#${realm}#COMMIT#`;
-
-    // Use scan with filter expression
-    const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
-
-    const result = await this.client.send(
-      new ScanCommand({
-        TableName: this.tableName,
-        FilterExpression: "begins_with(pk, :pkPrefix)",
-        ExpressionAttributeValues: {
-          ":pkPrefix": pkPrefix,
-        },
-        Limit: limit * 10, // Scan more to account for filtering
-      })
-    );
-
-    // Sort by createdAt descending and limit
-    const commits = ((result.Items ?? []) as CommitRecord[])
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, limit);
-
-    return {
-      commits,
-      nextKey: undefined, // Scan pagination is complex, skip for now
-    };
+    return this.list(realm, options);
   }
 
   /**
@@ -214,14 +196,14 @@ export class CommitsDb {
     root: string,
     updates: { title?: string }
   ): Promise<CommitRecord | null> {
-    const pk = this.buildPk(realm, root);
-
     // Build update expression dynamically
     const updateParts: string[] = [];
     const expressionValues: Record<string, unknown> = {};
+    const expressionNames: Record<string, string> = { "#key": "key" };
 
     if (updates.title !== undefined) {
-      updateParts.push("title = :title");
+      updateParts.push("#title = :title");
+      expressionNames["#title"] = "title";
       expressionValues[":title"] = updates.title;
     }
 
@@ -230,18 +212,26 @@ export class CommitsDb {
       return this.get(realm, root);
     }
 
-    const result = await this.client.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: { pk },
-        UpdateExpression: `SET ${updateParts.join(", ")}`,
-        ExpressionAttributeValues: expressionValues,
-        ReturnValues: "ALL_NEW",
-        ConditionExpression: "attribute_exists(pk)",
-      })
-    );
+    try {
+      const result = await this.client.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: { realm, key: this.buildKey(root) },
+          UpdateExpression: `SET ${updateParts.join(", ")}`,
+          ExpressionAttributeNames: expressionNames,
+          ExpressionAttributeValues: expressionValues,
+          ReturnValues: "ALL_NEW",
+          ConditionExpression: "attribute_exists(#key)",
+        })
+      );
 
-    return (result.Attributes as CommitRecord) ?? null;
+      return (result.Attributes as CommitRecord) ?? null;
+    } catch (error: any) {
+      if (error.name === "ConditionalCheckFailedException") {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -253,8 +243,9 @@ export class CommitsDb {
       await this.client.send(
         new DeleteCommand({
           TableName: this.tableName,
-          Key: { pk: this.buildPk(realm, root) },
-          ConditionExpression: "attribute_exists(pk)",
+          Key: { realm, key: this.buildKey(root) },
+          ConditionExpression: "attribute_exists(#key)",
+          ExpressionAttributeNames: { "#key": "key" },
         })
       );
       return true;

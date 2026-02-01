@@ -62,6 +62,18 @@ async function computeHash(content: ArrayBuffer): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Deep clone StagedItem array, preserving ArrayBuffer and File objects
+// (JSON.parse/stringify would destroy ArrayBuffer)
+function cloneStagedItems(items: StagedItem[]): StagedItem[] {
+  return items.map((item) => ({
+    ...item,
+    // File and ArrayBuffer are immutable-ish, safe to share reference
+    file: item.file,
+    content: item.content,
+    children: item.children ? cloneStagedItems(item.children) : undefined,
+  }));
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const k = 1024;
@@ -141,7 +153,7 @@ export default function NewCommitDialog({ open, onClose, onSuccess }: NewCommitD
     }
 
     setStagedItems((prev) => {
-      const clone = JSON.parse(JSON.stringify(prev)) as StagedItem[];
+      const clone = cloneStagedItems(prev);
       let current = clone;
       for (const pathId of currentPath) {
         const folder = current.find((item) => item.id === pathId && item.type === "folder");
@@ -165,7 +177,7 @@ export default function NewCommitDialog({ open, onClose, onSuccess }: NewCommitD
     }
 
     setStagedItems((prev) => {
-      const clone = JSON.parse(JSON.stringify(prev)) as StagedItem[];
+      const clone = cloneStagedItems(prev);
       let current = clone;
       for (const pathId of currentPath) {
         const folder = current.find((item) => item.id === pathId && item.type === "folder");
