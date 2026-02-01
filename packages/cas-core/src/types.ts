@@ -20,6 +20,33 @@ export interface HashProvider {
 }
 
 /**
+ * Storage provider interface - injected by platform-specific implementations
+ * Server uses S3, Client uses HTTP, tests use in-memory
+ */
+export interface StorageProvider {
+  /**
+   * Store data by key
+   * @param key - CAS key (e.g., "sha256:...")
+   * @param data - Raw bytes to store
+   */
+  put(key: string, data: Uint8Array): Promise<void>;
+
+  /**
+   * Retrieve data by key
+   * @param key - CAS key
+   * @returns Raw bytes or null if not found
+   */
+  get(key: string): Promise<Uint8Array | null>;
+
+  /**
+   * Check if key exists
+   * @param key - CAS key
+   * @returns true if key exists
+   */
+  has(key: string): Promise<boolean>;
+}
+
+/**
  * Parsed CAS node header (32 bytes)
  */
 export interface CasHeader {

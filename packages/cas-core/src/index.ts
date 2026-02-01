@@ -25,6 +25,7 @@ export type {
   HashProvider,
   LayoutNode,
   NodeKind,
+  StorageProvider,
 } from "./types.ts";
 
 // Header encoding/decoding
@@ -68,3 +69,19 @@ export {
   hexToBytes,
   keyToHash,
 } from "./utils.ts";
+
+// Controller
+export {
+  CasController,
+  type CasControllerConfig,
+  type CollectionEntry,
+  type TreeNodeInfo,
+  type TreeResponse,
+  type UploadResult,
+} from "./controller.ts";
+
+// Providers
+export {
+  MemoryStorageProvider,
+  WebCryptoHashProvider,
+} from "./providers.ts";
