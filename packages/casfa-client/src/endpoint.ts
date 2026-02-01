@@ -341,7 +341,8 @@ export class CasfaEndpoint {
     const res = await this.fetch(`/raw/${encodeURIComponent(key)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/octet-stream" },
-      body: data,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      body: data as any,
     });
 
     if (!res.ok) {

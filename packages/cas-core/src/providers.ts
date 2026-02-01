@@ -65,7 +65,8 @@ export class MemoryStorageProvider implements StorageProvider {
  */
 export class WebCryptoHashProvider implements HashProvider {
   async sha256(data: Uint8Array): Promise<Uint8Array> {
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data as any);
     return new Uint8Array(hashBuffer);
   }
 }

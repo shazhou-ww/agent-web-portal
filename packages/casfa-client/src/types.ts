@@ -66,26 +66,58 @@ export interface CasfaEndpointConfig {
 }
 
 // ============================================================================
-// Client Types
+// Session Types (base authentication layer)
 // ============================================================================
 
 /**
- * Client authentication (full service access)
+ * P256 signing function for request authentication
+ * Returns headers: { "X-AWP-Pubkey", "X-AWP-Timestamp", "X-AWP-Signature" }
  */
-export type ClientAuth =
-  | { type: "user"; token: string }
-  | { type: "agent"; token: string }
-  | { type: "admin"; token: string };
+export type P256SignFn = (
+  method: string,
+  url: string,
+  body?: string
+) => Promise<Record<string, string>>;
+
+/**
+ * Session authentication - three methods supported
+ */
+export type SessionAuth =
+  | { type: "user"; token: string }      // OAuth User Token (Bearer)
+  | { type: "agent"; token: string }     // Agent Token
+  | { type: "p256"; sign: P256SignFn };  // P256 signature
+
+/**
+ * CasfaSession configuration
+ */
+export interface CasfaSessionConfig {
+  /** CASFA service base URL: https://api.example.com */
+  baseUrl: string;
+
+  /** Authentication method */
+  auth: SessionAuth;
+
+  /** Default cache provider (passed to endpoints) */
+  cache?: StorageProvider;
+
+  /** Hash provider (defaults to WebCrypto) */
+  hash?: HashProvider;
+}
+
+// ============================================================================
+// Client Types (extends Session with user-only features)
+// ============================================================================
 
 /**
  * CasfaClient configuration
+ * Only accepts user token (OAuth) authentication
  */
 export interface CasfaClientConfig {
   /** CASFA service base URL: https://api.example.com */
   baseUrl: string;
 
-  /** Authentication */
-  auth: ClientAuth;
+  /** User OAuth token */
+  token: string;
 
   /** Default cache provider (passed to endpoints) */
   cache?: StorageProvider;
@@ -143,11 +175,13 @@ export interface TicketInfo {
 // ============================================================================
 
 /**
- * User profile
+ * User profile (returned by getProfile)
  */
 export interface UserProfile {
   id: string;
+  realm: string;
   email?: string;
+  isAdmin: boolean;
   quota: QuotaConfig;
   usage: UsageInfo;
 }
@@ -173,9 +207,81 @@ export interface QuotaConfig {
  */
 export interface UserInfo {
   id: string;
+  realm: string;
   email?: string;
   quota: QuotaConfig;
   usage: UsageInfo;
+  createdAt: string;
+}
+
+// ============================================================================
+// Agent Token Types
+// ============================================================================
+
+/**
+ * Options for creating an agent token
+ */
+export interface CreateAgentTokenOptions {
+  /** Token label/name */
+  label: string;
+
+  /** Expiration in seconds (optional) */
+  expiresIn?: number;
+}
+
+/**
+ * Agent token information
+ */
+export interface AgentTokenInfo {
+  id: string;
+  label: string;
+  token?: string;  // Only returned on creation
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
+}
+
+// ============================================================================
+// OAuth Client Types
+// ============================================================================
+
+/**
+ * Options for creating an OAuth client
+ */
+export interface CreateClientOptions {
+  /** Client name */
+  name: string;
+
+  /** Redirect URIs */
+  redirectUris: string[];
+
+  /** Allowed scopes */
+  scopes?: string[];
+}
+
+/**
+ * Options for updating an OAuth client
+ */
+export interface UpdateClientOptions {
+  /** Client name */
+  name?: string;
+
+  /** Redirect URIs */
+  redirectUris?: string[];
+
+  /** Allowed scopes */
+  scopes?: string[];
+}
+
+/**
+ * OAuth client information
+ */
+export interface ClientInfo {
+  id: string;
+  name: string;
+  secret?: string;  // Only returned on creation
+  redirectUris: string[];
+  scopes: string[];
   createdAt: string;
 }
 

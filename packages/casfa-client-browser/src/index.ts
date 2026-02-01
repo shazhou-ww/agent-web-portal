@@ -1,5 +1,5 @@
 /**
- * @aspect/casfa-client-browser
+ * @agent-web-portal/casfa-client-browser
  *
  * Browser-specific CASFA client with IndexedDB caching
  */
@@ -11,19 +11,41 @@ export * from "@agent-web-portal/casfa-client";
 export { IndexedDBStorageProvider } from "./storage.ts";
 
 // Factory functions
-import { CasfaClient, CasfaEndpoint, type CasfaClientConfig, type ClientAuth } from "@agent-web-portal/casfa-client";
+import {
+  CasfaClient,
+  CasfaSession,
+  CasfaEndpoint,
+  type SessionAuth,
+} from "@agent-web-portal/casfa-client";
 import { IndexedDBStorageProvider } from "./storage.ts";
 
 /**
- * Create a CasfaClient with IndexedDB caching
+ * Create a CasfaClient (user auth) with IndexedDB caching
  */
 export function createCasfaClient(
   baseUrl: string,
-  auth: ClientAuth,
+  token: string,
   options?: { dbName?: string }
 ): CasfaClient {
   const cache = new IndexedDBStorageProvider(options?.dbName);
   return new CasfaClient({
+    baseUrl,
+    token,
+    cache,
+  });
+}
+
+/**
+ * Create a CasfaSession with IndexedDB caching
+ * Supports user, agent, or p256 authentication
+ */
+export function createCasfaSession(
+  baseUrl: string,
+  auth: SessionAuth,
+  options?: { dbName?: string }
+): CasfaSession {
+  const cache = new IndexedDBStorageProvider(options?.dbName);
+  return new CasfaSession({
     baseUrl,
     auth,
     cache,
@@ -39,5 +61,5 @@ export async function createEndpointFromTicket(
   options?: { dbName?: string }
 ): Promise<CasfaEndpoint> {
   const cache = new IndexedDBStorageProvider(options?.dbName);
-  return CasfaClient.fromTicket(baseUrl, ticketId, cache);
+  return CasfaSession.fromTicket(baseUrl, ticketId, cache);
 }

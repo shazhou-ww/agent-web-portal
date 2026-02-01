@@ -36,6 +36,7 @@
   "dependencies": {
     "@agent-web-portal/auth": "workspace:*",
     "@agent-web-portal/cas-core": "workspace:*",
+    "@agent-web-portal/casfa-client-browser": "workspace:*",
     "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
     "@aws-sdk/client-dynamodb": "^3.975.0",
     "@aws-sdk/client-s3": "^3.975.0",

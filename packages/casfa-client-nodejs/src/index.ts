@@ -1,5 +1,5 @@
 /**
- * @aspect/casfa-client-nodejs
+ * @agent-web-portal/casfa-client-nodejs
  *
  * Node.js-specific CASFA client with file system caching
  */
@@ -11,7 +11,12 @@ export * from "@agent-web-portal/casfa-client";
 export { FileSystemStorageProvider } from "./storage.ts";
 
 // Factory functions
-import { CasfaClient, CasfaEndpoint, type ClientAuth } from "@agent-web-portal/casfa-client";
+import {
+  CasfaClient,
+  CasfaSession,
+  CasfaEndpoint,
+  type SessionAuth,
+} from "@agent-web-portal/casfa-client";
 import { FileSystemStorageProvider } from "./storage.ts";
 
 /**
@@ -23,15 +28,32 @@ function getDefaultCacheDir(): string {
 }
 
 /**
- * Create a CasfaClient with file system caching
+ * Create a CasfaClient (user auth) with file system caching
  */
 export function createCasfaClient(
   baseUrl: string,
-  auth: ClientAuth,
+  token: string,
   options?: { cacheDir?: string }
 ): CasfaClient {
   const cache = new FileSystemStorageProvider(options?.cacheDir ?? getDefaultCacheDir());
   return new CasfaClient({
+    baseUrl,
+    token,
+    cache,
+  });
+}
+
+/**
+ * Create a CasfaSession with file system caching
+ * Supports user, agent, or p256 authentication
+ */
+export function createCasfaSession(
+  baseUrl: string,
+  auth: SessionAuth,
+  options?: { cacheDir?: string }
+): CasfaSession {
+  const cache = new FileSystemStorageProvider(options?.cacheDir ?? getDefaultCacheDir());
+  return new CasfaSession({
     baseUrl,
     auth,
     cache,
@@ -47,5 +69,5 @@ export async function createEndpointFromTicket(
   options?: { cacheDir?: string }
 ): Promise<CasfaEndpoint> {
   const cache = new FileSystemStorageProvider(options?.cacheDir ?? getDefaultCacheDir());
-  return CasfaClient.fromTicket(baseUrl, ticketId, cache);
+  return CasfaSession.fromTicket(baseUrl, ticketId, cache);
 }

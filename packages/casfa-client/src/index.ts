@@ -1,17 +1,21 @@
 /**
- * @aspect/casfa-client
+ * @agent-web-portal/casfa-client
  *
  * CASFA client library for accessing CAS storage service
  *
  * Main exports:
  * - CasfaEndpoint: Single realm CAS operations (read/write/commit)
- * - CasfaClient: Full service client (endpoints, tickets, user management)
+ * - CasfaSession: Base authentication session (user/agent/p256 auth)
+ * - CasfaClient: Full user client (extends Session with profile, tokens, clients, admin)
  */
 
 // Endpoint
 export { CasfaEndpoint } from "./endpoint.ts";
 
-// Client
+// Session (base authentication layer)
+export { CasfaSession } from "./session.ts";
+
+// Client (full user features)
 export { CasfaClient } from "./client.ts";
 
 // Types
@@ -20,9 +24,12 @@ export type {
   CasfaEndpointConfig,
   EndpointAuth,
   EndpointInfo,
+  // Session types
+  CasfaSessionConfig,
+  SessionAuth,
+  P256SignFn,
   // Client types
   CasfaClientConfig,
-  ClientAuth,
   // Ticket types
   CreateTicketOptions,
   TicketInfo,
@@ -31,6 +38,13 @@ export type {
   UsageInfo,
   QuotaConfig,
   UserInfo,
+  // Agent Token types
+  CreateAgentTokenOptions,
+  AgentTokenInfo,
+  // OAuth Client types
+  CreateClientOptions,
+  UpdateClientOptions,
+  ClientInfo,
   // CAS types
   TreeNodeInfo,
   TreeResponse,
