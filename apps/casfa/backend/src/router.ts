@@ -10,6 +10,7 @@ import { CasStorage } from "./cas/storage.ts";
 import {
   AwpPendingAuthStore,
   AwpPubkeyStore,
+  CommitsDb,
   OwnershipDb,
   TokensDb,
   UserRolesDb,
@@ -63,19 +64,24 @@ const CreateTicketSchema = z.object({
   expiresIn: z.number().positive().optional(),
 });
 
-const ResolveSchema = z.object({
+// Commit schema - unified endpoint for creating files and collections
+const CommitSchema = z.object({
   root: z.string(),
-  nodes: z.array(z.string()),
+  title: z.string().optional(),
+  files: z.record(z.object({
+    chunks: z.array(z.string()),
+    contentType: z.string(),
+    size: z.number(),
+  })).optional(),
+  collections: z.record(z.object({
+    children: z.record(z.string()),
+    size: z.number(),
+  })).optional(),
 });
 
-// New schemas for CAS node operations
-const PutFileSchema = z.object({
-  chunks: z.array(z.string()),
-  contentType: z.string(),
-});
-
-const PutCollectionSchema = z.object({
-  children: z.record(z.string()),
+// Update commit title schema
+const UpdateCommitSchema = z.object({
+  title: z.string().optional(),
 });
 
 // Agent Token schema
@@ -142,6 +148,7 @@ export class Router {
   private tokensDb: TokensDb;
   private userRolesDb: UserRolesDb;
   private ownershipDb: OwnershipDb;
+  private commitsDb: CommitsDb;
   private awpPendingStore: AwpPendingAuthStore;
   private awpPubkeyStore: AwpPubkeyStore;
   private mcpHandler: McpHandler;
@@ -151,6 +158,7 @@ export class Router {
     this.tokensDb = new TokensDb(config);
     this.userRolesDb = new UserRolesDb(config);
     this.ownershipDb = new OwnershipDb(config);
+    this.commitsDb = new CommitsDb(config);
     this.awpPendingStore = new AwpPendingAuthStore(config);
     this.awpPubkeyStore = new AwpPubkeyStore(config);
     this.authMiddleware = new AuthMiddleware(
@@ -785,9 +793,35 @@ export class Router {
     subPath: string,
     req: HttpRequest
   ): Promise<HttpResponse> {
-    // POST /resolve
-    if (req.method === "POST" && subPath === "/resolve") {
-      return this.handleResolve(auth, realm, req);
+    // POST /commit - Create nodes and record commit (replaces PUT /file and PUT /collection)
+    if (req.method === "POST" && subPath === "/commit") {
+      return this.handleCommit(auth, realm, req);
+    }
+
+    // GET /commits - List commits for realm
+    if (req.method === "GET" && subPath === "/commits") {
+      return this.handleListCommits(auth, realm, req);
+    }
+
+    // GET /commits/:root - Get commit details
+    const getCommitMatch = subPath.match(/^\/commits\/(.+)$/);
+    if (req.method === "GET" && getCommitMatch) {
+      const root = decodeURIComponent(getCommitMatch[1]!);
+      return this.handleGetCommit(auth, realm, root);
+    }
+
+    // PATCH /commits/:root - Update commit metadata
+    const patchCommitMatch = subPath.match(/^\/commits\/(.+)$/);
+    if (req.method === "PATCH" && patchCommitMatch) {
+      const root = decodeURIComponent(patchCommitMatch[1]!);
+      return this.handleUpdateCommit(auth, realm, root, req);
+    }
+
+    // DELETE /commits/:root - Delete commit record
+    const deleteCommitMatch = subPath.match(/^\/commits\/(.+)$/);
+    if (req.method === "DELETE" && deleteCommitMatch) {
+      const root = decodeURIComponent(deleteCommitMatch[1]!);
+      return this.handleDeleteCommit(auth, realm, root);
     }
 
     // GET /nodes - List all nodes
@@ -807,16 +841,6 @@ export class Router {
     if (req.method === "GET" && getChunkMatch) {
       const key = decodeURIComponent(getChunkMatch[1]!);
       return this.handleGetChunk(auth, realm, key);
-    }
-
-    // PUT /file - Upload file node (references chunks)
-    if (req.method === "PUT" && subPath === "/file") {
-      return this.handlePutFile(auth, realm, req);
-    }
-
-    // PUT /collection - Upload collection node
-    if (req.method === "PUT" && subPath === "/collection") {
-      return this.handlePutCollection(auth, realm, req);
     }
 
     // GET /node/:key - Get application layer node
@@ -903,25 +927,347 @@ export class Router {
   }
 
   /**
-   * POST /cas/{realm}/resolve
+   * POST /commit - Create file/collection nodes and record commit
+   *
+   * Request body:
+   * {
+   *   root: string,           // Required: top-level node key
+   *   title?: string,         // Optional: user-visible title
+   *   files?: Record<key, { chunks: string[], contentType: string, size: number }>,
+   *   collections?: Record<key, { children: Record<string, string>, size: number }>
+   * }
+   *
+   * Response (success):
+   * { success: true, root: string, committed: string[] }
+   *
+   * Response (missing nodes):
+   * { success: false, error: "missing_nodes", missing: string[] }
    */
-  private async handleResolve(
+  private async handleCommit(
     auth: AuthContext,
     realm: string,
     req: HttpRequest
   ): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkWriteAccess(auth)) {
+      return errorResponse(403, "Write access denied");
+    }
+
     const body = this.parseJson(req);
-    const parsed = ResolveSchema.safeParse(body);
+    const parsed = CommitSchema.safeParse(body);
     if (!parsed.success) {
       return errorResponse(400, "Invalid request", parsed.error.issues);
     }
 
-    const { nodes } = parsed.data;
+    const { root, title, files, collections } = parsed.data;
+    const serverConfig = loadServerConfig();
+    const tokenId = TokensDb.extractTokenId(auth.token.pk);
 
-    // Check which nodes exist in this realm
-    const { missing } = await this.ownershipDb.checkOwnership(realm, nodes);
+    // Collect all chunk keys referenced by files
+    const referencedChunks = new Set<string>();
+    if (files) {
+      for (const file of Object.values(files)) {
+        for (const chunkKey of file.chunks) {
+          referencedChunks.add(chunkKey);
+        }
+      }
+    }
 
-    return jsonResponse(200, { missing });
+    // Check if all referenced chunks exist
+    if (referencedChunks.size > 0) {
+      const { missing } = await this.ownershipDb.checkOwnership(
+        realm,
+        Array.from(referencedChunks)
+      );
+      if (missing.length > 0) {
+        return jsonResponse(200, {
+          success: false,
+          error: "missing_nodes",
+          missing,
+        });
+      }
+    }
+
+    // Validate root exists in files or collections
+    const allNodeKeys = new Set<string>([
+      ...Object.keys(files ?? {}),
+      ...Object.keys(collections ?? {}),
+    ]);
+    if (!allNodeKeys.has(root)) {
+      // Root might be an existing node
+      const rootExists = await this.ownershipDb.hasOwnership(realm, root);
+      if (!rootExists) {
+        return errorResponse(400, `Root key not found in commit or realm: ${root}`);
+      }
+    }
+
+    const committedKeys: string[] = [];
+
+    // Process files first (they depend only on chunks)
+    if (files) {
+      for (const [key, file] of Object.entries(files)) {
+        // Check accepted MIME type
+        if (!this.authMiddleware.checkAcceptedMimeType(auth, file.contentType)) {
+          return errorResponse(415, `Content type not accepted: ${file.contentType}`);
+        }
+
+        // Create file node
+        const fileNodeData = JSON.stringify({
+          kind: "file",
+          chunks: file.chunks,
+          contentType: file.contentType,
+          size: file.size,
+        });
+        const fileNodeBuffer = Buffer.from(fileNodeData, "utf-8");
+        const result = await this.casStorage.putWithKey(key, fileNodeBuffer, "application/json");
+
+        if ("error" in result) {
+          return errorResponse(400, `File key mismatch for ${key}`, {
+            expected: result.expected,
+            actual: result.actual,
+          });
+        }
+
+        // Add ownership
+        await this.ownershipDb.addOwnership(
+          realm,
+          key,
+          tokenId,
+          file.contentType,
+          file.size,
+          "file"
+        );
+        committedKeys.push(key);
+      }
+    }
+
+    // Process collections (they depend on files/other collections)
+    // Simple approach: process all collections, verify children exist
+    if (collections) {
+      // Collect all collection keys that need to be created
+      const collectionKeys = Object.keys(collections);
+
+      // Check children count for each collection
+      for (const [key, collection] of Object.entries(collections)) {
+        if (Object.keys(collection.children).length > serverConfig.maxCollectionChildren) {
+          return errorResponse(
+            400,
+            `Too many children for ${key} (max ${serverConfig.maxCollectionChildren})`
+          );
+        }
+      }
+
+      // Topological sort: process collections in dependency order
+      const sorted = this.topologicalSortCollections(collections);
+
+      for (const key of sorted) {
+        const collection = collections[key]!;
+
+        // Verify all children exist (either in realm, in files we just created, or in prior collections)
+        for (const [name, childKey] of Object.entries(collection.children)) {
+          const existsInRealm = await this.ownershipDb.hasOwnership(realm, childKey);
+          const existsInCommit = committedKeys.includes(childKey);
+          if (!existsInRealm && !existsInCommit) {
+            return jsonResponse(200, {
+              success: false,
+              error: "missing_nodes",
+              missing: [childKey],
+            });
+          }
+        }
+
+        // Create collection node
+        const collectionNodeData = JSON.stringify({
+          kind: "collection",
+          children: collection.children,
+          size: collection.size,
+        });
+        const collectionNodeBuffer = Buffer.from(collectionNodeData, "utf-8");
+        const result = await this.casStorage.putWithKey(
+          key,
+          collectionNodeBuffer,
+          "application/json"
+        );
+
+        if ("error" in result) {
+          return errorResponse(400, `Collection key mismatch for ${key}`, {
+            expected: result.expected,
+            actual: result.actual,
+          });
+        }
+
+        // Add ownership
+        await this.ownershipDb.addOwnership(
+          realm,
+          key,
+          tokenId,
+          "application/vnd.cas.collection",
+          collection.size,
+          "collection"
+        );
+        committedKeys.push(key);
+      }
+    }
+
+    // Record commit
+    await this.commitsDb.create(realm, root, tokenId, title);
+
+    // Mark ticket as written if applicable
+    if (auth.token.type === "ticket") {
+      const ticketId = TokensDb.extractTokenId(auth.token.pk);
+      const marked = await this.tokensDb.markTicketWritten(ticketId, root);
+      if (!marked) {
+        return errorResponse(403, "Ticket already consumed");
+      }
+    }
+
+    return jsonResponse(200, {
+      success: true,
+      root,
+      committed: committedKeys,
+    });
+  }
+
+  /**
+   * Topological sort collections by their dependencies
+   * Returns collection keys in order that respects child dependencies
+   */
+  private topologicalSortCollections(
+    collections: Record<string, { children: Record<string, string>; size: number }>
+  ): string[] {
+    const collectionKeys = new Set(Object.keys(collections));
+    const result: string[] = [];
+    const visited = new Set<string>();
+    const visiting = new Set<string>();
+
+    const visit = (key: string): boolean => {
+      if (visited.has(key)) return true;
+      if (visiting.has(key)) {
+        // Cycle detected - shouldn't happen in valid DAG
+        console.warn(`[Commit] Cycle detected at collection: ${key}`);
+        return false;
+      }
+
+      visiting.add(key);
+
+      const collection = collections[key];
+      if (collection) {
+        // Visit dependencies that are also collections in this commit
+        for (const childKey of Object.values(collection.children)) {
+          if (collectionKeys.has(childKey)) {
+            if (!visit(childKey)) return false;
+          }
+        }
+      }
+
+      visiting.delete(key);
+      visited.add(key);
+      result.push(key);
+      return true;
+    };
+
+    for (const key of collectionKeys) {
+      if (!visited.has(key)) {
+        visit(key);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * GET /commits - List commits for realm
+   */
+  private async handleListCommits(
+    auth: AuthContext,
+    realm: string,
+    req: HttpRequest
+  ): Promise<HttpResponse> {
+    const url = new URL(req.path, "http://localhost");
+    const limit = Math.min(Number.parseInt(url.searchParams.get("limit") ?? "100", 10), 1000);
+    const startKey = url.searchParams.get("startKey") ?? undefined;
+
+    const result = await this.commitsDb.listByScan(realm, { limit, startKey });
+
+    return jsonResponse(200, {
+      commits: result.commits.map((c) => ({
+        root: c.root,
+        title: c.title,
+        createdAt: new Date(c.createdAt).toISOString(),
+      })),
+      nextKey: result.nextKey,
+    });
+  }
+
+  /**
+   * GET /commits/:root - Get commit details
+   */
+  private async handleGetCommit(
+    auth: AuthContext,
+    realm: string,
+    root: string
+  ): Promise<HttpResponse> {
+    const commit = await this.commitsDb.get(realm, root);
+    if (!commit) {
+      return errorResponse(404, "Commit not found");
+    }
+
+    return jsonResponse(200, {
+      root: commit.root,
+      title: commit.title,
+      createdAt: new Date(commit.createdAt).toISOString(),
+      createdBy: commit.createdBy,
+    });
+  }
+
+  /**
+   * PATCH /commits/:root - Update commit metadata
+   */
+  private async handleUpdateCommit(
+    auth: AuthContext,
+    realm: string,
+    root: string,
+    req: HttpRequest
+  ): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkWriteAccess(auth)) {
+      return errorResponse(403, "Write access denied");
+    }
+
+    const body = this.parseJson(req);
+    const parsed = UpdateCommitSchema.safeParse(body);
+    if (!parsed.success) {
+      return errorResponse(400, "Invalid request", parsed.error.issues);
+    }
+
+    const commit = await this.commitsDb.update(realm, root, { title: parsed.data.title });
+    if (!commit) {
+      return errorResponse(404, "Commit not found");
+    }
+
+    return jsonResponse(200, {
+      root: commit.root,
+      title: commit.title,
+      createdAt: new Date(commit.createdAt).toISOString(),
+    });
+  }
+
+  /**
+   * DELETE /commits/:root - Delete commit record
+   */
+  private async handleDeleteCommit(
+    auth: AuthContext,
+    realm: string,
+    root: string
+  ): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkWriteAccess(auth)) {
+      return errorResponse(403, "Write access denied");
+    }
+
+    const deleted = await this.commitsDb.delete(realm, root);
+    if (!deleted) {
+      return errorResponse(404, "Commit not found");
+    }
+
+    return jsonResponse(200, { success: true });
   }
 
   /**
@@ -1029,150 +1375,6 @@ export class Router {
     }
 
     return binaryResponse(result.content, result.contentType, key);
-  }
-
-  /**
-   * PUT /cas/{realm}/file - Upload file node
-   */
-  private async handlePutFile(
-    auth: AuthContext,
-    realm: string,
-    req: HttpRequest
-  ): Promise<HttpResponse> {
-    if (!this.authMiddleware.checkWriteAccess(auth)) {
-      return errorResponse(403, "Write access denied");
-    }
-
-    const body = this.parseJson(req);
-    const parsed = PutFileSchema.safeParse(body);
-    if (!parsed.success) {
-      return errorResponse(400, "Invalid request", parsed.error.issues);
-    }
-
-    const { chunks, contentType } = parsed.data;
-
-    // Check accepted MIME type
-    if (!this.authMiddleware.checkAcceptedMimeType(auth, contentType)) {
-      return errorResponse(415, "Content type not accepted");
-    }
-
-    // Verify all chunks exist
-    for (const chunkKey of chunks) {
-      const hasChunk = await this.ownershipDb.hasOwnership(realm, chunkKey);
-      if (!hasChunk) {
-        return errorResponse(400, `Chunk not found: ${chunkKey}`);
-      }
-    }
-
-    // Calculate total size from chunks
-    let totalSize = 0;
-    for (const chunkKey of chunks) {
-      const meta = await this.casStorage.getMetadata(chunkKey);
-      if (meta) {
-        totalSize += meta.size;
-      }
-    }
-
-    // Create file node and store its metadata
-    const fileNodeData = JSON.stringify({
-      kind: "file",
-      chunks,
-      contentType,
-      size: totalSize,
-    });
-    const fileNodeBuffer = Buffer.from(fileNodeData, "utf-8");
-    const result = await this.casStorage.put(fileNodeBuffer, "application/json");
-
-    // Add ownership
-    const tokenId = TokensDb.extractTokenId(auth.token.pk);
-    await this.ownershipDb.addOwnership(realm, result.key, tokenId, contentType, totalSize, "file");
-
-    // Mark ticket as written if applicable
-    if (auth.token.type === "ticket") {
-      const ticketId = TokensDb.extractTokenId(auth.token.pk);
-      const marked = await this.tokensDb.markTicketWritten(ticketId, result.key);
-      if (!marked) {
-        // Already written - this shouldn't happen if canWrite check passed
-        return errorResponse(403, "Ticket already consumed");
-      }
-    }
-
-    return jsonResponse(200, { key: result.key });
-  }
-
-  /**
-   * PUT /cas/{realm}/collection - Upload collection node
-   */
-  private async handlePutCollection(
-    auth: AuthContext,
-    realm: string,
-    req: HttpRequest
-  ): Promise<HttpResponse> {
-    if (!this.authMiddleware.checkWriteAccess(auth)) {
-      return errorResponse(403, "Write access denied");
-    }
-
-    const body = this.parseJson(req);
-    const parsed = PutCollectionSchema.safeParse(body);
-    if (!parsed.success) {
-      return errorResponse(400, "Invalid request", parsed.error.issues);
-    }
-
-    const { children } = parsed.data;
-    const serverConfig = loadServerConfig();
-
-    // Check children count
-    if (Object.keys(children).length > serverConfig.maxCollectionChildren) {
-      return errorResponse(400, `Too many children (max ${serverConfig.maxCollectionChildren})`);
-    }
-
-    // Verify all children exist
-    for (const [name, childKey] of Object.entries(children)) {
-      const hasChild = await this.ownershipDb.hasOwnership(realm, childKey);
-      if (!hasChild) {
-        return errorResponse(400, `Child not found: ${name} -> ${childKey}`);
-      }
-    }
-
-    // Calculate total size from children
-    let totalSize = 0;
-    for (const childKey of Object.values(children)) {
-      const ownership = await this.ownershipDb.getOwnership(realm, childKey);
-      if (ownership) {
-        totalSize += ownership.size;
-      }
-    }
-
-    // Create collection node
-    const collectionNodeData = JSON.stringify({
-      kind: "collection",
-      children,
-      size: totalSize,
-    });
-    const collectionNodeBuffer = Buffer.from(collectionNodeData, "utf-8");
-    const result = await this.casStorage.put(collectionNodeBuffer, "application/json");
-
-    // Add ownership
-    const tokenId = TokensDb.extractTokenId(auth.token.pk);
-    await this.ownershipDb.addOwnership(
-      realm,
-      result.key,
-      tokenId,
-      "application/vnd.cas.collection",
-      totalSize,
-      "collection"
-    );
-
-    // Mark ticket as written if applicable
-    if (auth.token.type === "ticket") {
-      const ticketId = TokensDb.extractTokenId(auth.token.pk);
-      const marked = await this.tokensDb.markTicketWritten(ticketId, result.key);
-      if (!marked) {
-        return errorResponse(403, "Ticket already consumed");
-      }
-    }
-
-    return jsonResponse(200, { key: result.key });
   }
 
   /**

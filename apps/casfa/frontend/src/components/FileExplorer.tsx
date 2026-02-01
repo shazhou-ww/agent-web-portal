@@ -53,6 +53,13 @@ interface CasOwnership {
   createdBy: string;
 }
 
+// Commit record from API
+interface CommitRecord {
+  root: string;
+  title?: string;
+  createdAt: string;
+}
+
 // Expanded node from /node/:key API
 interface CasNode {
   kind: NodeKind;
@@ -135,6 +142,8 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
   const [currentPath, setCurrentPath] = useState<PathItem[]>([]);
   const [currentNode, setCurrentNode] = useState<CasNode | null>(null);
   const [rootNodes, setRootNodes] = useState<CasOwnership[]>([]);
+  const [commits, setCommits] = useState<CommitRecord[]>([]);
+  const [viewMode, setViewMode] = useState<"commits" | "nodes">("commits");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [initialized, setInitialized] = useState(false);
@@ -162,6 +171,24 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
 
   // Delete state
   const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Fetch commits
+  const fetchCommits = useCallback(async () => {
+    if (!realm) return;
+    
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const response = await apiRequest(`/api/realm/${realm}/commits?limit=100`, {}, accessToken);
+      if (response.ok) {
+        const data = await response.json();
+        setCommits(data.commits || []);
+      }
+    } catch {
+      // Ignore errors, commits view is optional
+    }
+  }, [getAccessToken, realm]);
 
   // Fetch root level nodes (all collections and files not inside other collections)
   const fetchRootNodes = useCallback(async () => {
@@ -271,12 +298,12 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
           setCurrentPath([{ key: urlKey, name: urlKey.slice(0, 16) + "..." }]);
         } else {
           // Invalid key or not a collection, go to root
-          await fetchRootNodes();
+          await Promise.all([fetchRootNodes(), fetchCommits()]);
           navigate("/nodes", { replace: true });
         }
         setLoading(false);
       } else {
-        await fetchRootNodes();
+        await Promise.all([fetchRootNodes(), fetchCommits()]);
       }
       setInitialized(true);
     };
@@ -284,7 +311,7 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
     if (!initialized) {
       initFromUrl();
     }
-  }, [initialized, getKeyFromUrl, fetchNode, fetchRootNodes, navigate]);
+  }, [initialized, getKeyFromUrl, fetchNode, fetchRootNodes, fetchCommits, navigate]);
 
   // Navigate into a collection
   const navigateToCollection = async (key: string, name: string) => {
@@ -440,7 +467,21 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
     }
   };
 
-  // Upload file
+  // Compute file node key (must match server's format)
+  const computeFileKey = async (
+    chunks: string[],
+    contentType: string,
+    size: number
+  ): Promise<string> => {
+    const metadata = JSON.stringify({ kind: "file", chunks, contentType, size });
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(metadata));
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    return `sha256:${hash}`;
+  };
+
+  // Upload file using new commit endpoint
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!realm) return;
     
@@ -458,33 +499,75 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
         return;
       }
 
+      // Read file content
       const content = await file.arrayBuffer();
+      setUploadProgress(20);
+
+      // Compute chunk hash
+      const chunkHash = await computeHash(content);
+      const chunkKey = `sha256:${chunkHash}`;
       setUploadProgress(30);
 
-      const hash = await computeHash(content);
-      const key = `sha256:${hash}`;
-      setUploadProgress(50);
-
-      const response = await fetch(`${API_URL}/api/realm/${realm}/chunk/${encodeURIComponent(key)}`, {
+      // 1. Upload chunk
+      const chunkResponse = await fetch(`${API_URL}/api/realm/${realm}/chunk/${encodeURIComponent(chunkKey)}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "Content-Type": file.type || "application/octet-stream",
+          "Content-Type": "application/octet-stream",
         },
         body: content,
       });
 
+      if (!chunkResponse.ok) {
+        const errData = await chunkResponse.json().catch(() => ({}));
+        setError(errData.error || "Failed to upload chunk");
+        return;
+      }
+      setUploadProgress(60);
+
+      // 2. Compute file key and call commit
+      const contentType = file.type || "application/octet-stream";
+      const fileKey = await computeFileKey([chunkKey], contentType, content.byteLength);
+      setUploadProgress(70);
+
+      // 3. Call POST /commit
+      const commitResponse = await fetch(`${API_URL}/api/realm/${realm}/commit`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          root: fileKey,
+          title: file.name,
+          files: {
+            [fileKey]: {
+              chunks: [chunkKey],
+              contentType,
+              size: content.byteLength,
+            },
+          },
+        }),
+      });
+
       setUploadProgress(90);
 
-      if (response.ok) {
-        setUploadProgress(100);
-        // Refresh view
-        if (currentPath.length === 0) {
-          await fetchRootNodes();
+      if (commitResponse.ok) {
+        const result = await commitResponse.json();
+        if (result.success) {
+          setUploadProgress(100);
+          // Refresh view
+          if (currentPath.length === 0) {
+            await Promise.all([fetchRootNodes(), fetchCommits()]);
+          }
+        } else if (result.error === "missing_nodes") {
+          setError(`Missing chunks: ${result.missing.join(", ")}`);
+        } else {
+          setError(result.error || "Commit failed");
         }
       } else {
-        const errData = await response.json().catch(() => ({}));
-        setError(errData.error || "Failed to upload file");
+        const errData = await commitResponse.json().catch(() => ({}));
+        setError(errData.error || "Failed to commit file");
       }
     } catch (err) {
       setError("Upload failed: " + (err instanceof Error ? err.message : "Unknown error"));
@@ -497,7 +580,7 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
   };
 
   // Get items to display
-  const getDisplayItems = (): Array<{ name: string; node: CasNode; ownership?: CasOwnership }> => {
+  const getDisplayItems = (): Array<{ name: string; node: CasNode; ownership?: CasOwnership; commit?: CommitRecord }> => {
     if (currentNode && currentNode.kind === "collection" && currentNode.children) {
       // Inside a collection
       return Object.entries(currentNode.children)
@@ -516,7 +599,27 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
         });
     }
 
-    // At root level
+    // At root level - show commits or nodes based on viewMode
+    if (viewMode === "commits" && commits.length > 0) {
+      return commits
+        .filter(
+          (c) =>
+            !searchQuery ||
+            c.root.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (c.title?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
+        )
+        .map((c) => ({
+          name: c.title || c.root.slice(0, 16) + "...",
+          node: {
+            kind: "file" as NodeKind, // Will be fetched when clicked
+            key: c.root,
+            size: 0,
+          },
+          commit: c,
+        }));
+    }
+
+    // Fallback to nodes view
     return rootNodes
       .filter(
         (n) =>
@@ -622,8 +725,28 @@ export default function FileExplorer({ onError }: FileExplorerProps) {
           Upload
         </Button>
 
+        {/* View mode toggle (only at root) */}
+        {isAtRoot && (
+          <Box sx={{ display: "flex", gap: 0.5 }}>
+            <Chip
+              label="Commits"
+              size="small"
+              color={viewMode === "commits" ? "primary" : "default"}
+              onClick={() => setViewMode("commits")}
+              variant={viewMode === "commits" ? "filled" : "outlined"}
+            />
+            <Chip
+              label="All Nodes"
+              size="small"
+              color={viewMode === "nodes" ? "primary" : "default"}
+              onClick={() => setViewMode("nodes")}
+              variant={viewMode === "nodes" ? "filled" : "outlined"}
+            />
+          </Box>
+        )}
+
         {/* Refresh button */}
-        <IconButton onClick={() => (isAtRoot ? fetchRootNodes() : navigateToPath(currentPath.length - 1))} disabled={loading}>
+        <IconButton onClick={() => (isAtRoot ? Promise.all([fetchRootNodes(), fetchCommits()]) : navigateToPath(currentPath.length - 1))} disabled={loading}>
           <RefreshIcon />
         </IconButton>
       </Box>

@@ -341,7 +341,7 @@ export interface CasConfig {
 
 export function loadServerConfig(): CasServerConfig {
   return {
-    chunkSize: parseInt(process.env.CAS_CHUNK_SIZE ?? "262144", 10), // 256KB
+    chunkSize: parseInt(process.env.CAS_CHUNK_SIZE ?? "4194304", 10), // 4MB
     maxChildren: parseInt(process.env.CAS_MAX_CHILDREN ?? "256", 10), // 256
     maxCollectionChildren: parseInt(process.env.CAS_MAX_COLLECTION_CHILDREN ?? "10000", 10),
     maxPayloadSize: parseInt(process.env.CAS_MAX_PAYLOAD_SIZE ?? "10485760", 10), // 10MB

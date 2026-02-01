@@ -307,7 +307,11 @@ export class BufferedCasClient implements IBufferedCasClient {
   /**
    * Commit all buffered writes to CAS
    *
-   * Uploads in order: chunks → files → collections
+   * Uses the unified POST /commit endpoint:
+   * 1. Upload all chunks in parallel
+   * 2. Call POST /commit with files and collections
+   * 3. Handle missing_nodes response with retry
+   *
    * Returns the keys of all committed nodes
    */
   async commit(): Promise<string[]> {
@@ -315,40 +319,135 @@ export class BufferedCasClient implements IBufferedCasClient {
       return [];
     }
 
-    const committedKeys: string[] = [];
+    const maxRetries = 3;
+    let retryCount = 0;
 
-    try {
-      // 1. Upload all chunks in parallel
-      const chunkUploads = Array.from(this.pendingChunks.values()).map(async (chunk) => {
-        await this.uploadChunk(chunk.key, chunk.data);
-        committedKeys.push(chunk.key);
-      });
-      await Promise.all(chunkUploads);
+    while (retryCount < maxRetries) {
+      try {
+        // 1. Upload all chunks in parallel
+        const chunkUploads = Array.from(this.pendingChunks.values()).map(async (chunk) => {
+          await this.uploadChunk(chunk.key, chunk.data);
+        });
+        await Promise.all(chunkUploads);
 
-      // 2. Upload all file nodes (can be parallel as they only depend on chunks)
-      const fileUploads = Array.from(this.pendingFiles.values()).map(async (file) => {
-        await this.uploadFileNode(file);
-        committedKeys.push(file.key);
-      });
-      await Promise.all(fileUploads);
+        // 2. Build commit payload
+        const files: Record<string, { chunks: string[]; contentType: string; size: number }> = {};
+        const collections: Record<string, { children: Record<string, string>; size: number }> = {};
 
-      // 3. Upload collections in dependency order (bottom-up)
-      // For simplicity, we upload all collections at once since they only reference other nodes
-      const collectionUploads = Array.from(this.pendingCollections.values()).map(
-        async (collection) => {
-          await this.uploadCollectionNode(collection);
-          committedKeys.push(collection.key);
+        for (const file of this.pendingFiles.values()) {
+          files[file.key] = {
+            chunks: file.chunks,
+            contentType: file.contentType,
+            size: file.size,
+          };
         }
-      );
-      await Promise.all(collectionUploads);
 
-      // Clear pending writes on success
-      this.discard();
+        for (const collection of this.pendingCollections.values()) {
+          // Calculate size from children
+          let size = 0;
+          for (const childKey of Object.values(collection.children)) {
+            const file = this.pendingFiles.get(childKey);
+            if (file) {
+              size += file.size;
+            }
+            // Note: nested collections size would need recursive calculation
+          }
+          collections[collection.key] = {
+            children: collection.children,
+            size,
+          };
+        }
 
-      return committedKeys;
-    } catch (error) {
-      throw new CommitError(error instanceof Error ? error.message : String(error));
+        // Determine root key
+        const root = this.rootKey;
+        if (!root) {
+          throw new Error("No root key set for commit");
+        }
+
+        // 3. Call POST /commit
+        const result = await this.postCommit(root, files, collections);
+
+        if (result.success) {
+          const committedKeys = result.committed ?? [];
+          // Clear pending writes on success
+          this.discard();
+          return committedKeys;
+        }
+
+        // Handle missing nodes - retry after uploading missing chunks
+        if (result.error === "missing_nodes" && result.missing) {
+          console.warn(`[BufferedCasClient] Missing nodes detected, retry ${retryCount + 1}/${maxRetries}:`, result.missing);
+
+          // Check if missing nodes are chunks we have
+          const missingChunks = result.missing.filter((key: string) => this.pendingChunks.has(key));
+          if (missingChunks.length === 0) {
+            throw new Error(`Missing nodes that are not pending chunks: ${result.missing.join(", ")}`);
+          }
+
+          // Re-upload missing chunks
+          for (const key of missingChunks) {
+            const chunk = this.pendingChunks.get(key);
+            if (chunk) {
+              await this.uploadChunk(chunk.key, chunk.data);
+            }
+          }
+
+          retryCount++;
+          continue;
+        }
+
+        throw new Error(`Commit failed: ${result.error}`);
+      } catch (error) {
+        if (retryCount >= maxRetries - 1) {
+          throw new CommitError(error instanceof Error ? error.message : String(error));
+        }
+        retryCount++;
+        console.warn(`[BufferedCasClient] Commit error, retry ${retryCount}/${maxRetries}:`, error);
+      }
     }
+
+    throw new CommitError(`Failed to commit after ${maxRetries} retries`);
+  }
+
+  /**
+   * POST /commit to CAS server
+   */
+  private async postCommit(
+    root: string,
+    files: Record<string, { chunks: string[]; contentType: string; size: number }>,
+    collections: Record<string, { children: Record<string, string>; size: number }>
+  ): Promise<{
+    success: boolean;
+    root?: string;
+    committed?: string[];
+    error?: string;
+    missing?: string[];
+  }> {
+    const apiBase = this.client.getApiBaseUrl();
+
+    const body: Record<string, unknown> = { root };
+    if (Object.keys(files).length > 0) {
+      body.files = files;
+    }
+    if (Object.keys(collections).length > 0) {
+      body.collections = collections;
+    }
+
+    const res = await fetch(`${apiBase}/commit`, {
+      method: "POST",
+      headers: {
+        Authorization: this.getAuthHeader(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Commit request failed: ${res.status} - ${error}`);
+    }
+
+    return res.json();
   }
 
   /**
@@ -500,53 +599,6 @@ export class BufferedCasClient implements IBufferedCasClient {
     if (!res.ok) {
       const error = await res.text();
       throw new Error(`Failed to upload chunk ${key}: ${res.status} - ${error}`);
-    }
-  }
-
-  /**
-   * Upload a file node to CAS
-   */
-  private async uploadFileNode(file: PendingFile): Promise<void> {
-    const apiBase = this.client.getApiBaseUrl();
-
-    const res = await fetch(`${apiBase}/file`, {
-      method: "PUT",
-      headers: {
-        Authorization: this.getAuthHeader(),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        chunks: file.chunks,
-        contentType: file.contentType,
-      }),
-    });
-
-    if (!res.ok) {
-      const error = await res.text();
-      throw new Error(`Failed to upload file node: ${res.status} - ${error}`);
-    }
-  }
-
-  /**
-   * Upload a collection node to CAS
-   */
-  private async uploadCollectionNode(collection: PendingCollection): Promise<void> {
-    const apiBase = this.client.getApiBaseUrl();
-
-    const res = await fetch(`${apiBase}/collection`, {
-      method: "PUT",
-      headers: {
-        Authorization: this.getAuthHeader(),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        children: collection.children,
-      }),
-    });
-
-    if (!res.ok) {
-      const error = await res.text();
-      throw new Error(`Failed to upload collection node: ${res.status} - ${error}`);
     }
   }
 
