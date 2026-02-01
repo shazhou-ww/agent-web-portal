@@ -11,6 +11,48 @@ import {
 } from "@aws-sdk/client-s3";
 import type { CasConfig } from "../types.ts";
 
+// ============================================================================
+// CAS Content Types
+// ============================================================================
+
+export const CAS_CONTENT_TYPES = {
+  CHUNK: "application/octet-stream",
+  INLINE_FILE: "application/vnd.cas.inline-file",
+  FILE: "application/vnd.cas.file",
+  COLLECTION: "application/vnd.cas.collection",
+} as const;
+
+// S3 metadata keys (x-amz-meta- prefix is added automatically by SDK)
+export const CAS_METADATA_KEYS = {
+  CONTENT_TYPE: "cas-content-type",  // Original file content type
+  SIZE: "cas-size",                   // Total file size
+} as const;
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface CasMetadata {
+  casContentType?: string;  // Original file content type (for file/inline-file)
+  casSize?: number;         // Total file size
+}
+
+export interface GetResult {
+  content: Buffer;
+  contentType: string;
+  metadata: CasMetadata;
+}
+
+export interface PutResult {
+  key: string;
+  size: number;
+  isNew: boolean;
+}
+
+// ============================================================================
+// CasStorage Class
+// ============================================================================
+
 export class CasStorage {
   private client: S3Client;
   private bucket: string;
@@ -60,9 +102,9 @@ export class CasStorage {
   }
 
   /**
-   * Get blob content from S3
+   * Get blob content from S3 with metadata
    */
-  async get(casKey: string): Promise<{ content: Buffer; contentType: string } | null> {
+  async get(casKey: string): Promise<GetResult | null> {
     try {
       const result = await this.client.send(
         new GetObjectCommand({
@@ -74,7 +116,19 @@ export class CasStorage {
       const content = Buffer.from(await result.Body!.transformToByteArray());
       const contentType = result.ContentType ?? "application/octet-stream";
 
-      return { content, contentType };
+      // Extract CAS metadata from S3 metadata
+      const metadata: CasMetadata = {};
+      if (result.Metadata) {
+        if (result.Metadata[CAS_METADATA_KEYS.CONTENT_TYPE]) {
+          metadata.casContentType = result.Metadata[CAS_METADATA_KEYS.CONTENT_TYPE];
+        }
+        const sizeStr = result.Metadata[CAS_METADATA_KEYS.SIZE];
+        if (sizeStr) {
+          metadata.casSize = Number.parseInt(sizeStr, 10);
+        }
+      }
+
+      return { content, contentType, metadata };
     } catch (error: any) {
       if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
         return null;
@@ -84,13 +138,14 @@ export class CasStorage {
   }
 
   /**
-   * Put blob content to S3
+   * Put blob content to S3 with optional metadata
    * Returns the CAS key (sha256 hash)
    */
   async put(
     content: Buffer,
-    contentType: string = "application/octet-stream"
-  ): Promise<{ key: string; size: number; isNew: boolean }> {
+    contentType: string = "application/octet-stream",
+    metadata?: CasMetadata
+  ): Promise<PutResult> {
     const key = CasStorage.computeHash(content);
     const s3Key = this.toS3Key(key);
 
@@ -98,12 +153,22 @@ export class CasStorage {
     const alreadyExists = await this.exists(key);
 
     if (!alreadyExists) {
+      // Build S3 metadata object
+      const s3Metadata: Record<string, string> = {};
+      if (metadata?.casContentType) {
+        s3Metadata[CAS_METADATA_KEYS.CONTENT_TYPE] = metadata.casContentType;
+      }
+      if (metadata?.casSize !== undefined) {
+        s3Metadata[CAS_METADATA_KEYS.SIZE] = String(metadata.casSize);
+      }
+
       await this.client.send(
         new PutObjectCommand({
           Bucket: this.bucket,
           Key: s3Key,
           Body: content,
           ContentType: contentType,
+          Metadata: Object.keys(s3Metadata).length > 0 ? s3Metadata : undefined,
         })
       );
     }
@@ -116,15 +181,16 @@ export class CasStorage {
   }
 
   /**
-   * Put blob with expected key (validates hash)
+   * Put blob with expected key (validates hash) and optional metadata
    * Returns error if hash doesn't match
    */
   async putWithKey(
     expectedKey: string,
     content: Buffer,
-    contentType: string = "application/octet-stream"
+    contentType: string = "application/octet-stream",
+    metadata?: CasMetadata
   ): Promise<
-    | { key: string; size: number; isNew: boolean }
+    | PutResult
     | { error: "hash_mismatch"; expected: string; actual: string }
   > {
     const actualKey = CasStorage.computeHash(content);
@@ -137,7 +203,7 @@ export class CasStorage {
       };
     }
 
-    return this.put(content, contentType);
+    return this.put(content, contentType, metadata);
   }
 
   /**
@@ -171,9 +237,13 @@ export class CasStorage {
   }
 
   /**
-   * Get metadata for a blob
+   * Get metadata for a blob (HEAD request, no body)
    */
-  async getMetadata(casKey: string): Promise<{ contentType: string; size: number } | null> {
+  async getMetadata(casKey: string): Promise<{
+    contentType: string;
+    size: number;
+    metadata: CasMetadata;
+  } | null> {
     try {
       const result = await this.client.send(
         new HeadObjectCommand({
@@ -182,9 +252,22 @@ export class CasStorage {
         })
       );
 
+      // Extract CAS metadata from S3 metadata
+      const metadata: CasMetadata = {};
+      if (result.Metadata) {
+        if (result.Metadata[CAS_METADATA_KEYS.CONTENT_TYPE]) {
+          metadata.casContentType = result.Metadata[CAS_METADATA_KEYS.CONTENT_TYPE];
+        }
+        const sizeStr = result.Metadata[CAS_METADATA_KEYS.SIZE];
+        if (sizeStr) {
+          metadata.casSize = Number.parseInt(sizeStr, 10);
+        }
+      }
+
       return {
         contentType: result.ContentType ?? "application/octet-stream",
         size: result.ContentLength ?? 0,
+        metadata,
       };
     } catch (error: any) {
       if (error.name === "NotFound" || error.$metadata?.httpStatusCode === 404) {

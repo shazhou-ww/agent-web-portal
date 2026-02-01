@@ -3,6 +3,38 @@
  */
 
 // ============================================================================
+// CAS Content Types and Metadata Keys
+// ============================================================================
+
+/**
+ * Content-Type values for CAS nodes
+ * Used to identify node type in S3 and HTTP responses
+ */
+export const CAS_CONTENT_TYPES = {
+  /** Raw chunk data */
+  CHUNK: "application/octet-stream",
+  /** Single-chunk file (content stored directly) */
+  INLINE_FILE: "application/vnd.cas.inline-file",
+  /** Multi-chunk file (body = chunk keys, N×32 bytes) */
+  FILE: "application/vnd.cas.file",
+  /** Collection/directory (body = JSON with children) */
+  COLLECTION: "application/vnd.cas.collection",
+} as const;
+
+export type CasContentType = (typeof CAS_CONTENT_TYPES)[keyof typeof CAS_CONTENT_TYPES];
+
+/**
+ * Custom header names for CAS metadata
+ * These are included in HTTP responses from /raw/:key
+ */
+export const CAS_HEADERS = {
+  /** Original file content type (e.g., "image/png") */
+  CONTENT_TYPE: "X-CAS-Content-Type",
+  /** Total file size in bytes */
+  SIZE: "X-CAS-Size",
+} as const;
+
+// ============================================================================
 // Token Types
 // ============================================================================
 
@@ -398,6 +430,29 @@ export interface CasEndpointInfo {
 
   /** Max file name length in UTF-8 bytes (default 255) */
   maxNameBytes: number;
+}
+
+/**
+ * Tree node info returned in TreeResponse
+ * Contains metadata for file/inline-file/collection nodes
+ */
+export interface TreeNodeInfo {
+  kind: NodeKind;
+  size: number;
+  contentType?: string; // for file/inline-file
+  children?: Record<string, string>; // for collection: name -> key
+  chunks?: number; // for file: number of chunks
+}
+
+/**
+ * Response from GET /{realm}/tree/:key
+ * Returns all nodes in the DAG rooted at key
+ */
+export interface TreeResponse {
+  /** Map of key -> node info */
+  nodes: Record<string, TreeNodeInfo>;
+  /** Next node to fetch if tree was truncated (depth-first order) */
+  next?: string;
 }
 
 /** @deprecated Use CasEndpointInfo directly */

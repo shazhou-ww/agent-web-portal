@@ -5,6 +5,38 @@
  */
 
 // ============================================================================
+// CAS Content Types and Headers
+// ============================================================================
+
+/**
+ * Content-Type values for CAS nodes
+ * Used to identify node type in HTTP responses
+ */
+export const CAS_CONTENT_TYPES = {
+  /** Raw chunk data */
+  CHUNK: "application/octet-stream",
+  /** Single-chunk file (content stored directly) */
+  INLINE_FILE: "application/vnd.cas.inline-file",
+  /** Multi-chunk file (body = chunk keys, N×64 hex chars) */
+  FILE: "application/vnd.cas.file",
+  /** Collection/directory (body = JSON with children) */
+  COLLECTION: "application/vnd.cas.collection",
+} as const;
+
+export type CasContentType = (typeof CAS_CONTENT_TYPES)[keyof typeof CAS_CONTENT_TYPES];
+
+/**
+ * Custom header names for CAS metadata
+ * Included in HTTP responses from /raw/:key
+ */
+export const CAS_HEADERS = {
+  /** Original file content type (e.g., "image/png") */
+  CONTENT_TYPE: "X-CAS-Content-Type",
+  /** Total file size in bytes */
+  SIZE: "X-CAS-Size",
+} as const;
+
+// ============================================================================
 // Authentication Types
 // ============================================================================
 
@@ -67,7 +99,7 @@ export interface CasEndpointInfo {
 }
 
 // ============================================================================
-// Node Types (mirrored from cas-stack)
+// Node Types
 // ============================================================================
 
 /**
@@ -79,7 +111,51 @@ export interface CasEndpointInfo {
  */
 export type NodeKind = "chunk" | "inline-file" | "file" | "collection";
 
-// Raw node types (storage layer)
+// ============================================================================
+// Tree Response Types (from GET /{realm}/tree/:key)
+// ============================================================================
+
+/**
+ * Tree node info returned in TreeResponse
+ * Contains metadata for file/inline-file/collection nodes
+ */
+export interface TreeNodeInfo {
+  kind: NodeKind;
+  size: number;
+  contentType?: string; // for file/inline-file
+  children?: Record<string, string>; // for collection: name -> key
+  chunks?: number; // for file: number of chunks
+}
+
+/**
+ * Response from GET /{realm}/tree/:key
+ * Returns all nodes in the DAG rooted at key
+ */
+export interface TreeResponse {
+  /** Map of key -> node info */
+  nodes: Record<string, TreeNodeInfo>;
+  /** Next node to fetch if tree was truncated (depth-first order) */
+  next?: string;
+}
+
+/**
+ * Raw response from GET /{realm}/raw/:key
+ * Binary data with metadata headers
+ */
+export interface RawResponse {
+  /** Binary content */
+  data: ArrayBuffer;
+  /** Content-Type header (CAS_CONTENT_TYPES value) */
+  contentType: string;
+  /** Original file content type (from X-CAS-Content-Type header) */
+  casContentType?: string;
+  /** Total file size (from X-CAS-Size header) */
+  casSize?: number;
+}
+
+// ============================================================================
+// Raw Node Types (storage layer)
+// ============================================================================
 export interface CasRawCollectionNode {
   kind: "collection";
   key: string;

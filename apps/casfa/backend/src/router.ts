@@ -23,8 +23,10 @@ import type {
   CasEndpointInfo,
   HttpRequest,
   HttpResponse,
+  TreeNodeInfo,
+  TreeResponse,
 } from "./types.ts";
-import { loadServerConfig } from "./types.ts";
+import { CAS_CONTENT_TYPES, CAS_HEADERS, loadServerConfig } from "./types.ts";
 
 // ============================================================================
 // Request Validation Schemas
@@ -821,11 +823,6 @@ export class Router {
       return this.handleDeleteCommit(auth, realm, root);
     }
 
-    // GET /nodes - List all nodes
-    if (req.method === "GET" && subPath === "/nodes") {
-      return this.handleListNodes(auth, realm, req);
-    }
-
     // PUT /chunk/:key - Upload chunk (client-side chunking)
     const putChunkMatch = subPath.match(/^\/chunk\/(.+)$/);
     if (req.method === "PUT" && putChunkMatch) {
@@ -833,25 +830,18 @@ export class Router {
       return this.handlePutChunk(auth, realm, key, req);
     }
 
-    // GET /chunk/:key - Get chunk data
-    const getChunkMatch = subPath.match(/^\/chunk\/(.+)$/);
-    if (req.method === "GET" && getChunkMatch) {
-      const key = decodeURIComponent(getChunkMatch[1]!);
-      return this.handleGetChunk(auth, realm, key);
+    // GET /tree/:key - Get complete DAG structure
+    const getTreeMatch = subPath.match(/^\/tree\/(.+)$/);
+    if (req.method === "GET" && getTreeMatch) {
+      const key = decodeURIComponent(getTreeMatch[1]!);
+      return this.handleGetTree(auth, realm, key);
     }
 
-    // GET /node/:key - Get application layer node
-    const getNodeMatch = subPath.match(/^\/node\/(.+)$/);
-    if (req.method === "GET" && getNodeMatch) {
-      const key = decodeURIComponent(getNodeMatch[1]!);
-      return this.handleGetNode(auth, realm, key);
-    }
-
-    // GET /raw/:key - Get storage layer node
+    // GET /raw/:key - Get raw node data (binary or JSON depending on type)
     const getRawMatch = subPath.match(/^\/raw\/(.+)$/);
     if (req.method === "GET" && getRawMatch) {
       const key = decodeURIComponent(getRawMatch[1]!);
-      return this.handleGetRawNode(auth, realm, key);
+      return this.handleGetRaw(auth, realm, key);
     }
 
     return errorResponse(404, "Endpoint not found");
@@ -987,32 +977,85 @@ export class Router {
           return errorResponse(415, `Content type not accepted: ${file.contentType}`);
         }
 
-        // Create file node
-        const fileNodeData = JSON.stringify({
-          kind: "file",
-          chunks: file.chunks,
-          contentType: file.contentType,
-          size: file.size,
-        });
-        const fileNodeBuffer = Buffer.from(fileNodeData, "utf-8");
-        const result = await this.casStorage.putWithKey(key, fileNodeBuffer, "application/json");
+        // Determine if this is an inline-file (single chunk) or multi-chunk file
+        const isInline = file.chunks.length === 1;
+        
+        if (isInline) {
+          // Inline file: store the actual chunk content directly
+          // First, get the chunk content
+          const chunkKey = file.chunks[0]!;
+          const chunkData = await this.casStorage.get(chunkKey);
+          if (!chunkData) {
+            return jsonResponse(200, {
+              success: false,
+              error: "missing_nodes",
+              missing: [chunkKey],
+            });
+          }
 
-        if ("error" in result) {
-          return errorResponse(400, `File key mismatch for ${key}`, {
-            expected: result.expected,
-            actual: result.actual,
-          });
+          // Store as inline-file with CAS metadata
+          const result = await this.casStorage.putWithKey(
+            key,
+            chunkData.content,
+            CAS_CONTENT_TYPES.INLINE_FILE,
+            {
+              casContentType: file.contentType,
+              casSize: file.size,
+            }
+          );
+
+          if ("error" in result) {
+            return errorResponse(400, `File key mismatch for ${key}`, {
+              expected: result.expected,
+              actual: result.actual,
+            });
+          }
+
+          // Add ownership
+          await this.ownershipDb.addOwnership(
+            realm,
+            key,
+            tokenId,
+            file.contentType,
+            file.size,
+            "inline-file"
+          );
+        } else {
+          // Multi-chunk file: store chunk keys as binary (hex strings concatenated)
+          // Each chunk key is "sha256:XXXX..." - we store the hex part (64 chars)
+          const chunkKeysHex = file.chunks.map((k) => {
+            // Remove "sha256:" prefix if present
+            return k.startsWith("sha256:") ? k.slice(7) : k;
+          }).join("");
+          const fileNodeBuffer = Buffer.from(chunkKeysHex, "utf-8");
+
+          const result = await this.casStorage.putWithKey(
+            key,
+            fileNodeBuffer,
+            CAS_CONTENT_TYPES.FILE,
+            {
+              casContentType: file.contentType,
+              casSize: file.size,
+            }
+          );
+
+          if ("error" in result) {
+            return errorResponse(400, `File key mismatch for ${key}`, {
+              expected: result.expected,
+              actual: result.actual,
+            });
+          }
+
+          // Add ownership
+          await this.ownershipDb.addOwnership(
+            realm,
+            key,
+            tokenId,
+            file.contentType,
+            file.size,
+            "file"
+          );
         }
-
-        // Add ownership
-        await this.ownershipDb.addOwnership(
-          realm,
-          key,
-          tokenId,
-          file.contentType,
-          file.size,
-          "file"
-        );
         committedKeys.push(key);
       }
     }
@@ -1052,17 +1095,18 @@ export class Router {
           }
         }
 
-        // Create collection node
+        // Create collection node (JSON format)
         const collectionNodeData = JSON.stringify({
-          kind: "collection",
           children: collection.children,
-          size: collection.size,
         });
         const collectionNodeBuffer = Buffer.from(collectionNodeData, "utf-8");
         const result = await this.casStorage.putWithKey(
           key,
           collectionNodeBuffer,
-          "application/json"
+          CAS_CONTENT_TYPES.COLLECTION,
+          {
+            casSize: collection.size,
+          }
         );
 
         if ("error" in result) {
@@ -1248,32 +1292,6 @@ export class Router {
   }
 
   /**
-   * GET /cas/{realm}/nodes - List all nodes for a realm
-   * Query params:
-   *   - limit: max number of results (default 100, max 1000)
-   *   - startKey: pagination key
-   *   - kind: filter by node kind (collection, file, chunk)
-   */
-  private async handleListNodes(
-    auth: AuthContext,
-    realm: string,
-    req: HttpRequest
-  ): Promise<HttpResponse> {
-    const url = new URL(req.path, "http://localhost");
-    const limit = Math.min(Number.parseInt(url.searchParams.get("limit") ?? "100", 10), 1000);
-    const startKey = url.searchParams.get("startKey") ?? undefined;
-    const kindParam = url.searchParams.get("kind") as "collection" | "file" | "chunk" | null;
-
-    const result = await this.ownershipDb.listOwnership(realm, {
-      limit,
-      startKey,
-      kind: kindParam ?? undefined,
-    });
-
-    return jsonResponse(200, result);
-  }
-
-  /**
    * PUT /cas/{realm}/chunk/:key - Upload chunk data
    */
   private async handlePutChunk(
@@ -1328,9 +1346,102 @@ export class Router {
   }
 
   /**
-   * GET /cas/{realm}/chunk/:key - Get chunk binary data
+   * GET /{realm}/tree/:key - Get complete DAG structure
+   * Returns all file/inline-file/collection nodes in the tree rooted at key.
+   * Limited to 1000 nodes per response; returns 'next' for continuation.
    */
-  private async handleGetChunk(
+  private async handleGetTree(
+    auth: AuthContext,
+    realm: string,
+    rootKey: string
+  ): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkReadAccess(auth, rootKey)) {
+      return errorResponse(403, "Read access denied");
+    }
+
+    // Check ownership of root
+    const hasAccess = await this.ownershipDb.hasOwnership(realm, rootKey);
+    if (!hasAccess) {
+      return errorResponse(404, "Not found");
+    }
+
+    const MAX_NODES = 1000;
+    const nodes: Record<string, TreeNodeInfo> = {};
+    const queue: string[] = [rootKey]; // BFS queue (could use DFS for depth-first)
+    let next: string | undefined;
+
+    while (queue.length > 0) {
+      if (Object.keys(nodes).length >= MAX_NODES) {
+        // Truncate - return next node in queue for continuation
+        next = queue[0];
+        break;
+      }
+
+      const key = queue.shift()!;
+      
+      // Skip if already processed
+      if (nodes[key]) continue;
+
+      const result = await this.casStorage.get(key);
+      if (!result) continue;
+
+      const { content, contentType, metadata } = result;
+
+      if (contentType === CAS_CONTENT_TYPES.COLLECTION) {
+        // Collection: JSON body with children
+        try {
+          const data = JSON.parse(content.toString("utf-8"));
+          const children = data.children as Record<string, string>;
+          nodes[key] = {
+            kind: "collection",
+            size: metadata.casSize ?? content.length,
+            children,
+          };
+          // Add children to queue
+          for (const childKey of Object.values(children)) {
+            if (!nodes[childKey]) {
+              queue.push(childKey);
+            }
+          }
+        } catch {
+          // Invalid JSON, skip
+        }
+      } else if (contentType === CAS_CONTENT_TYPES.FILE) {
+        // Multi-chunk file: binary body = chunk keys (N×32 bytes hex)
+        const chunkCount = content.length / 64; // 64 hex chars per hash
+        nodes[key] = {
+          kind: "file",
+          size: metadata.casSize ?? 0,
+          contentType: metadata.casContentType,
+          chunks: chunkCount,
+        };
+        // Chunks are not added to queue - client fetches via /raw
+      } else if (contentType === CAS_CONTENT_TYPES.INLINE_FILE) {
+        // Inline file: binary content directly
+        nodes[key] = {
+          kind: "inline-file",
+          size: metadata.casSize ?? content.length,
+          contentType: metadata.casContentType,
+        };
+      }
+      // Chunks (application/octet-stream) are not included in tree response
+    }
+
+    const response: TreeResponse = { nodes };
+    if (next) {
+      response.next = next;
+    }
+
+    return jsonResponse(200, response);
+  }
+
+  /**
+   * GET /{realm}/raw/:key - Get raw node data
+   * Returns binary data with appropriate Content-Type and CAS headers.
+   * - chunk/inline-file/file: returns binary body
+   * - collection: returns JSON body
+   */
+  private async handleGetRaw(
     auth: AuthContext,
     realm: string,
     key: string
@@ -1351,124 +1462,27 @@ export class Router {
       return errorResponse(404, "Content not found in storage");
     }
 
-    return binaryResponse(result.content, result.contentType, key);
-  }
+    const { content, contentType, metadata } = result;
 
-  /**
-   * GET /cas/{realm}/node/:key - Get application layer node (CasNode)
-   */
-  private async handleGetNode(
-    auth: AuthContext,
-    realm: string,
-    key: string
-  ): Promise<HttpResponse> {
-    if (!this.authMiddleware.checkReadAccess(auth, key)) {
-      return errorResponse(403, "Read access denied");
-    }
-
-    // Check ownership
-    const hasAccess = await this.ownershipDb.hasOwnership(realm, key);
-    if (!hasAccess) {
-      return errorResponse(404, "Not found");
-    }
-
-    // Get raw node first
-    const rawNode = await this.getRawNodeData(key);
-    if (!rawNode) {
-      return errorResponse(404, "Node not found");
-    }
-
-    // Expand to application layer view
-    const node = await this.expandToAppNode(rawNode, realm, auth);
-
-    return jsonResponse(200, node);
-  }
-
-  /**
-   * GET /cas/{realm}/raw/:key - Get storage layer node (CasRawNode)
-   */
-  private async handleGetRawNode(
-    auth: AuthContext,
-    realm: string,
-    key: string
-  ): Promise<HttpResponse> {
-    if (!this.authMiddleware.checkReadAccess(auth, key)) {
-      return errorResponse(403, "Read access denied");
-    }
-
-    // Check ownership
-    const hasAccess = await this.ownershipDb.hasOwnership(realm, key);
-    if (!hasAccess) {
-      return errorResponse(404, "Not found");
-    }
-
-    // Get raw node
-    const rawNode = await this.getRawNodeData(key);
-    if (!rawNode) {
-      return errorResponse(404, "Node not found");
-    }
-
-    return jsonResponse(200, rawNode);
-  }
-
-  /**
-   * Get raw node data from storage
-   */
-  private async getRawNodeData(key: string): Promise<any | null> {
-    const result = await this.casStorage.get(key);
-    if (!result) {
-      return null;
-    }
-
-    // Check if it's a structured node (JSON) or raw chunk
-    if (result.contentType === "application/json") {
-      try {
-        const data = JSON.parse(result.content.toString("utf-8"));
-        return { ...data, key };
-      } catch {
-        // Not a structured node, treat as chunk
-      }
-    }
-
-    // Raw chunk
-    return {
-      kind: "chunk",
-      key,
-      size: result.content.length,
+    // Build response headers with CAS metadata
+    const headers: Record<string, string> = {
+      "Content-Type": contentType,
+      "Content-Length": String(content.length),
     };
-  }
 
-  /**
-   * Expand raw node to application layer node
-   */
-  private async expandToAppNode(rawNode: any, realm: string, auth: AuthContext): Promise<any> {
-    if (rawNode.kind === "file") {
-      return {
-        kind: "file",
-        key: rawNode.key,
-        size: rawNode.size,
-        contentType: rawNode.contentType,
-      };
+    if (metadata.casContentType) {
+      headers[CAS_HEADERS.CONTENT_TYPE] = metadata.casContentType;
+    }
+    if (metadata.casSize !== undefined) {
+      headers[CAS_HEADERS.SIZE] = String(metadata.casSize);
     }
 
-    if (rawNode.kind === "collection") {
-      const expandedChildren: Record<string, any> = {};
-      for (const [name, childKey] of Object.entries(rawNode.children as Record<string, string>)) {
-        const childRaw = await this.getRawNodeData(childKey);
-        if (childRaw) {
-          expandedChildren[name] = await this.expandToAppNode(childRaw, realm, auth);
-        }
-      }
-      return {
-        kind: "collection",
-        key: rawNode.key,
-        size: rawNode.size,
-        children: expandedChildren,
-      };
-    }
-
-    // Chunk nodes are not exposed in app layer
-    return rawNode;
+    return {
+      statusCode: 200,
+      headers,
+      body: content.toString("base64"),
+      isBase64Encoded: true,
+    };
   }
 
   // ============================================================================

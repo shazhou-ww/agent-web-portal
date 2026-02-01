@@ -140,8 +140,8 @@ function createDummyCasClient(): IBufferedCasClient {
 
   return {
     openFile: notAvailable,
-    getNode: notAvailable,
-    getRawNode: notAvailable,
+    getTree: notAvailable,
+    getRaw: notAvailable,
     putFile: notAvailable,
     putCollection: notAvailable,
     commit: notAvailable,

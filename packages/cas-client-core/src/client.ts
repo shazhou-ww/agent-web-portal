@@ -21,7 +21,11 @@ import type {
   CasRawNode,
   LocalStorageProvider,
   PathResolver,
+  RawResponse,
+  TreeNodeInfo,
+  TreeResponse,
 } from "./types.ts";
+import { CAS_CONTENT_TYPES, CAS_HEADERS } from "./types.ts";
 
 /**
  * CAS Client for interacting with CAS storage
@@ -170,11 +174,25 @@ export class CasClient {
 
   /**
    * Resolve a path within a node to get the target key
+   * Uses getTree to fetch the DAG and then resolves the path locally
    */
   async resolvePath(rootKey: string, path: string): Promise<string> {
+    // Get the full tree
+    const tree = await this.getTree(rootKey);
+
+    // Resolve path using the tree
     return resolvePathRaw(rootKey, path, async (key) => {
-      const node = await this.getRawNode(key);
-      return node.kind === "collection" ? (node as CasRawCollectionNode) : null;
+      const nodeInfo = tree[key];
+      if (!nodeInfo || nodeInfo.kind !== "collection") {
+        return null;
+      }
+      // Build a CasRawCollectionNode from TreeNodeInfo
+      return {
+        kind: "collection" as const,
+        key,
+        size: nodeInfo.size,
+        children: nodeInfo.children ?? {},
+      };
     });
   }
 
@@ -212,27 +230,60 @@ export class CasClient {
   // ============================================================================
 
   /**
-   * Get application layer node (CasNode)
+   * Get complete DAG structure starting from a root key
+   * Automatically handles pagination if tree is large
    */
-  async getNode(key: string): Promise<CasNode> {
-    const res = await fetch(`${this.getApiBase()}/node/${encodeURIComponent(key)}`, {
+  async getTree(rootKey: string): Promise<Record<string, TreeNodeInfo>> {
+    const allNodes: Record<string, TreeNodeInfo> = {};
+    let nextKey: string | undefined = rootKey;
+
+    while (nextKey) {
+      const res = await fetch(`${this.getApiBase()}/tree/${encodeURIComponent(nextKey)}`, {
+        headers: { Authorization: this.getAuthHeader() },
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to get tree: ${res.status}`);
+      }
+
+      const response = (await res.json()) as TreeResponse;
+      Object.assign(allNodes, response.nodes);
+      nextKey = response.next;
+    }
+
+    return allNodes;
+  }
+
+  /**
+   * Get raw node data with metadata
+   * Returns binary data and parsed metadata from headers
+   */
+  async getRaw(key: string): Promise<RawResponse> {
+    const res = await fetch(`${this.getApiBase()}/raw/${encodeURIComponent(key)}`, {
       headers: { Authorization: this.getAuthHeader() },
     });
 
     if (!res.ok) {
-      throw new Error(`Failed to get node: ${res.status}`);
+      throw new Error(`Failed to get raw: ${res.status}`);
     }
 
-    return res.json() as Promise<CasNode>;
+    const data = await res.arrayBuffer();
+    const contentType = res.headers.get("Content-Type") ?? CAS_CONTENT_TYPES.CHUNK;
+    const casContentType = res.headers.get(CAS_HEADERS.CONTENT_TYPE) ?? undefined;
+    const casSizeStr = res.headers.get(CAS_HEADERS.SIZE);
+    const casSize = casSizeStr ? Number.parseInt(casSizeStr, 10) : undefined;
+
+    return { data, contentType, casContentType, casSize };
   }
 
   /**
-   * Get storage layer node (CasRawNode)
+   * Get raw data as a stream
+   * Used for chunks and inline files
    */
-  async getRawNode(key: string): Promise<CasRawNode> {
+  async getRawStream(key: string): Promise<ByteStream> {
     // Check local cache first
     if (this.storage) {
-      const cached = await this.storage.getMeta(key);
+      const cached = await this.storage.getChunkStream(key);
       if (cached) {
         return cached;
       }
@@ -243,60 +294,7 @@ export class CasClient {
     });
 
     if (!res.ok) {
-      throw new Error(`Failed to get raw node: ${res.status}`);
-    }
-
-    const node = (await res.json()) as CasRawNode;
-
-    // Cache the metadata
-    if (this.storage) {
-      await this.storage.putMeta(key, node);
-    }
-
-    return node;
-  }
-
-  /**
-   * Open a file for streaming read
-   */
-  async openFile(key: string): Promise<CasFileHandle> {
-    const rawNode = await this.getRawNode(key);
-
-    if (rawNode.kind !== "file") {
-      throw new Error(`Expected file node, got ${rawNode.kind}`);
-    }
-
-    return new CasFileHandleImpl(rawNode as CasRawFileNode, (chunkKey) =>
-      this.getChunkStream(chunkKey)
-    );
-  }
-
-  /**
-   * Open a file by path within a collection
-   */
-  async openFileByPath(rootKey: string, path: string): Promise<CasFileHandle> {
-    const targetKey = await this.resolvePath(rootKey, path);
-    return this.openFile(targetKey);
-  }
-
-  /**
-   * Get chunk data as an async iterable stream
-   */
-  async getChunkStream(key: string): Promise<ByteStream> {
-    // Check local cache first
-    if (this.storage) {
-      const cached = await this.storage.getChunkStream(key);
-      if (cached) {
-        return cached;
-      }
-    }
-
-    const res = await fetch(`${this.getApiBase()}/chunk/${encodeURIComponent(key)}`, {
-      headers: { Authorization: this.getAuthHeader() },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Failed to get chunk: ${res.status}`);
+      throw new Error(`Failed to get raw: ${res.status}`);
     }
 
     const webStream = res.body;
@@ -345,6 +343,63 @@ export class CasClient {
     }
 
     return stream;
+  }
+
+  /**
+   * Open a file for streaming read
+   * Works with both file (multi-chunk) and inline-file (single node) types
+   */
+  async openFile(key: string): Promise<CasFileHandle> {
+    const rawResponse = await this.getRaw(key);
+
+    if (rawResponse.contentType === CAS_CONTENT_TYPES.INLINE_FILE) {
+      // Inline file - content is directly in the response
+      return new InlineFileHandle(
+        key,
+        rawResponse.casSize ?? rawResponse.data.byteLength,
+        rawResponse.casContentType ?? "application/octet-stream",
+        new Uint8Array(rawResponse.data)
+      );
+    }
+
+    if (rawResponse.contentType === CAS_CONTENT_TYPES.FILE) {
+      // Multi-chunk file - body contains chunk keys (64 hex chars each)
+      const hexString = new TextDecoder().decode(rawResponse.data);
+      const chunkKeys: string[] = [];
+      for (let i = 0; i < hexString.length; i += 64) {
+        chunkKeys.push(`sha256:${hexString.slice(i, i + 64)}`);
+      }
+
+      // Build a raw file node for compatibility
+      const rawNode: CasRawFileNode = {
+        kind: "file",
+        key,
+        size: rawResponse.casSize ?? 0,
+        contentType: rawResponse.casContentType ?? "application/octet-stream",
+        chunks: chunkKeys,
+        chunkSizes: [], // Not available from new format
+      };
+
+      return new CasFileHandleImpl(rawNode, (chunkKey) => this.getRawStream(chunkKey));
+    }
+
+    throw new Error(`Expected file or inline-file, got Content-Type: ${rawResponse.contentType}`);
+  }
+
+  /**
+   * Open a file by path within a collection
+   */
+  async openFileByPath(rootKey: string, path: string): Promise<CasFileHandle> {
+    const targetKey = await this.resolvePath(rootKey, path);
+    return this.openFile(targetKey);
+  }
+
+  /**
+   * Get chunk data as an async iterable stream
+   * @deprecated Use getRawStream instead
+   */
+  async getChunkStream(key: string): Promise<ByteStream> {
+    return this.getRawStream(key);
   }
 
   // ============================================================================
@@ -502,6 +557,48 @@ export class CasClient {
 
     const result = (await res.json()) as { key: string };
     return result.key;
+  }
+}
+
+/**
+ * File handle implementation for inline files (single-chunk, content stored directly)
+ */
+class InlineFileHandle implements CasFileHandle {
+  constructor(
+    private _key: string,
+    private _size: number,
+    private _contentType: string,
+    private content: Uint8Array
+  ) {}
+
+  get key(): string {
+    return this._key;
+  }
+
+  get size(): number {
+    return this._size;
+  }
+
+  get contentType(): string {
+    return this._contentType;
+  }
+
+  async stream(): Promise<ByteStream> {
+    const data = this.content;
+    return (async function* () {
+      yield data;
+    })();
+  }
+
+  async bytes(): Promise<Uint8Array> {
+    return this.content;
+  }
+
+  async slice(start: number, end: number): Promise<ByteStream> {
+    const sliced = this.content.slice(start, end);
+    return (async function* () {
+      yield sliced;
+    })();
   }
 }
 

@@ -10,17 +10,17 @@ import {
   CasClient,
   type CasEndpointInfo,
   type CasFileHandle,
-  type CasNode,
-  type CasRawChunkNode,
   type CasRawCollectionNode,
   type CasRawFileNode,
-  type CasRawNode,
   collectBytes,
   computeKey,
   type LocalStorageProvider,
   needsChunking,
   type PathResolver,
+  type RawResponse,
   splitIntoChunks,
+  type TreeNodeInfo,
+  CAS_CONTENT_TYPES,
 } from "@agent-web-portal/cas-client-core";
 
 import type { IBufferedCasClient } from "./types.ts";
@@ -86,7 +86,7 @@ export class BufferedCasClient implements IBufferedCasClient {
   }
 
   // ============================================================================
-  // Read Operations (passthrough)
+  // Read Operations (passthrough with pending node support)
   // ============================================================================
 
   async openFile(key: string): Promise<CasFileHandle> {
@@ -98,73 +98,97 @@ export class BufferedCasClient implements IBufferedCasClient {
     return this.client.openFile(key);
   }
 
-  async getNode(key: string): Promise<CasNode> {
-    // Check pending nodes first
-    const pendingFile = this.pendingFiles.get(key);
-    if (pendingFile) {
-      return {
-        kind: "file",
-        key: pendingFile.key,
-        size: pendingFile.size,
-        contentType: pendingFile.contentType,
-      };
+  /**
+   * Get tree structure with pending nodes included
+   */
+  async getTree(rootKey: string): Promise<Record<string, TreeNodeInfo>> {
+    // First check if root is a pending node
+    if (this.allPendingKeys.has(rootKey)) {
+      // Build tree from pending nodes
+      const result: Record<string, TreeNodeInfo> = {};
+      await this.collectPendingTree(rootKey, result);
+      return result;
     }
 
-    const pendingCollection = this.pendingCollections.get(key);
-    if (pendingCollection) {
-      // Recursively expand children
-      const children: Record<string, CasNode> = {};
-      for (const [name, childKey] of Object.entries(pendingCollection.children)) {
-        children[name] = await this.getNode(childKey);
-      }
-      return {
-        kind: "collection",
-        key: pendingCollection.key,
-        size: Object.values(children).reduce((acc, child) => acc + child.size, 0),
-        children,
-      };
-    }
-
-    return this.client.getNode(key);
+    // Use client's getTree
+    return this.client.getTree(rootKey);
   }
 
-  async getRawNode(key: string): Promise<CasRawNode> {
-    // Check pending nodes first
-    const pendingChunk = this.pendingChunks.get(key);
-    if (pendingChunk) {
-      return {
-        kind: "chunk",
-        key: pendingChunk.key,
-        size: pendingChunk.data.length,
-      } as CasRawChunkNode;
-    }
+  /**
+   * Recursively collect pending nodes into a tree
+   */
+  private async collectPendingTree(
+    key: string,
+    result: Record<string, TreeNodeInfo>
+  ): Promise<void> {
+    if (result[key]) return; // Already visited
 
     const pendingFile = this.pendingFiles.get(key);
     if (pendingFile) {
-      return {
+      result[key] = {
         kind: "file",
-        key: pendingFile.key,
         size: pendingFile.size,
         contentType: pendingFile.contentType,
-        chunks: pendingFile.chunks,
-        chunkSizes: pendingFile.chunks.map((chunkKey) => {
-          const chunk = this.pendingChunks.get(chunkKey);
-          return chunk?.data.length ?? 0;
-        }),
-      } as CasRawFileNode;
+        chunks: pendingFile.chunks.length,
+      };
+      return;
     }
 
     const pendingCollection = this.pendingCollections.get(key);
     if (pendingCollection) {
-      return {
+      result[key] = {
         kind: "collection",
-        key: pendingCollection.key,
-        size: 0, // Will be computed on commit
+        size: 0, // Will be computed
         children: pendingCollection.children,
-      } as CasRawCollectionNode;
+      };
+      // Recursively collect children
+      for (const childKey of Object.values(pendingCollection.children)) {
+        await this.collectPendingTree(childKey, result);
+      }
+      return;
     }
 
-    return this.client.getRawNode(key);
+    // Not a pending node - try to get from client
+    try {
+      const tree = await this.client.getTree(key);
+      Object.assign(result, tree);
+    } catch {
+      // Node not found
+    }
+  }
+
+  async getRaw(key: string): Promise<RawResponse> {
+    // Check pending chunks
+    const pendingChunk = this.pendingChunks.get(key);
+    if (pendingChunk) {
+      // Copy the data to ensure we have a proper ArrayBuffer
+      const data = new ArrayBuffer(pendingChunk.data.byteLength);
+      new Uint8Array(data).set(pendingChunk.data);
+      return {
+        data,
+        contentType: CAS_CONTENT_TYPES.CHUNK,
+      };
+    }
+
+    // Check pending files (inline files)
+    const pendingFile = this.pendingFiles.get(key);
+    if (pendingFile && pendingFile.chunks.length === 1) {
+      const chunkKey = pendingFile.chunks[0]!;
+      const chunk = this.pendingChunks.get(chunkKey);
+      if (chunk) {
+        // Copy the data to ensure we have a proper ArrayBuffer
+        const data = new ArrayBuffer(chunk.data.byteLength);
+        new Uint8Array(data).set(chunk.data);
+        return {
+          data,
+          contentType: CAS_CONTENT_TYPES.INLINE_FILE,
+          casContentType: pendingFile.contentType,
+          casSize: pendingFile.size,
+        };
+      }
+    }
+
+    return this.client.getRaw(key);
   }
 
   // ============================================================================

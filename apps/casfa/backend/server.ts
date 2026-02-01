@@ -267,8 +267,19 @@ class MemoryDagDb {
   }
 }
 
+interface CasMetadata {
+  casContentType?: string;
+  casSize?: number;
+}
+
+interface CasStorageEntry {
+  content: Buffer;
+  contentType: string;
+  metadata: CasMetadata;
+}
+
 class MemoryCasStorage {
-  private blobs = new Map<string, { content: Buffer; contentType: string }>();
+  private blobs = new Map<string, CasStorageEntry>();
 
   static computeHash(content: Buffer): string {
     const hash = createHash("sha256").update(content).digest("hex");
@@ -279,18 +290,21 @@ class MemoryCasStorage {
     return this.blobs.has(casKey);
   }
 
-  async get(casKey: string): Promise<{ content: Buffer; contentType: string } | null> {
-    return this.blobs.get(casKey) ?? null;
+  async get(casKey: string): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null> {
+    const entry = this.blobs.get(casKey);
+    if (!entry) return null;
+    return { content: entry.content, contentType: entry.contentType, metadata: entry.metadata };
   }
 
   async put(
     content: Buffer,
-    contentType: string = "application/octet-stream"
+    contentType: string = "application/octet-stream",
+    metadata?: CasMetadata
   ): Promise<{ key: string; size: number; isNew: boolean }> {
     const key = MemoryCasStorage.computeHash(content);
     const isNew = !this.blobs.has(key);
     if (isNew) {
-      this.blobs.set(key, { content, contentType });
+      this.blobs.set(key, { content, contentType, metadata: metadata ?? {} });
     }
     return { key, size: content.length, isNew };
   }
@@ -298,7 +312,8 @@ class MemoryCasStorage {
   async putWithKey(
     expectedKey: string,
     content: Buffer,
-    contentType: string = "application/octet-stream"
+    contentType: string = "application/octet-stream",
+    metadata?: CasMetadata
   ): Promise<
     | { key: string; size: number; isNew: boolean }
     | { error: "hash_mismatch"; expected: string; actual: string }
@@ -307,7 +322,7 @@ class MemoryCasStorage {
     if (actualKey !== expectedKey) {
       return { error: "hash_mismatch", expected: expectedKey, actual: actualKey };
     }
-    return this.put(content, contentType);
+    return this.put(content, contentType, metadata);
   }
 }
 
@@ -1200,64 +1215,13 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
     effectiveScope = requestedRealm;
   }
 
-  // GET /cas/{scope}/nodes - List all nodes in scope
-  if (req.method === "GET" && subPath === "/nodes") {
-    if (!auth.canRead) {
-      return errorResponse(403, "Read access denied");
-    }
-    const url = new URL(req.url);
-    const limit = parseInt(url.searchParams.get("limit") ?? "10", 10);
-    const startKey = url.searchParams.get("startKey") ?? undefined;
-
-    const result = await ownershipDb.listNodes(effectiveScope, limit, startKey);
-    return jsonResponse(200, result);
-  }
-
-  // POST /cas/{scope}/resolve
-  if (req.method === "POST" && subPath === "/resolve") {
-    const body = (await req.json()) as { root?: string; nodes?: string[] };
-    if (!body.nodes) {
-      return errorResponse(400, "Missing nodes");
-    }
-    const { missing } = await ownershipDb.checkOwnership(effectiveScope, body.nodes);
-    return jsonResponse(200, { missing });
-  }
-
-  // PUT /cas/{scope}/node - Upload content (server calculates key)
-  if (req.method === "PUT" && subPath === "/node") {
+  // PUT /chunk/:key - Upload chunk data
+  const putChunkMatch = subPath.match(/^\/chunk\/(.+)$/);
+  if (req.method === "PUT" && putChunkMatch) {
     if (!auth.canWrite) {
       return errorResponse(403, "Write access denied");
     }
-    const content = Buffer.from(await req.arrayBuffer());
-    if (content.length === 0) {
-      return errorResponse(400, "Empty body");
-    }
-    const contentType = req.headers.get("Content-Type") ?? "application/octet-stream";
-
-    const result = await casStorage.put(content, contentType);
-
-    await ownershipDb.addOwnership(
-      effectiveScope,
-      result.key,
-      auth.tokenId,
-      contentType,
-      result.size
-    );
-
-    return jsonResponse(201, {
-      key: result.key,
-      size: result.size,
-      contentType,
-    });
-  }
-
-  // PUT /cas/{scope}/node/:key
-  const putNodeMatch = subPath.match(/^\/node\/(.+)$/);
-  if (req.method === "PUT" && putNodeMatch) {
-    if (!auth.canWrite) {
-      return errorResponse(403, "Write access denied");
-    }
-    const key = decodeURIComponent(putNodeMatch[1]!);
+    const key = decodeURIComponent(putChunkMatch[1]!);
     const content = Buffer.from(await req.arrayBuffer());
     if (content.length === 0) {
       return errorResponse(400, "Empty body");
@@ -1283,17 +1247,90 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
     return jsonResponse(200, {
       key: result.key,
       size: result.size,
-      contentType,
     });
   }
 
-  // GET /cas/{scope}/node/:key
-  const getNodeMatch = subPath.match(/^\/node\/(.+)$/);
-  if (req.method === "GET" && getNodeMatch) {
+  // GET /tree/:key - Get complete DAG structure
+  const getTreeMatch = subPath.match(/^\/tree\/(.+)$/);
+  if (req.method === "GET" && getTreeMatch) {
     if (!auth.canRead) {
       return errorResponse(403, "Read access denied");
     }
-    const key = decodeURIComponent(getNodeMatch[1]!);
+    const rootKey = decodeURIComponent(getTreeMatch[1]!);
+
+    const hasAccess = await ownershipDb.hasOwnership(effectiveScope, rootKey);
+    if (!hasAccess) {
+      return errorResponse(404, "Not found");
+    }
+
+    const MAX_NODES = 1000;
+    const nodes: Record<string, any> = {};
+    const queue: string[] = [rootKey];
+    let next: string | undefined;
+
+    while (queue.length > 0) {
+      if (Object.keys(nodes).length >= MAX_NODES) {
+        next = queue[0];
+        break;
+      }
+
+      const key = queue.shift()!;
+      if (nodes[key]) continue;
+
+      const blob = await casStorage.get(key);
+      if (!blob) continue;
+
+      const { content, contentType, metadata } = blob;
+
+      if (contentType === "application/vnd.cas.collection") {
+        try {
+          const data = JSON.parse(content.toString("utf-8"));
+          const children = data.children as Record<string, string>;
+          nodes[key] = {
+            kind: "collection",
+            size: metadata.casSize ?? content.length,
+            children,
+          };
+          for (const childKey of Object.values(children)) {
+            if (!nodes[childKey]) {
+              queue.push(childKey);
+            }
+          }
+        } catch {
+          // Invalid JSON
+        }
+      } else if (contentType === "application/vnd.cas.file") {
+        const chunkCount = content.length / 64;
+        nodes[key] = {
+          kind: "file",
+          size: metadata.casSize ?? 0,
+          contentType: metadata.casContentType,
+          chunks: chunkCount,
+        };
+      } else if (contentType === "application/vnd.cas.inline-file") {
+        nodes[key] = {
+          kind: "inline-file",
+          size: metadata.casSize ?? content.length,
+          contentType: metadata.casContentType,
+        };
+      }
+    }
+
+    const response: any = { nodes };
+    if (next) {
+      response.next = next;
+    }
+
+    return jsonResponse(200, response);
+  }
+
+  // GET /raw/:key - Get raw node data with metadata headers
+  const getRawMatch = subPath.match(/^\/raw\/(.+)$/);
+  if (req.method === "GET" && getRawMatch) {
+    if (!auth.canRead) {
+      return errorResponse(403, "Read access denied");
+    }
+    const key = decodeURIComponent(getRawMatch[1]!);
 
     if (auth.allowedKey && auth.allowedKey !== key) {
       return errorResponse(403, "Read access denied for this key");
@@ -1309,60 +1346,20 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
       return errorResponse(404, "Content not found");
     }
 
-    return binaryResponse(blob.content, blob.contentType);
-  }
+    const { content, contentType, metadata } = blob;
+    const headers: Record<string, string> = {
+      "Content-Type": contentType,
+      "Content-Length": String(content.length),
+    };
 
-  // DELETE /cas/{scope}/node/:key
-  const deleteNodeMatch = subPath.match(/^\/node\/(.+)$/);
-  if (req.method === "DELETE" && deleteNodeMatch) {
-    if (!auth.canWrite) {
-      return errorResponse(403, "Write access denied");
+    if (metadata.casContentType) {
+      headers["X-CAS-Content-Type"] = metadata.casContentType;
     }
-    const key = decodeURIComponent(deleteNodeMatch[1]!);
-
-    const hasAccess = await ownershipDb.hasOwnership(effectiveScope, key);
-    if (!hasAccess) {
-      return errorResponse(404, "Not found");
+    if (metadata.casSize !== undefined) {
+      headers["X-CAS-Size"] = String(metadata.casSize);
     }
 
-    await ownershipDb.deleteOwnership(effectiveScope, key);
-    // Note: We don't delete the actual blob - CAS is immutable, we just remove ownership
-    return jsonResponse(200, { success: true, key });
-  }
-
-  // GET /cas/{scope}/dag/:key
-  const getDagMatch = subPath.match(/^\/dag\/(.+)$/);
-  if (req.method === "GET" && getDagMatch) {
-    if (!auth.canRead) {
-      return errorResponse(403, "Read access denied");
-    }
-    const key = decodeURIComponent(getDagMatch[1]!);
-
-    const hasAccess = await ownershipDb.hasOwnership(effectiveScope, key);
-    if (!hasAccess) {
-      return errorResponse(404, "Not found");
-    }
-
-    const dagKeys = await dagDb.collectDagKeys(key);
-    const nodes: Record<string, { size: number; contentType: string; children: string[] }> = {};
-
-    for (const nodeKey of dagKeys) {
-      const meta = await dagDb.getNode(nodeKey);
-      if (meta) {
-        nodes[nodeKey] = {
-          size: meta.size,
-          contentType: meta.contentType,
-          children: meta.children,
-        };
-      }
-    }
-
-    return jsonResponse(200, { root: key, nodes });
-  }
-
-  // POST /cas/{scope}/dag
-  if (req.method === "POST" && subPath === "/dag") {
-    return errorResponse(501, "Multipart DAG upload not yet implemented");
+    return new Response(new Uint8Array(content), { status: 200, headers });
   }
 
   return errorResponse(404, "CAS endpoint not found");

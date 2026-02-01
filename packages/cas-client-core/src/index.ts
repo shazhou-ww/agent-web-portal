@@ -58,4 +58,10 @@ export type {
   PutChunkResponse,
   PutCollectionResponse,
   PutFileResponse,
+  RawResponse,
+  TreeNodeInfo,
+  TreeResponse,
 } from "./types.ts";
+
+// Constants
+export { CAS_CONTENT_TYPES, CAS_HEADERS } from "./types.ts";

@@ -9,6 +9,8 @@ import type {
   CasNode,
   CasRawNode,
   PathResolver,
+  RawResponse,
+  TreeNodeInfo,
 } from "@agent-web-portal/cas-client-core";
 import type { ZodSchema, z } from "zod";
 
@@ -20,6 +22,8 @@ export type {
   CasNode,
   CasRawNode,
   PathResolver,
+  RawResponse,
+  TreeNodeInfo,
 } from "@agent-web-portal/cas-client-core";
 
 // ============================================================================
@@ -72,10 +76,10 @@ export interface CasTicketProvider {
  * Interface for a buffered CAS client that caches writes until commit
  */
 export interface IBufferedCasClient {
-  // Read operations (passthrough to underlying client)
+  // Read operations (with pending node support)
   openFile(key: string): Promise<CasFileHandle>;
-  getNode(key: string): Promise<CasNode>;
-  getRawNode(key: string): Promise<CasRawNode>;
+  getTree(rootKey: string): Promise<Record<string, TreeNodeInfo>>;
+  getRaw(key: string): Promise<RawResponse>;
 
   // Buffered write operations
   putFile(content: Uint8Array | ByteStream, contentType: string): Promise<string>;
