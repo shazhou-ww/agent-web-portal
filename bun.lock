@@ -379,6 +379,14 @@
         "typescript": "^5.3.0",
       },
     },
+    "packages/cas-core": {
+      "name": "@agent-web-portal/cas-core",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.0.0",
+      },
+    },
     "packages/client": {
       "name": "@agent-web-portal/client",
       "version": "0.2.0",
@@ -488,6 +496,8 @@
     "@agent-web-portal/cas-client-core": ["@agent-web-portal/cas-client-core@workspace:packages/cas-client-core"],
 
     "@agent-web-portal/cas-client-nodejs": ["@agent-web-portal/cas-client-nodejs@workspace:packages/cas-client-nodejs"],
+
+    "@agent-web-portal/cas-core": ["@agent-web-portal/cas-core@workspace:packages/cas-core"],
 
     "@agent-web-portal/casfa": ["@agent-web-portal/casfa@workspace:apps/casfa"],
 

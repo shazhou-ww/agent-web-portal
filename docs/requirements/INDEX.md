@@ -11,6 +11,7 @@
 
 ### P1 - 高优先级
 
+- [ ] [API-001: CAS API 路由重构](./API-001-route-refactor.md)
 - [ ] [SDK-001: Client SDK 文件操作辅助函数](./SDK-001-collection-operations.md)
 
 ### P2 - 中优先级
@@ -42,3 +43,4 @@
 - ✅ Commits 管理
 - ✅ 跨平台 Client SDK
 - ✅ MCP Tools 集成
+- ✅ CAS Binary Format 核心库（`@agent-web-portal/cas-core`）
