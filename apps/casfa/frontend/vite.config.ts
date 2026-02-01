@@ -44,6 +44,7 @@ export default defineConfig({
       "/cas": {
         target: apiUrl,
         changeOrigin: true,
+        rewrite: (path) => `/api${path}`,
       },
     },
   },
