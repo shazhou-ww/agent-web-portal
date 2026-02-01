@@ -235,6 +235,14 @@ export class CommitsDb {
   }
 
   /**
+   * Update commit title (convenience method)
+   */
+  async updateTitle(realm: string, root: string, title?: string): Promise<boolean> {
+    const result = await this.update(realm, root, { title });
+    return result !== null;
+  }
+
+  /**
    * Delete a commit record
    * Note: This only deletes the commit metadata, not the actual nodes
    */

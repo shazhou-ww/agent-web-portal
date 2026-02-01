@@ -17,15 +17,25 @@ import {
   InputAdornment,
   Tooltip,
   Chip,
+  Menu,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
 } from "@mui/material";
 import {
   Add as AddIcon,
-  Folder as FolderIcon,
   ContentCopy as CopyIcon,
   Check as CheckIcon,
   Refresh as RefreshIcon,
   Search as SearchIcon,
   History as HistoryIcon,
+  MoreVert as MoreVertIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Commit as CommitIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 import { apiRequest } from "../utils/api";
@@ -59,6 +69,19 @@ export default function Commits() {
 
   // New commit dialog
   const [showNewCommitDialog, setShowNewCommitDialog] = useState(false);
+
+  // Context menu state
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [menuCommit, setMenuCommit] = useState<CommitRecord | null>(null);
+
+  // Rename dialog state
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renaming, setRenaming] = useState(false);
+
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Fetch commits
   const fetchCommits = useCallback(async () => {
@@ -109,6 +132,103 @@ export default function Commits() {
   // Navigate to commit details (tree view)
   const handleCommitClick = (commit: CommitRecord) => {
     navigate(`/commits/${encodeURIComponent(commit.root)}`);
+  };
+
+  // Open context menu
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, commit: CommitRecord) => {
+    event.stopPropagation();
+    setMenuAnchor(event.currentTarget);
+    setMenuCommit(commit);
+  };
+
+  // Close context menu
+  const handleMenuClose = () => {
+    setMenuAnchor(null);
+    setMenuCommit(null);
+  };
+
+  // Open rename dialog
+  const handleRenameClick = () => {
+    if (menuCommit) {
+      setRenameTitle(menuCommit.title || "");
+      setRenameDialogOpen(true);
+    }
+    handleMenuClose();
+  };
+
+  // Submit rename
+  const handleRenameSubmit = async () => {
+    if (!menuCommit || !realm) return;
+
+    try {
+      setRenaming(true);
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const response = await apiRequest(
+        `/api/realm/${realm}/commits/${encodeURIComponent(menuCommit.root)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: renameTitle.trim() || null }),
+        },
+        accessToken
+      );
+
+      if (response.ok) {
+        // Update local state
+        setCommits((prev) =>
+          prev.map((c) =>
+            c.root === menuCommit.root ? { ...c, title: renameTitle.trim() || undefined } : c
+          )
+        );
+        setRenameDialogOpen(false);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.error || "Failed to rename commit");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  // Open delete dialog
+  const handleDeleteClick = () => {
+    setDeleteDialogOpen(true);
+    handleMenuClose();
+  };
+
+  // Submit delete
+  const handleDeleteSubmit = async () => {
+    if (!menuCommit || !realm) return;
+
+    try {
+      setDeleting(true);
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const response = await apiRequest(
+        `/api/realm/${realm}/commits/${encodeURIComponent(menuCommit.root)}`,
+        { method: "DELETE" },
+        accessToken
+      );
+
+      if (response.ok) {
+        // Remove from local state
+        setCommits((prev) => prev.filter((c) => c.root !== menuCommit.root));
+        setDeleteDialogOpen(false);
+        setMenuCommit(null);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.error || "Failed to delete commit");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Filter commits by search
@@ -198,26 +318,36 @@ export default function Commits() {
                 key={commit.root}
                 disablePadding
                 secondaryAction={
-                  <Tooltip title={copiedKey === commit.root ? "Copied!" : "Copy key"}>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCopyKey(commit.root);
-                      }}
-                    >
-                      {copiedKey === commit.root ? (
-                        <CheckIcon fontSize="small" color="success" />
-                      ) : (
-                        <CopyIcon fontSize="small" />
-                      )}
-                    </IconButton>
-                  </Tooltip>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    <Tooltip title={copiedKey === commit.root ? "Copied!" : "Copy key"}>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopyKey(commit.root);
+                        }}
+                      >
+                        {copiedKey === commit.root ? (
+                          <CheckIcon fontSize="small" color="success" />
+                        ) : (
+                          <CopyIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="More actions">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => handleMenuOpen(e, commit)}
+                      >
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
                 }
               >
                 <ListItemButton onClick={() => handleCommitClick(commit)}>
                   <ListItemIcon>
-                    <FolderIcon color="primary" />
+                    <CommitIcon color="primary" />
                   </ListItemIcon>
                   <ListItemText
                     primary={
@@ -241,6 +371,85 @@ export default function Commits() {
           </List>
         )}
       </Paper>
+
+      {/* Context menu */}
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={handleMenuClose}
+      >
+        <MenuItem onClick={handleRenameClick}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Rename</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleDeleteClick} sx={{ color: "error.main" }}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* Rename dialog */}
+      <Dialog open={renameDialogOpen} onClose={() => setRenameDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Rename Commit</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Title"
+            placeholder="Enter a title for this commit"
+            value={renameTitle}
+            onChange={(e) => setRenameTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !renaming) handleRenameSubmit();
+            }}
+            disabled={renaming}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameDialogOpen(false)} disabled={renaming}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleRenameSubmit} disabled={renaming}>
+            {renaming ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Commit?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this commit?
+          </Typography>
+          {menuCommit && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {menuCommit.title || "Untitled Commit"}
+            </Typography>
+          )}
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            Note: This only removes the commit record. The underlying data will not be deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteSubmit}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* FAB for new commit */}
       <Fab
