@@ -284,12 +284,17 @@ export class McpHandler {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
     }
 
-    // writable from MCP schema -> commit for internal API
+    // Normalize scope to string[] | undefined
+    const normalizedScope = parsed.data.scope === undefined
+      ? undefined
+      : Array.isArray(parsed.data.scope) ? parsed.data.scope : [parsed.data.scope];
+
+    // writable from MCP schema -> commit for internal API (true becomes {})
     const ticket = await this.tokensDb.createTicket(
       auth.realm,
       TokensDb.extractTokenId(auth.token.pk),
-      parsed.data.scope,
-      parsed.data.writable ? true : undefined, // writable -> commit
+      normalizedScope,
+      parsed.data.writable ? {} : undefined,
       parsed.data.expiresIn
     );
 
@@ -493,8 +498,8 @@ export class McpHandler {
       content.length
     );
 
-    // Mark ticket as written
-    await this.tokensDb.markTicketWritten(ticketId!, fileResult.key);
+    // Mark ticket as committed
+    await this.tokensDb.markTicketCommitted(ticketId!, fileResult.key);
 
     return mcpSuccess(id, {
       content: [

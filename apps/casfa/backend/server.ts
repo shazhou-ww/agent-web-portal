@@ -101,6 +101,7 @@ class MemoryTokensDb {
       commit: commitConfig,
       config: {
         nodeLimit: serverConfig.nodeLimit,
+        maxNameBytes: serverConfig.maxNameBytes,
       },
       createdAt: Date.now(),
       expiresAt: Date.now() + (expiresIn ?? defaultExpiry) * 1000,
@@ -959,11 +960,21 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
       commit?: boolean | { quota?: number; accept?: string[] };
       expiresIn?: number;
     };
+    // Normalize scope to string[] | undefined
+    const normalizedScope = body.scope === undefined
+      ? undefined
+      : Array.isArray(body.scope) ? body.scope : [body.scope];
+    // Normalize commit: true -> {}, false/undefined -> undefined
+    const normalizedCommit = body.commit === true
+      ? {}
+      : body.commit === false || body.commit === undefined
+        ? undefined
+        : body.commit;
     const ticket = await tokensDb.createTicket(
       auth.scope,
       auth.tokenId,
-      body.scope,
-      body.commit,
+      normalizedScope,
+      normalizedCommit,
       body.expiresIn
     );
     const ticketId = tokenIdFromPk(ticket.pk);
@@ -1131,9 +1142,8 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
         scope: token.scope,
         commit,
         expiresAt: new Date(token.expiresAt).toISOString(),
-        config: {
-          nodeLimit: serverConfig.nodeLimit,
-        },
+        nodeLimit: serverConfig.nodeLimit,
+        maxNameBytes: serverConfig.maxNameBytes,
       });
     }
 
@@ -1157,9 +1167,8 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
       realm: effectiveScope,
       // No scope restriction for user realm (full access)
       commit: auth.canWrite ? {} : undefined,
-      config: {
-        nodeLimit: serverConfig.nodeLimit,
-      },
+      nodeLimit: serverConfig.nodeLimit,
+      maxNameBytes: serverConfig.maxNameBytes,
     });
   }
 

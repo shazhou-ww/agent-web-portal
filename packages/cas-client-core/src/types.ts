@@ -32,10 +32,11 @@ export interface CasClientConfig {
   endpoint: string;
   auth: CasAuth;
   nodeLimit?: number;
+  maxNameBytes?: number;
 }
 
 // ============================================================================
-// Endpoint Info (from GET /ticket/{ticketId} or GET /realm/{realmId})
+// Endpoint Info (from GET /cas/{realm})
 // ============================================================================
 
 /**
@@ -58,17 +59,25 @@ export interface CasEndpointInfo {
   /** Expiration time (for tickets) */
   expiresAt?: string;
 
-  /** Configuration */
-  config: {
-    nodeLimit: number; // max size for any node
-  };
+  /** Max size for any node in bytes (default 4MB) */
+  nodeLimit: number;
+
+  /** Max file name length in UTF-8 bytes (default 255) */
+  maxNameBytes: number;
 }
 
 // ============================================================================
 // Node Types (mirrored from cas-stack)
 // ============================================================================
 
-export type NodeKind = "collection" | "file" | "chunk";
+/**
+ * Node kind in CAS structure
+ * - chunk: raw data block
+ * - inline-file: single-chunk file (content + metadata in one node)
+ * - file: multi-chunk file (index node)
+ * - collection: directory structure
+ */
+export type NodeKind = "chunk" | "inline-file" | "file" | "collection";
 
 // Raw node types (storage layer)
 export interface CasRawCollectionNode {
@@ -222,7 +231,7 @@ export interface LocalStorageProvider {
 // API Response Types
 // ============================================================================
 
-/** @deprecated Use CasEndpointInfo.config.nodeLimit instead */
+/** @deprecated Use CasEndpointInfo.nodeLimit instead */
 export interface CasConfigResponse {
   nodeLimit: number;
   maxCollectionChildren: number;

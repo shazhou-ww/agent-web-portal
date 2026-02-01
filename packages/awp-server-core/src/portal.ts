@@ -45,7 +45,7 @@ class DefaultTicketProvider implements CasTicketProvider {
 
   async createTicket(
     scope: string | string[],
-    commit?: boolean | { quota?: number; accept?: string[] }
+    writable?: boolean | { quota?: number; accept?: string[] }
   ): Promise<TicketResult> {
     const res = await fetch(`${this.endpoint}/auth/ticket`, {
       method: "POST",
@@ -55,7 +55,7 @@ class DefaultTicketProvider implements CasTicketProvider {
       },
       body: JSON.stringify({
         scope,
-        commit: commit ?? true,
+        writable: writable ?? true,
         expiresIn: this.defaultTtl,
       }),
     });
@@ -70,18 +70,22 @@ class DefaultTicketProvider implements CasTicketProvider {
       endpoint: string;
       expiresAt: string;
       realm: string;
-      scope?: string[];
-      commit?: { quota?: number; accept?: string[]; root?: string } | false;
-      config: { nodeLimit: number };
+      scope: string | string[];
+      writable: boolean | { quota?: number; accept?: string[] };
+      nodeLimit: number;
+      maxNameBytes: number;
     };
 
     // Build CasEndpointInfo from ticket response
     const info: CasEndpointInfo = {
       realm: ticket.realm,
-      scope: ticket.scope,
-      commit: ticket.commit === false ? undefined : ticket.commit,
+      scope: Array.isArray(ticket.scope) ? ticket.scope : [ticket.scope],
+      commit: ticket.writable === false ? undefined : 
+        ticket.writable === true ? {} : 
+        { quota: ticket.writable.quota, accept: ticket.writable.accept },
       expiresAt: ticket.expiresAt,
-      config: ticket.config,
+      nodeLimit: ticket.nodeLimit,
+      maxNameBytes: ticket.maxNameBytes,
     };
 
     return {
@@ -472,7 +476,7 @@ export class ServerPortal {
       console.log("[ServerPortal] Successfully fetched CAS endpoint info:", {
         realm,
         actualRealm: info.realm,
-        canWrite: info.write !== false,
+        canWrite: info.commit !== undefined,
       });
 
       return { endpoint: baseUrl, realm, info };
@@ -492,9 +496,10 @@ export class ServerPortal {
     // Create minimal endpoint info that will fail on actual CAS operations
     const dummyInfo: CasEndpointInfo = {
       realm: "dummy",
-      config: {
-        nodeLimit: 4194304,
-      },
+      scope: undefined,
+      commit: undefined,
+      nodeLimit: 4194304,
+      maxNameBytes: 255,
     };
     return new BufferedCasClient(dummyInfo, "http://localhost:0", "dummy");
   }

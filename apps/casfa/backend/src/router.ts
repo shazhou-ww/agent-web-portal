@@ -869,9 +869,8 @@ export class Router {
       scope: undefined,
       // User/Agent tokens can always commit
       commit: auth.canWrite ? {} : undefined,
-      config: {
-        nodeLimit: serverConfig.nodeLimit,
-      },
+      nodeLimit: serverConfig.nodeLimit,
+      maxNameBytes: serverConfig.maxNameBytes,
     };
 
     return jsonResponse(200, info);
@@ -897,9 +896,8 @@ export class Router {
       scope: ticket.scope,
       commit: ticket.commit,
       expiresAt: new Date(ticket.expiresAt).toISOString(),
-      config: {
-        nodeLimit: ticket.config.nodeLimit,
-      },
+      nodeLimit: ticket.config.nodeLimit,
+      maxNameBytes: ticket.config.maxNameBytes,
     };
 
     return jsonResponse(200, info);

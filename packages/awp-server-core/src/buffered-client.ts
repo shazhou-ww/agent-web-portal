@@ -75,7 +75,7 @@ export class BufferedCasClient implements IBufferedCasClient {
 
   constructor(endpointInfo: CasEndpointInfo, baseUrl: string, realm: string, storage?: LocalStorageProvider) {
     this.client = CasClient.fromEndpointInfo(baseUrl, realm, endpointInfo, storage);
-    this.nodeLimit = endpointInfo.config.nodeLimit;
+    this.nodeLimit = endpointInfo.nodeLimit;
 
     console.log("[BufferedCasClient] Created with:", {
       baseUrl,

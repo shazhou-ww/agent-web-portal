@@ -119,7 +119,7 @@ export class CasClient {
       endpoint: baseUrl,
       auth: isTicket ? { type: "ticket", id: realm } : { type: "user", token: "" },
       storage,
-      nodeLimit: info.config.nodeLimit,
+      nodeLimit: info.nodeLimit,
       realm: info.realm,
     });
   }

@@ -53,6 +53,7 @@ export interface Ticket extends BaseToken {
   commit?: CommitConfig; // commit permission (undefined = read-only)
   config: {
     nodeLimit: number; // max size for any node (chunk/file/collection)
+    maxNameBytes: number; // max file name length in UTF-8 bytes
   };
 }
 
@@ -146,6 +147,7 @@ export interface CreateTicketResponse {
   commit: CommitConfig | false;
   config: {
     nodeLimit: number;
+    maxNameBytes: number;
   };
 }
 
@@ -154,9 +156,13 @@ export interface CreateTicketResponse {
 // ============================================================================
 
 /**
- * Node kind in CAS three-level structure
+ * Node kind in CAS structure
+ * - chunk: raw data block
+ * - inline-file: single-chunk file (content + metadata)
+ * - file: multi-chunk file (index node)
+ * - collection: directory structure
  */
-export type NodeKind = "collection" | "file" | "chunk";
+export type NodeKind = "chunk" | "inline-file" | "file" | "collection";
 
 /**
  * CAS Ownership - tracks which realm owns a key
@@ -315,6 +321,7 @@ export interface HttpResponse {
 
 export interface CasServerConfig {
   nodeLimit: number; // max size for any node, default 4MB
+  maxNameBytes: number; // max file name length in UTF-8 bytes, default 255
   maxCollectionChildren: number; // max collection children, default 10000
   maxPayloadSize: number; // default 10MB
   maxTicketTtl: number; // max ticket TTL in seconds, default 86400 (24h)
@@ -338,6 +345,7 @@ export interface CasConfig {
 export function loadServerConfig(): CasServerConfig {
   return {
     nodeLimit: parseInt(process.env.CAS_NODE_LIMIT ?? "4194304", 10), // 4MB
+    maxNameBytes: parseInt(process.env.CAS_MAX_NAME_BYTES ?? "255", 10), // 255 bytes
     maxCollectionChildren: parseInt(process.env.CAS_MAX_COLLECTION_CHILDREN ?? "10000", 10),
     maxPayloadSize: parseInt(process.env.CAS_MAX_PAYLOAD_SIZE ?? "10485760", 10), // 10MB
     maxTicketTtl: parseInt(process.env.CAS_MAX_TICKET_TTL ?? "86400", 10), // 24 hours
@@ -366,7 +374,7 @@ export function loadConfig(): CasConfig {
 
 /**
  * CasEndpointInfo - describes endpoint capabilities and configuration
- * Returned by GET /ticket/{ticketId} or GET /realm/{realmId}
+ * Returned by GET /cas/{realm}
  */
 export interface CasEndpointInfo {
   /** The actual realm (e.g., "usr_xxx") */
@@ -385,13 +393,14 @@ export interface CasEndpointInfo {
   /** Expiration time (for tickets) */
   expiresAt?: string;
 
-  /** Configuration */
-  config: {
-    nodeLimit: number; // max size for any node
-  };
+  /** Max size for any node in bytes (default 4MB) */
+  nodeLimit: number;
+
+  /** Max file name length in UTF-8 bytes (default 255) */
+  maxNameBytes: number;
 }
 
-/** @deprecated Use CasEndpointInfo.config.nodeLimit instead */
+/** @deprecated Use CasEndpointInfo directly */
 export interface CasConfigResponse {
   nodeLimit: number;
   maxCollectionChildren: number;

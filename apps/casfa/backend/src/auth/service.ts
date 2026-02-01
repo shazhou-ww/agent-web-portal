@@ -148,11 +148,23 @@ export class AuthService {
     const issuerId = TokensDb.extractTokenId(auth.token.pk);
     const serverConfig = loadServerConfig();
 
+    // Normalize scope to string[] | undefined
+    const normalizedScope = request.scope === undefined
+      ? undefined
+      : Array.isArray(request.scope) ? request.scope : [request.scope];
+
+    // Normalize commit: true -> {}, false/undefined -> undefined
+    const normalizedCommit = request.commit === true
+      ? {}
+      : request.commit === false || request.commit === undefined
+        ? undefined
+        : request.commit;
+
     const ticket = await this.tokensDb.createTicket(
       auth.realm,
       issuerId,
-      request.scope,
-      request.commit,
+      normalizedScope,
+      normalizedCommit,
       request.expiresIn
     );
 

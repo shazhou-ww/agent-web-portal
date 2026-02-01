@@ -146,6 +146,7 @@ export class TokensDb {
       expiresAt,
       config: {
         nodeLimit: serverConfig.nodeLimit,
+        maxNameBytes: serverConfig.maxNameBytes,
       },
     };
 
