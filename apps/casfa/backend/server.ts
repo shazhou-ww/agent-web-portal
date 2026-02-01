@@ -628,7 +628,26 @@ class MemoryCommitsDb {
 // ============================================================================
 
 const EMPTY_COLLECTION_KEY = "sha256:a78577c5cfc47ab3e4b116f01902a69e2e015b40cdef52f9b552cfb5104e769a";
-const EMPTY_COLLECTION_DATA = Buffer.from(JSON.stringify({ children: {} }), "utf-8");
+
+// Empty collection is a 32-byte binary header (not JSON!)
+// Structure: magic(4) + flags(4) + count(4) + padding(4) + size(8) + namesOffset(4) + typeOffset(4)
+const HEADER_SIZE = 32;
+const MAGIC = 0x01534143; // "CAS\x01" in little-endian
+const FLAGS_HAS_NAMES = 0x01;
+
+function createEmptyCollectionBytes(): Buffer {
+  const bytes = Buffer.alloc(HEADER_SIZE);
+  bytes.writeUInt32LE(MAGIC, 0);           // magic
+  bytes.writeUInt32LE(FLAGS_HAS_NAMES, 4); // flags
+  bytes.writeUInt32LE(0, 8);               // count = 0
+  bytes.writeUInt32LE(0, 12);              // padding
+  bytes.writeBigUInt64LE(0n, 16);          // size = 0
+  bytes.writeUInt32LE(HEADER_SIZE, 24);    // namesOffset = 32
+  bytes.writeUInt32LE(0, 28);              // typeOffset = 0
+  return bytes;
+}
+
+const EMPTY_COLLECTION_DATA = createEmptyCollectionBytes();
 
 interface MemoryDepotRecord {
   realm: string;
@@ -919,9 +938,12 @@ const userRolesDb = useDynamo ? new UserRolesDb(loadConfig()) : null;
  * Ensure empty collection exists in storage and ownership
  */
 async function ensureEmptyCollection(realm: string, tokenId: string): Promise<void> {
+  console.log(`[ensureEmptyCollection] realm=${realm}, tokenId=${tokenId}`);
   // Check if already exists
   const exists = await casStorage.get(EMPTY_COLLECTION_KEY);
+  console.log(`[ensureEmptyCollection] exists=${!!exists}`);
   if (!exists) {
+    console.log(`[ensureEmptyCollection] storing empty collection`);
     await casStorage.putWithKey(
       EMPTY_COLLECTION_KEY,
       EMPTY_COLLECTION_DATA,
@@ -930,7 +952,9 @@ async function ensureEmptyCollection(realm: string, tokenId: string): Promise<vo
   }
   // Ensure ownership
   const hasOwnership = await ownershipDb.hasOwnership(realm, EMPTY_COLLECTION_KEY);
+  console.log(`[ensureEmptyCollection] hasOwnership=${hasOwnership}`);
   if (!hasOwnership) {
+    console.log(`[ensureEmptyCollection] adding ownership`);
     await ownershipDb.addOwnership(
       realm,
       EMPTY_COLLECTION_KEY,
@@ -1723,6 +1747,7 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
 
     // Special case: empty collection - ensure it exists
     if (rootKey === EMPTY_COLLECTION_KEY) {
+      console.log(`[tree] detected empty collection key, calling ensureEmptyCollection`);
       await ensureEmptyCollection(realm, auth.tokenId);
     }
 
@@ -1733,6 +1758,16 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
 
     // Build tree recursively
     const buildTree = async (key: string): Promise<Record<string, unknown> | null> => {
+      // Special case: empty collection
+      if (key === EMPTY_COLLECTION_KEY) {
+        return {
+          kind: "collection",
+          key,
+          size: 0,
+          children: {},
+        };
+      }
+
       const blob = await casStorage.get(key);
       if (!blob) {
         console.log(`[tree] blob not found for key: ${key}`);
