@@ -393,7 +393,7 @@ export function loadConfig(): CasConfig {
     casDagTable: process.env.CAS_DAG_TABLE ?? "cas-dag",
     casBucket: process.env.CAS_BUCKET ?? "cas-bucket",
     cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
-    cognitoClientId: process.env.COGNITO_CLIENT_ID ?? "",
+    cognitoClientId: process.env.CASFA_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? "",
     cognitoRegion: process.env.COGNITO_REGION ?? "us-east-1",
     cognitoHostedUiUrl: process.env.COGNITO_HOSTED_UI_URL ?? "",
     serverConfig: loadServerConfig(),

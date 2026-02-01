@@ -1,14 +1,17 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+// Port configuration from environment variables
+const webUIPort = parseInt(process.env.PORT_CASFA_WEBUI ?? "5550", 10);
+const apiPort = process.env.PORT_CASFA_API ?? "3550";
+
 // API URL configuration:
 //   1. --url <endpoint> flag takes highest priority
-//   2. CAS_API_PORT env var (from .env) sets the port
+//   2. PORT_CASFA_API env var sets the port
 //   3. Falls back to port 3550
 const args = process.argv.slice(2);
 const urlIndex = args.indexOf("--url");
-const defaultPort = process.env.CAS_API_PORT ?? "3550";
-let apiUrl = `http://localhost:${defaultPort}`;
+let apiUrl = `http://localhost:${apiPort}`;
 
 if (urlIndex !== -1 && args[urlIndex + 1]) {
   apiUrl = args[urlIndex + 1];
@@ -31,7 +34,7 @@ export default defineConfig({
     sourcemap: true,
   },
   server: {
-    port: 5173,
+    port: webUIPort,
     proxy: {
       "/api": {
         target: apiUrl,

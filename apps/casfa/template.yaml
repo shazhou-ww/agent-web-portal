@@ -11,28 +11,10 @@ Globals:
       - x86_64
 
 Parameters:
-  CognitoDomain:
+  AuthStackName:
     Type: String
-    Description: Cognito hosted UI domain prefix (must be globally unique). Required for external IdP sign-in.
-    Default: ""
-  GoogleClientId:
-    Type: String
-    Description: Google OAuth 2.0 Client ID (for Sign in with Google)
-    Default: ""
-  GoogleClientSecret:
-    Type: String
-    NoEcho: true
-    Description: Google OAuth 2.0 Client Secret (for Sign in with Google)
-    Default: ""
-  MicrosoftClientId:
-    Type: String
-    Description: Microsoft (Azure AD) Application (client) ID
-    Default: ""
-  MicrosoftClientSecret:
-    Type: String
-    NoEcho: true
-    Description: Microsoft (Azure AD) Client Secret
-    Default: ""
+    Description: Name of the shared auth stack (awp-auth) to import User Pool from
+    Default: "awp-auth"
   CallbackBaseUrl:
     Type: String
     Description: Production UI base URL for Cognito callback/logout (e.g. https://xxx.cloudfront.net). Leave empty on first deploy, then re-deploy with CloudFront URL from outputs.
@@ -48,193 +30,14 @@ Parameters:
 
 Resources:
   # ============================================================================
-  # Cognito User Pool
+  # Cognito User Pool Client (references shared User Pool from awp-auth)
   # ============================================================================
-  UserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: !Sub "${AWS::StackName}-users"
-      AutoVerifiedAttributes:
-        - email
-      UsernameAttributes:
-        - email
-      Policies:
-        PasswordPolicy:
-          MinimumLength: 8
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: false
-          RequireUppercase: true
-      Schema:
-        - Name: email
-          AttributeDataType: String
-          Mutable: true
-          Required: true
-        - Name: name
-          AttributeDataType: String
-          Mutable: true
-          Required: false
-
-  UserPoolGoogleIdP:
-    Type: AWS::Cognito::UserPoolIdentityProvider
-    Condition: HasGoogleIdP
-    Properties:
-      UserPoolId: !Ref UserPool
-      ProviderName: Google
-      ProviderType: Google
-      ProviderDetails:
-        client_id: !Ref GoogleClientId
-        client_secret: !Ref GoogleClientSecret
-        authorize_scopes: "openid email profile"
-      AttributeMapping:
-        email: email
-        name: name
-
-  UserPoolMicrosoftIdP:
-    Type: AWS::Cognito::UserPoolIdentityProvider
-    Condition: HasMicrosoftIdP
-    Properties:
-      UserPoolId: !Ref UserPool
-      ProviderName: Microsoft
-      ProviderType: OIDC
-      ProviderDetails:
-        client_id: !Ref MicrosoftClientId
-        client_secret: !Ref MicrosoftClientSecret
-        authorize_scopes: "openid email profile"
-        oidc_issuer: "https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0"
-        attributes_request_method: "GET"
-      AttributeMapping:
-        email: email
-        name: name
-        username: sub
-
-  # UserPoolClient: 4 variants based on which IdPs are configured
-  # 1. No external IdP
-  UserPoolClientNoIdP:
+  UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
-    Condition: NoIdP
-    DependsOn: UserPool
     Properties:
       ClientName: !Sub "${AWS::StackName}-client"
-      UserPoolId: !Ref UserPool
-      GenerateSecret: false
-      ExplicitAuthFlows:
-        - ALLOW_REFRESH_TOKEN_AUTH
-        - ALLOW_USER_SRP_AUTH
-      SupportedIdentityProviders:
-        - COGNITO
-      CallbackURLs: !If
-        - HasCallbackBaseUrl
-        - - http://localhost:5173/auth/callback
-          - http://localhost:3550/auth/callback
-          - !Sub
-            - "${Base}/auth/callback"
-            - Base: !Ref CallbackBaseUrl
-        - - http://localhost:5173/auth/callback
-          - http://localhost:3550/auth/callback
-      LogoutURLs: !If
-        - HasCallbackBaseUrl
-        - - http://localhost:5173
-          - http://localhost:3550
-          - !Ref CallbackBaseUrl
-        - - http://localhost:5173
-          - http://localhost:3550
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthScopes:
-        - openid
-        - email
-        - profile
-      AllowedOAuthFlowsUserPoolClient: true
-
-  # 2. Only Google
-  UserPoolClientOnlyGoogle:
-    Type: AWS::Cognito::UserPoolClient
-    Condition: OnlyGoogleIdP
-    DependsOn: UserPoolGoogleIdP
-    Properties:
-      ClientName: !Sub "${AWS::StackName}-client"
-      UserPoolId: !Ref UserPool
-      GenerateSecret: false
-      ExplicitAuthFlows:
-        - ALLOW_REFRESH_TOKEN_AUTH
-        - ALLOW_USER_SRP_AUTH
-      SupportedIdentityProviders:
-        - COGNITO
-        - Google
-      CallbackURLs: !If
-        - HasCallbackBaseUrl
-        - - http://localhost:5173/auth/callback
-          - http://localhost:3550/auth/callback
-          - !Sub
-            - "${Base}/auth/callback"
-            - Base: !Ref CallbackBaseUrl
-        - - http://localhost:5173/auth/callback
-          - http://localhost:3550/auth/callback
-      LogoutURLs: !If
-        - HasCallbackBaseUrl
-        - - http://localhost:5173
-          - http://localhost:3550
-          - !Ref CallbackBaseUrl
-        - - http://localhost:5173
-          - http://localhost:3550
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthScopes:
-        - openid
-        - email
-        - profile
-      AllowedOAuthFlowsUserPoolClient: true
-
-  # 3. Only Microsoft
-  UserPoolClientOnlyMicrosoft:
-    Type: AWS::Cognito::UserPoolClient
-    Condition: OnlyMicrosoftIdP
-    DependsOn: UserPoolMicrosoftIdP
-    Properties:
-      ClientName: !Sub "${AWS::StackName}-client"
-      UserPoolId: !Ref UserPool
-      GenerateSecret: false
-      ExplicitAuthFlows:
-        - ALLOW_REFRESH_TOKEN_AUTH
-        - ALLOW_USER_SRP_AUTH
-      SupportedIdentityProviders:
-        - COGNITO
-        - Microsoft
-      CallbackURLs: !If
-        - HasCallbackBaseUrl
-        - - http://localhost:5173/auth/callback
-          - http://localhost:3550/auth/callback
-          - !Sub
-            - "${Base}/auth/callback"
-            - Base: !Ref CallbackBaseUrl
-        - - http://localhost:5173/auth/callback
-          - http://localhost:3550/auth/callback
-      LogoutURLs: !If
-        - HasCallbackBaseUrl
-        - - http://localhost:5173
-          - http://localhost:3550
-          - !Ref CallbackBaseUrl
-        - - http://localhost:5173
-          - http://localhost:3550
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthScopes:
-        - openid
-        - email
-        - profile
-      AllowedOAuthFlowsUserPoolClient: true
-
-  # 4. Both Google and Microsoft
-  UserPoolClientBothIdP:
-    Type: AWS::Cognito::UserPoolClient
-    Condition: BothIdP
-    DependsOn:
-      - UserPoolGoogleIdP
-      - UserPoolMicrosoftIdP
-    Properties:
-      ClientName: !Sub "${AWS::StackName}-client"
-      UserPoolId: !Ref UserPool
+      UserPoolId: !ImportValue
+        Fn::Sub: "${AuthStackName}-UserPoolId"
       GenerateSecret: false
       ExplicitAuthFlows:
         - ALLOW_REFRESH_TOKEN_AUTH
@@ -245,19 +48,19 @@ Resources:
         - Microsoft
       CallbackURLs: !If
         - HasCallbackBaseUrl
-        - - http://localhost:5173/auth/callback
+        - - http://localhost:5550/auth/callback
           - http://localhost:3550/auth/callback
           - !Sub
             - "${Base}/auth/callback"
             - Base: !Ref CallbackBaseUrl
-        - - http://localhost:5173/auth/callback
+        - - http://localhost:5550/auth/callback
           - http://localhost:3550/auth/callback
       LogoutURLs: !If
         - HasCallbackBaseUrl
-        - - http://localhost:5173
+        - - http://localhost:5550
           - http://localhost:3550
           - !Ref CallbackBaseUrl
-        - - http://localhost:5173
+        - - http://localhost:5550
           - http://localhost:3550
       AllowedOAuthFlows:
         - code
@@ -266,13 +69,6 @@ Resources:
         - email
         - profile
       AllowedOAuthFlowsUserPoolClient: true
-
-  UserPoolDomain:
-    Type: AWS::Cognito::UserPoolDomain
-    Condition: HasCognitoDomain
-    Properties:
-      Domain: !Ref CognitoDomain
-      UserPoolId: !Ref UserPool
 
   # ============================================================================
   # DynamoDB Tables
@@ -590,17 +386,8 @@ Resources:
         - "*/*"
 
 Conditions:
-  HasCognitoDomain: !Not [!Equals [!Ref CognitoDomain, ""]]
-  HasGoogleIdP: !And [!Not [!Equals [!Ref GoogleClientId, ""]], !Not [!Equals [!Ref GoogleClientSecret, ""]]]
-  HasMicrosoftIdP: !And [!Not [!Equals [!Ref MicrosoftClientId, ""]], !Not [!Equals [!Ref MicrosoftClientSecret, ""]]]
   HasCallbackBaseUrl: !Not [!Equals [!Ref CallbackBaseUrl, ""]]
   HasCustomDomain: !And [!Not [!Equals [!Ref CustomDomainName, ""]], !Not [!Equals [!Ref CustomDomainCertificateArn, ""]]]
-  # Combinations for UserPoolClient
-  NoIdP: !And [!Not [!Condition HasGoogleIdP], !Not [!Condition HasMicrosoftIdP]]
-  OnlyGoogleIdP: !And [!Condition HasGoogleIdP, !Not [!Condition HasMicrosoftIdP]]
-  OnlyMicrosoftIdP: !And [!Not [!Condition HasGoogleIdP], !Condition HasMicrosoftIdP]
-  BothIdP: !And [!Condition HasGoogleIdP, !Condition HasMicrosoftIdP]
-  HasAnyIdP: !Or [!Condition HasGoogleIdP, !Condition HasMicrosoftIdP]
 
 Outputs:
   ApiEndpoint:
@@ -608,40 +395,18 @@ Outputs:
     Value: !Sub "https://${CasApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
   
   UserPoolId:
-    Description: Cognito User Pool ID
-    Value: !Ref UserPool
+    Description: Cognito User Pool ID (from shared auth stack)
+    Value: !ImportValue
+      Fn::Sub: "${AuthStackName}-UserPoolId"
   
   UserPoolClientId:
     Description: Cognito User Pool Client ID
-    Value: !If
-      - BothIdP
-      - !Ref UserPoolClientBothIdP
-      - !If
-        - OnlyGoogleIdP
-        - !Ref UserPoolClientOnlyGoogle
-        - !If
-          - OnlyMicrosoftIdP
-          - !Ref UserPoolClientOnlyMicrosoft
-          - !Ref UserPoolClientNoIdP
-
-  CognitoDomainPrefix:
-    Condition: HasCognitoDomain
-    Description: Cognito Hosted UI domain prefix (for OAuth / Google sign-in URL)
-    Value: !Ref CognitoDomain
+    Value: !Ref UserPoolClient
 
   CognitoHostedUiUrl:
-    Condition: HasCognitoDomain
-    Description: Cognito Hosted UI base URL (for Google / OAuth sign-in redirect)
-    Value: !Sub
-      - "https://${Prefix}.auth.${Region}.amazoncognito.com"
-      - { Prefix: !Ref CognitoDomain, Region: !Ref AWS::Region }
-
-  IdPRedirectUri:
-    Condition: HasCognitoDomain
-    Description: "Add this URL to Google Cloud Console and/or Azure AD → Authorized redirect URIs"
-    Value: !Sub
-      - "https://${Prefix}.auth.${Region}.amazoncognito.com/oauth2/idpresponse"
-      - { Prefix: !Ref CognitoDomain, Region: !Ref AWS::Region }
+    Description: Cognito Hosted UI base URL (from shared auth stack)
+    Value: !ImportValue
+      Fn::Sub: "${AuthStackName}-CognitoHostedUiUrl"
   
   CasBucketName:
     Description: S3 bucket for CAS storage

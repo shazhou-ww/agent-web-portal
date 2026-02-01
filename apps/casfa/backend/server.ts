@@ -437,6 +437,75 @@ class MemoryAgentTokensDb {
   }
 }
 
+// Commit record for memory storage
+interface MemoryCommitRecord {
+  realm: string;
+  root: string;
+  title?: string;
+  createdAt: number;
+  createdBy: string;
+}
+
+class MemoryCommitsDb {
+  private commits = new Map<string, MemoryCommitRecord>();
+
+  private buildKey(realm: string, root: string): string {
+    return `${realm}#${root}`;
+  }
+
+  async create(
+    realm: string,
+    root: string,
+    createdBy: string,
+    title?: string
+  ): Promise<MemoryCommitRecord> {
+    const commit: MemoryCommitRecord = {
+      realm,
+      root,
+      title,
+      createdAt: Date.now(),
+      createdBy,
+    };
+    this.commits.set(this.buildKey(realm, root), commit);
+    return commit;
+  }
+
+  async get(realm: string, root: string): Promise<MemoryCommitRecord | null> {
+    return this.commits.get(this.buildKey(realm, root)) ?? null;
+  }
+
+  async list(
+    realm: string,
+    options?: { limit?: number }
+  ): Promise<{ commits: MemoryCommitRecord[]; nextKey?: string }> {
+    const limit = options?.limit ?? 100;
+    const realmCommits = Array.from(this.commits.values())
+      .filter((c) => c.realm === realm)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, limit);
+    return { commits: realmCommits };
+  }
+
+  // Alias for compatibility with CommitsDb
+  async listByScan(
+    realm: string,
+    options?: { limit?: number; startKey?: string }
+  ): Promise<{ commits: MemoryCommitRecord[]; nextKey?: string }> {
+    return this.list(realm, options);
+  }
+
+  async updateTitle(realm: string, root: string, title?: string): Promise<boolean> {
+    const commit = this.commits.get(this.buildKey(realm, root));
+    if (!commit) return false;
+    commit.title = title;
+    return true;
+  }
+
+  async delete(realm: string, root: string): Promise<boolean> {
+    return this.commits.delete(this.buildKey(realm, root));
+  }
+}
+
 /** Adapter: TokensDb agent-token API → same shape as MemoryAgentTokensDb for server routes */
 interface AgentTokenRecord {
   id: string;
@@ -549,6 +618,9 @@ const useDynamo = !!process.env.DYNAMODB_ENDPOINT;
 const tokensDb = useDynamo ? new TokensDb(loadConfig()) : new MemoryTokensDb();
 const ownershipDb = useDynamo ? new OwnershipDb(loadConfig()) : new MemoryOwnershipDb();
 const dagDb = useDynamo ? new DagDb(loadConfig()) : new MemoryDagDb();
+// Note: CommitsDb uses different key schema than OwnershipDb, so we use memory storage for local dev
+// TODO: Create separate commits table in DynamoDB or fix key schema
+const commitsDb = new MemoryCommitsDb();
 const casStorage = new MemoryCasStorage(); // CAS blob storage stays in-memory for local
 const pendingAuthStore = useDynamo
   ? new AwpPendingAuthStore(loadConfig())
@@ -739,7 +811,7 @@ async function authenticateAwp(req: Request): Promise<AuthContext | null> {
 // ============================================================================
 
 const COGNITO_HOSTED_UI_URL = process.env.COGNITO_HOSTED_UI_URL ?? "";
-const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID ?? "";
+const COGNITO_CLIENT_ID = process.env.CASFA_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? "";
 
 async function handleOAuth(req: Request, path: string): Promise<Response> {
   // GET /oauth/config - Public Cognito config for frontend (no auth)
@@ -1126,6 +1198,274 @@ async function handleAdmin(req: Request, path: string): Promise<Response> {
   return errorResponse(404, "Admin endpoint not found");
 }
 
+/**
+ * Handle /api/realm/{realmId}/... routes
+ * These are the standard CAS API endpoints matching router.ts
+ */
+async function handleRealm(req: Request, realmId: string, subPath: string): Promise<Response> {
+  const serverConfig = loadServerConfig();
+
+  // Authenticate - requires Authorization header
+  const auth = await authenticate(req);
+  if (!auth) {
+    return errorResponse(401, "Authorization required");
+  }
+
+  // Check realm access - user can only access their own realm
+  if (realmId !== auth.scope) {
+    return errorResponse(403, "Access denied to this realm");
+  }
+
+  const realm = realmId;
+
+  // GET /realm/{realmId} - Return endpoint info
+  if (req.method === "GET" && subPath === "") {
+    return jsonResponse(200, {
+      realm,
+      commit: auth.canWrite ? {} : undefined,
+      nodeLimit: serverConfig.nodeLimit,
+      maxNameBytes: serverConfig.maxNameBytes,
+    });
+  }
+
+  // GET /commits - List commits for realm
+  if (req.method === "GET" && subPath === "/commits") {
+    const url = new URL(req.url);
+    const limit = Math.min(Number.parseInt(url.searchParams.get("limit") ?? "100", 10), 1000);
+    const result = await commitsDb.listByScan(realm, { limit });
+    return jsonResponse(200, {
+      commits: result.commits.map((c) => ({
+        root: c.root,
+        title: c.title,
+        createdAt: new Date(c.createdAt).toISOString(),
+      })),
+      nextKey: result.nextKey,
+    });
+  }
+
+  // GET /commits/:root - Get commit details
+  const getCommitMatch = subPath.match(/^\/commits\/(.+)$/);
+  if (req.method === "GET" && getCommitMatch) {
+    const root = decodeURIComponent(getCommitMatch[1]!);
+    const commit = await commitsDb.get(realm, root);
+    if (!commit) {
+      return errorResponse(404, "Commit not found");
+    }
+    return jsonResponse(200, {
+      root: commit.root,
+      title: commit.title,
+      createdAt: new Date(commit.createdAt).toISOString(),
+    });
+  }
+
+  // PATCH /commits/:root - Update commit metadata
+  const patchCommitMatch = subPath.match(/^\/commits\/(.+)$/);
+  if (req.method === "PATCH" && patchCommitMatch) {
+    const root = decodeURIComponent(patchCommitMatch[1]!);
+    const body = (await req.json()) as { title?: string };
+    const updated = await commitsDb.updateTitle(realm, root, body.title);
+    if (!updated) {
+      return errorResponse(404, "Commit not found");
+    }
+    return jsonResponse(200, { success: true });
+  }
+
+  // DELETE /commits/:root - Delete commit
+  const deleteCommitMatch = subPath.match(/^\/commits\/(.+)$/);
+  if (req.method === "DELETE" && deleteCommitMatch) {
+    const root = decodeURIComponent(deleteCommitMatch[1]!);
+    const deleted = await commitsDb.delete(realm, root);
+    if (!deleted) {
+      return errorResponse(404, "Commit not found");
+    }
+    return jsonResponse(200, { success: true });
+  }
+
+  // POST /commit - Create a new commit
+  if (req.method === "POST" && subPath === "/commit") {
+    if (!auth.canWrite) {
+      return errorResponse(403, "Write access denied");
+    }
+    const body = (await req.json()) as {
+      title?: string;
+      tree?: Record<string, unknown>;
+      root?: string;
+    };
+
+    // Build collection from tree structure
+    if (body.tree && Object.keys(body.tree).length > 0) {
+      // Recursively build CAS collection structure
+      const buildCollection = async (
+        tree: Record<string, unknown>
+      ): Promise<{ key: string; size: number }> => {
+        const children: Record<string, string> = {};
+        let totalSize = 0;
+
+        for (const [name, value] of Object.entries(tree)) {
+          if (typeof value === "object" && value !== null) {
+            const v = value as Record<string, unknown>;
+            if ("chunks" in v && Array.isArray(v.chunks)) {
+              // It's a file reference - use the first chunk as the file key
+              const chunkKey = v.chunks[0] as string;
+              children[name] = chunkKey;
+              totalSize += (v.size as number) || 0;
+            } else {
+              // It's a nested folder
+              const subCollection = await buildCollection(v);
+              children[name] = subCollection.key;
+              totalSize += subCollection.size;
+            }
+          }
+        }
+
+        // Create collection
+        const collectionData = JSON.stringify({ children });
+        const content = Buffer.from(collectionData, "utf-8");
+        const hash = cryptoCreateHash("sha256").update(content).digest("hex");
+        const collectionKey = `sha256:${hash}`;
+
+        await casStorage.putWithKey(collectionKey, content, "application/vnd.cas.collection");
+        await ownershipDb.addOwnership(realm, collectionKey, auth.tokenId, "application/vnd.cas.collection", content.length);
+
+        return { key: collectionKey, size: totalSize };
+      };
+
+      const rootCollection = await buildCollection(body.tree);
+      
+      // Create commit record
+      await commitsDb.create(realm, rootCollection.key, auth.tokenId, body.title);
+
+      return jsonResponse(200, {
+        success: true,
+        root: rootCollection.key,
+      });
+    }
+
+    // If root is provided directly
+    if (body.root) {
+      await commitsDb.create(realm, body.root, auth.tokenId, body.title);
+      return jsonResponse(200, {
+        success: true,
+        root: body.root,
+      });
+    }
+
+    return errorResponse(400, "Either tree or root is required");
+  }
+
+  // PUT /chunks/:key - Upload chunk
+  const putChunkMatch = subPath.match(/^\/chunks\/(.+)$/);
+  if (req.method === "PUT" && putChunkMatch) {
+    if (!auth.canWrite) {
+      return errorResponse(403, "Write access denied");
+    }
+    const key = decodeURIComponent(putChunkMatch[1]!);
+    const content = Buffer.from(await req.arrayBuffer());
+    if (content.length === 0) {
+      return errorResponse(400, "Empty body");
+    }
+    const contentType = req.headers.get("Content-Type") ?? "application/octet-stream";
+
+    const result = await casStorage.putWithKey(key, content, contentType);
+    if ("error" in result) {
+      return errorResponse(400, "Hash mismatch", {
+        expected: result.expected,
+        actual: result.actual,
+      });
+    }
+
+    await ownershipDb.addOwnership(realm, result.key, auth.tokenId, contentType, result.size);
+
+    return jsonResponse(200, {
+      key: result.key,
+      size: result.size,
+    });
+  }
+
+  // GET /chunks/:key - Get chunk
+  const getChunkMatch = subPath.match(/^\/chunks\/(.+)$/);
+  if (req.method === "GET" && getChunkMatch) {
+    if (!auth.canRead) {
+      return errorResponse(403, "Read access denied");
+    }
+    const key = decodeURIComponent(getChunkMatch[1]!);
+
+    const hasAccess = await ownershipDb.hasOwnership(realm, key);
+    if (!hasAccess) {
+      return errorResponse(404, "Not found");
+    }
+
+    const blob = await casStorage.get(key);
+    if (!blob) {
+      return errorResponse(404, "Content not found");
+    }
+
+    return binaryResponse(blob.content, blob.contentType);
+  }
+
+  // GET /tree/:key - Get tree structure
+  const getTreeMatch = subPath.match(/^\/tree\/(.+)$/);
+  if (req.method === "GET" && getTreeMatch) {
+    if (!auth.canRead) {
+      return errorResponse(403, "Read access denied");
+    }
+    const rootKey = decodeURIComponent(getTreeMatch[1]!);
+
+    const hasAccess = await ownershipDb.hasOwnership(realm, rootKey);
+    if (!hasAccess) {
+      return errorResponse(404, "Not found");
+    }
+
+    // Build tree recursively
+    const buildTree = async (key: string): Promise<Record<string, unknown> | null> => {
+      const blob = await casStorage.get(key);
+      if (!blob) return null;
+
+      const { content, contentType, metadata } = blob;
+
+      if (contentType === "application/vnd.cas.collection") {
+        try {
+          const data = JSON.parse(content.toString("utf-8"));
+          const children = data.children as Record<string, string>;
+          const result: Record<string, unknown> = {
+            kind: "collection",
+            key,
+            size: metadata.casSize ?? content.length,
+            children: {} as Record<string, unknown>,
+          };
+
+          for (const [name, childKey] of Object.entries(children)) {
+            const childTree = await buildTree(childKey);
+            if (childTree) {
+              (result.children as Record<string, unknown>)[name] = childTree;
+            }
+          }
+          return result;
+        } catch {
+          return null;
+        }
+      } else {
+        // It's a file/chunk
+        return {
+          kind: "file",
+          key,
+          size: metadata.casSize ?? content.length,
+          contentType: metadata.casContentType ?? contentType,
+        };
+      }
+    };
+
+    const tree = await buildTree(rootKey);
+    if (!tree) {
+      return errorResponse(404, "Failed to build tree");
+    }
+
+    return jsonResponse(200, tree);
+  }
+
+  return errorResponse(404, "Realm endpoint not found");
+}
+
 async function handleCas(req: Request, requestedRealm: string, subPath: string): Promise<Response> {
   const serverConfig = loadServerConfig();
 
@@ -1449,7 +1789,14 @@ Bun.serve({
         return handleAdmin(req, apiPath.replace("/admin", ""));
       }
 
-      // CAS routes
+      // Realm routes (same as CAS routes, just different path format)
+      const realmMatch = apiPath.match(/^\/realm\/([^/]+)(.*)$/);
+      if (realmMatch) {
+        const [, realmId, subPath] = realmMatch;
+        return handleRealm(req, realmId!, subPath ?? "");
+      }
+
+      // CAS routes (legacy)
       const casMatch = apiPath.match(/^\/cas\/([^/]+)(.*)$/);
       if (casMatch) {
         const [, scope, subPath] = casMatch;

@@ -35,7 +35,7 @@ const DRAWER_WIDTH = 260;
 const BASE_MENU_ITEMS: { path: string; label: string; icon: React.ReactNode }[] = [
   { path: "/", label: "Dashboard", icon: <DashboardIcon /> },
   { path: "/agents", label: "Clients", icon: <DevicesIcon /> },
-  { path: "/nodes", label: "Nodes", icon: <HubIcon /> },
+  { path: "/commits", label: "Commits", icon: <HubIcon /> },
   { path: "/tokens", label: "Agent Tokens", icon: <KeyIcon /> },
   { path: "/tickets", label: "Tickets", icon: <TicketIcon /> },
 ];

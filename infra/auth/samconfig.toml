@@ -1,0 +1,21 @@
+# SAM configuration for AWP Shared Auth Infrastructure
+# Deploy with: sam deploy (or bun run deploy)
+
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "awp-auth"
+resolve_s3 = true
+s3_prefix = "awp-auth"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+
+# IdP credentials should be passed via --parameter-overrides or deploy script
+# Example:
+#   sam deploy --parameter-overrides \
+#     CognitoDomain=awp-auth \
+#     GoogleClientId=xxx \
+#     GoogleClientSecret=xxx \
+#     MicrosoftClientId=xxx \
+#     MicrosoftClientSecret=xxx

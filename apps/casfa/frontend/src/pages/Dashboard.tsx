@@ -14,7 +14,6 @@ import {
 import {
   Key as KeyIcon,
   Storage as StorageIcon,
-  TrendingUp as TrendingUpIcon,
   ContentCopy as CopyIcon,
   Check as CheckIcon,
   Link as LinkIcon,
@@ -24,16 +23,7 @@ import { apiRequest } from "../utils/api";
 
 interface DashboardStats {
   agentTokenCount: number;
-  nodeCount: number | string;
-  totalSize: number;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 Bytes";
-  const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${Number.parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
+  commitCount: number | string;
 }
 
 interface StatCardProps {
@@ -118,29 +108,23 @@ export default function Dashboard() {
         agentTokenCount = tokensData.tokens?.length || 0;
       }
 
-      // Fetch nodes stats - get first page to count
-      const nodesResponse = await apiRequest(`/api/realm/${realm}/nodes?limit=100`, {}, token);
+      // Fetch commits stats
+      const commitsResponse = await apiRequest(`/api/realm/${realm}/commits?limit=100`, {}, token);
 
-      let nodeCount: number | string = 0;
-      let totalSize = 0;
-      if (nodesResponse.ok) {
-        const nodesData = await nodesResponse.json();
-        const nodes = nodesData.nodes || [];
-        nodeCount = nodes.length;
-        totalSize = nodes.reduce(
-          (sum: number, node: { size?: number }) => sum + (node.size || 0),
-          0
-        );
-        // Note: This is an approximation - only counts first 100 nodes
-        if (nodesData.nextKey) {
-          nodeCount = `${nodeCount}+`; // Indicate there are more
+      let commitCount: number | string = 0;
+      if (commitsResponse.ok) {
+        const commitsData = await commitsResponse.json();
+        const commits = commitsData.commits || [];
+        commitCount = commits.length;
+        // Note: This is an approximation - only counts first 100 commits
+        if (commitsData.nextKey) {
+          commitCount = `${commitCount}+`; // Indicate there are more
         }
       }
 
       setStats({
         agentTokenCount,
-        nodeCount,
-        totalSize,
+        commitCount,
       });
     } catch (err) {
       console.error("Failed to fetch stats:", err);
@@ -260,18 +244,10 @@ export default function Dashboard() {
         </Grid>
         <Grid item xs={12} sm={6} md={4}>
           <StatCard
-            title="Total Nodes"
-            value={stats?.nodeCount || 0}
+            title="Total Commits"
+            value={stats?.commitCount || 0}
             icon={<StorageIcon sx={{ fontSize: 28 }} />}
             color="#7c4dff"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={4}>
-          <StatCard
-            title="Total Size"
-            value={formatBytes(stats?.totalSize || 0)}
-            icon={<TrendingUpIcon sx={{ fontSize: 28 }} />}
-            color="#4caf50"
           />
         </Grid>
       </Grid>
@@ -291,7 +267,7 @@ export default function Dashboard() {
                 your agents
               </Typography>
               <Typography component="li" variant="body2" color="text.secondary">
-                <strong>Nodes</strong> - Browse and manage stored content nodes
+                <strong>Commits</strong> - Browse and manage your committed content
               </Typography>
             </Box>
           </CardContent>

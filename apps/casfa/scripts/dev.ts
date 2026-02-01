@@ -5,14 +5,48 @@
  *
  * Usage:
  *   bun run dev              # Start both backend and frontend
- *   bun run dev:backend      # Start only backend (port 3550)
- *   bun run dev:frontend     # Start only frontend (port 5173)
+ *   bun run dev:backend      # Start only backend
+ *   bun run dev:frontend     # Start only frontend
+ *
+ * Environment variables (in root .env):
+ *   PORT_CASFA_WEBUI  - Frontend port (default: 5550)
+ *   PORT_CASFA_API    - Backend port (default: 3550)
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Subprocess, spawn } from "bun";
 
 const ROOT_DIR = join(import.meta.dir, "..");
+const REPO_ROOT = join(ROOT_DIR, "../..");
+
+// Load .env files (repo root first, then package root - later overrides earlier)
+function loadEnvFile(dir: string): void {
+  const envPath = join(dir, ".env");
+  if (!existsSync(envPath)) return;
+  const content = readFileSync(envPath, "utf-8");
+  for (const line of content.split("\n")) {
+    const t = line.trim();
+    if (t && !t.startsWith("#")) {
+      const eq = t.indexOf("=");
+      if (eq > 0) {
+        const key = t.slice(0, eq).trim();
+        const value = t
+          .slice(eq + 1)
+          .trim()
+          .replace(/^["']|["']$/g, "");
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+loadEnvFile(REPO_ROOT);
+loadEnvFile(ROOT_DIR);
+
+// Port configuration from environment
+const PORT_WEBUI = process.env.PORT_CASFA_WEBUI || "5550";
+const PORT_API = process.env.PORT_CASFA_API || "3550";
 
 interface ProcessInfo {
   name: string;
@@ -34,7 +68,7 @@ function colorize(text: string, color: string): string {
 }
 
 async function startBackend(): Promise<Subprocess> {
-  console.log(colorize("[backend] Starting development server...", "cyan"));
+  console.log(colorize(`[backend] Starting development server on port ${PORT_API}...`, "cyan"));
 
   const proc = spawn({
     cmd: ["bun", "run", "backend/server.ts"],
@@ -43,7 +77,7 @@ async function startBackend(): Promise<Subprocess> {
     stderr: "inherit",
     env: {
       ...process.env,
-      PORT: "3550",
+      PORT: PORT_API,
     },
   });
 
@@ -51,10 +85,10 @@ async function startBackend(): Promise<Subprocess> {
 }
 
 async function startFrontend(): Promise<Subprocess> {
-  console.log(colorize("[frontend] Starting Vite development server...", "magenta"));
+  console.log(colorize(`[frontend] Starting Vite development server on port ${PORT_WEBUI}...`, "magenta"));
 
   const proc = spawn({
-    cmd: ["bun", "run", "vite", "--config", "frontend/vite.config.ts"],
+    cmd: ["bun", "run", "vite", "--config", "frontend/vite.config.ts", "--port", PORT_WEBUI],
     cwd: ROOT_DIR,
     stdout: "inherit",
     stderr: "inherit",
@@ -97,8 +131,8 @@ async function main(): Promise<void> {
 
     console.log();
     console.log(colorize("Development servers started:", "green"));
-    console.log(colorize("  Backend:  http://localhost:3550", "cyan"));
-    console.log(colorize("  Frontend: http://localhost:5173", "magenta"));
+    console.log(colorize(`  Backend:  http://localhost:${PORT_API}`, "cyan"));
+    console.log(colorize(`  Frontend: http://localhost:${PORT_WEBUI}`, "magenta"));
     console.log();
     console.log(colorize("Press Ctrl+C to stop all servers", "yellow"));
     console.log();

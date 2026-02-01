@@ -2,16 +2,16 @@
  * CASFA - Full Stack Deploy Script
  *
  * Deploys both backend (SAM) and frontend (S3/CloudFront) in sequence.
- * IdP credentials are read from .env file (not hardcoded in samconfig.toml).
+ * References shared auth stack (awp-auth) for Cognito User Pool.
  *
  * Usage:
  *   bun run deploy              # Deploy everything
  *   bun run deploy:backend      # Deploy only backend (SAM)
  *   bun run deploy:frontend     # Deploy only frontend (S3)
  *
- * Required .env variables for IdP:
- *   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET       (for Google sign-in)
- *   MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET (for Microsoft sign-in)
+ * Optional .env variables:
+ *   AUTH_STACK_NAME          (default: awp-auth) - shared auth stack name
+ *   CASFA_CALLBACK_BASE_URL  - production UI base URL (e.g. https://casfa.awp.shazhou.me)
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -49,28 +49,17 @@ loadEnvFile(ROOT_DIR);
 /**
  * Build parameter overrides for SAM deploy from environment variables
  */
-function buildIdpOverrides(): string[] {
+function buildParameterOverrides(): string[] {
   const overrides: string[] = [];
 
-  // Google credentials
-  const googleClientId = process.env.GOOGLE_CLIENT_ID || "";
-  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
-  if (googleClientId && googleClientSecret) {
-    overrides.push(`GoogleClientId=${googleClientId}`);
-    overrides.push(`GoogleClientSecret=${googleClientSecret}`);
-  }
+  // Auth stack name (defaults to awp-auth)
+  const authStackName = process.env.AUTH_STACK_NAME || "awp-auth";
+  overrides.push(`AuthStackName=${authStackName}`);
 
-  // Microsoft credentials
-  const microsoftClientId = process.env.MICROSOFT_CLIENT_ID || "";
-  const microsoftClientSecret = process.env.MICROSOFT_CLIENT_SECRET || "";
-  if (microsoftClientId && microsoftClientSecret) {
-    overrides.push(`MicrosoftClientId=${microsoftClientId}`);
-    overrides.push(`MicrosoftClientSecret=${microsoftClientSecret}`);
-  }
-
-  if (overrides.length === 0) {
-    console.warn("WARNING: No IdP credentials found in .env");
-    console.warn("Set GOOGLE_CLIENT_ID/SECRET or MICROSOFT_CLIENT_ID/SECRET");
+  // Callback base URL for production (CASFA-specific or fallback)
+  const callbackBaseUrl = process.env.CASFA_CALLBACK_BASE_URL || process.env.CALLBACK_BASE_URL || "";
+  if (callbackBaseUrl) {
+    overrides.push(`CallbackBaseUrl=${callbackBaseUrl}`);
   }
 
   return overrides;
@@ -90,17 +79,13 @@ async function deployBackend(): Promise<void> {
   await $`sam build`.cwd(ROOT_DIR);
   console.log();
 
-  // Build IdP parameter overrides from .env
-  const idpOverrides = buildIdpOverrides();
+  // Build parameter overrides from .env
+  const overrides = buildParameterOverrides();
 
   console.log("Running SAM deploy...");
-  if (idpOverrides.length > 0) {
-    const overridesStr = idpOverrides.join(" ");
-    console.log(`  (with IdP credentials from .env)`);
-    await $`sam deploy --parameter-overrides ${overridesStr}`.cwd(ROOT_DIR);
-  } else {
-    await $`sam deploy`.cwd(ROOT_DIR);
-  }
+  const overridesStr = overrides.join(" ");
+  console.log(`  (referencing shared auth stack: ${process.env.AUTH_STACK_NAME || "awp-auth"})`);
+  await $`sam deploy --parameter-overrides ${overridesStr}`.cwd(ROOT_DIR);
   console.log();
 
   console.log("Backend deployment complete!");

@@ -1,0 +1,10 @@
+{
+  "name": "@agent-web-portal/infra-auth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWP Shared Authentication Infrastructure - Cognito User Pool",
+  "scripts": {
+    "deploy": "bun run scripts/deploy.ts",
+    "validate": "sam validate"
+  }
+}

@@ -104,14 +104,14 @@ const MCP_TOOLS = [
     },
   },
   {
-    name: "cas_list_nodes",
-    description: "List all CAS nodes in your storage scope.",
+    name: "cas_list_commits",
+    description: "List all committed content in your storage scope.",
     inputSchema: {
       type: "object",
       properties: {
         limit: {
           type: "number",
-          description: "Maximum number of nodes to return",
+          description: "Maximum number of commits to return",
           default: 100,
         },
       },
@@ -256,24 +256,24 @@ async function handleWrite(params: {
   };
 }
 
-async function handleListNodes(params: { limit?: number; realm?: string }): Promise<{
-  nodes: Array<{ key: string; contentType?: string; size: number; createdAt: number }>;
+async function handleListCommits(params: { limit?: number; realm?: string }): Promise<{
+  commits: Array<{ root: string; title?: string; createdAt: string }>;
 }> {
   const limit = params.limit || 100;
   // Note: realm must be provided when using this function
   // In SSE context, the realm should be obtained from the authenticated session
   if (!params.realm) {
-    throw new Error("realm parameter is required for listing nodes");
+    throw new Error("realm parameter is required for listing commits");
   }
-  const response = await apiRequest(`/api/realm/${params.realm}/nodes?limit=${limit}`);
+  const response = await apiRequest(`/api/realm/${params.realm}/commits?limit=${limit}`);
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || `Failed to list nodes: ${response.status}`);
+    throw new Error(err.error || `Failed to list commits: ${response.status}`);
   }
 
   const data = await response.json();
-  return { nodes: data.nodes || [] };
+  return { commits: data.commits || [] };
 }
 
 // MCP message handling
@@ -330,8 +330,8 @@ async function handleMcpMessage(message: McpMessage): Promise<McpMessage | null>
           case "cas_write":
             result = await handleWrite(toolArgs as Parameters<typeof handleWrite>[0]);
             break;
-          case "cas_list_nodes":
-            result = await handleListNodes(toolArgs as Parameters<typeof handleListNodes>[0]);
+          case "cas_list_commits":
+            result = await handleListCommits(toolArgs as Parameters<typeof handleListCommits>[0]);
             break;
           default:
             throw new Error(`Unknown tool: ${toolName}`);
@@ -450,6 +450,6 @@ console.log(`
 ║    - cas_get_ticket   Get read/write ticket                  ║
 ║    - cas_read         Read blob content                      ║
 ║    - cas_write        Write blob content                     ║
-║    - cas_list_nodes   List stored nodes                      ║
+║    - cas_list_commits List committed content                 ║
 ╚══════════════════════════════════════════════════════════════╝
 `);

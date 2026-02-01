@@ -28,12 +28,44 @@
  *   DYNAMODB_ENDPOINT    - optional, for local DynamoDB
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   CognitoIdentityProviderClient,
   ListUsersCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { UserRolesDb } from "../backend/src/db/user-roles.ts";
 import { loadConfig } from "../backend/src/types.ts";
+
+// Load .env files (repo root first, then package root - later overrides earlier)
+const SCRIPT_DIR = import.meta.dir;
+const ROOT_DIR = join(SCRIPT_DIR, "..");
+const REPO_ROOT = join(ROOT_DIR, "../..");
+
+function loadEnvFile(dir: string): void {
+  const envPath = join(dir, ".env");
+  if (!existsSync(envPath)) return;
+  const content = readFileSync(envPath, "utf-8");
+  for (const line of content.split("\n")) {
+    const t = line.trim();
+    if (t && !t.startsWith("#")) {
+      const eq = t.indexOf("=");
+      if (eq > 0) {
+        const key = t.slice(0, eq).trim();
+        const value = t
+          .slice(eq + 1)
+          .trim()
+          .replace(/^["']|["']$/g, "");
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+}
+
+loadEnvFile(REPO_ROOT);
+loadEnvFile(ROOT_DIR);
 
 function parseArgs(): { list: boolean; setAdmin: string[] } {
   const args = process.argv.slice(2);

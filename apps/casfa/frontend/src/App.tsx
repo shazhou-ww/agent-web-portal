@@ -6,7 +6,8 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import Clients from "./pages/Clients";
-import Nodes from "./pages/Nodes";
+import Commits from "./pages/Commits";
+import CommitDetail from "./pages/CommitDetail";
 import Tokens from "./pages/Tokens";
 import Tickets from "./pages/Tickets";
 import Users from "./pages/Users";
@@ -57,7 +58,8 @@ function AppRoutes() {
         >
           <Route index element={<Dashboard />} />
           <Route path="agents" element={<Clients />} />
-          <Route path="nodes/*" element={<Nodes />} />
+          <Route path="commits" element={<Commits />} />
+          <Route path="commits/:root" element={<CommitDetail />} />
           <Route path="tokens" element={<Tokens />} />
           <Route path="tickets" element={<Tickets />} />
           <Route path="users" element={<Users />} />

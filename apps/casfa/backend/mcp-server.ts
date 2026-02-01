@@ -129,14 +129,14 @@ const MCP_TOOLS = [
     },
   },
   {
-    name: "cas_list_nodes",
-    description: "List all CAS nodes in your storage scope.",
+    name: "cas_list_commits",
+    description: "List all committed content in your storage scope.",
     inputSchema: {
       type: "object",
       properties: {
         limit: {
           type: "number",
-          description: "Maximum number of nodes to return",
+          description: "Maximum number of commits to return",
           default: 100,
         },
       },
@@ -298,20 +298,20 @@ async function handleWrite(params: {
   };
 }
 
-async function handleListNodes(params: { limit?: number }): Promise<{
-  nodes: Array<{ key: string; contentType?: string; size: number; createdAt: number }>;
+async function handleListCommits(params: { limit?: number }): Promise<{
+  commits: Array<{ root: string; title?: string; createdAt: string }>;
 }> {
   const limit = params.limit || 100;
   const endpoint = getRealmEndpoint();
-  const response = await apiRequest(`${endpoint}/nodes?limit=${limit}`.replace(CAS_ENDPOINT, ""));
+  const response = await apiRequest(`${endpoint}/commits?limit=${limit}`.replace(CAS_ENDPOINT, ""));
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || `Failed to list nodes: ${response.status}`);
+    throw new Error(err.error || `Failed to list commits: ${response.status}`);
   }
 
   const data = await response.json();
-  return { nodes: data.nodes || [] };
+  return { commits: data.commits || [] };
 }
 
 // MCP request handler
@@ -374,8 +374,8 @@ async function handleRequest(request: McpRequest): Promise<void> {
           case "cas_write":
             result = await handleWrite(toolArgs as Parameters<typeof handleWrite>[0]);
             break;
-          case "cas_list_nodes":
-            result = await handleListNodes(toolArgs as Parameters<typeof handleListNodes>[0]);
+          case "cas_list_commits":
+            result = await handleListCommits(toolArgs as Parameters<typeof handleListCommits>[0]);
             break;
           default:
             throw new Error(`Unknown tool: ${toolName}`);
