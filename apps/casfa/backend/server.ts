@@ -8,6 +8,7 @@
 import { createHash, createHash as cryptoCreateHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { decodeNode, type CasNode } from "@agent-web-portal/cas-core";
 import type {
   AuthorizedPubkey,
   PendingAuth,
@@ -1774,39 +1775,48 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
         return null;
       }
 
-      const { content, contentType, metadata } = blob;
-      console.log(`[tree] key=${key}, contentType=${contentType}, size=${content.length}`);
+      const { content, metadata } = blob;
+      console.log(`[tree] key=${key}, size=${content.length}`);
 
-      if (contentType === "application/vnd.cas.collection") {
-        try {
-          const data = JSON.parse(content.toString("utf-8"));
-          const children = data.children as Record<string, string>;
+      try {
+        // Parse binary CAS format
+        const node = decodeNode(new Uint8Array(content));
+        console.log(`[tree] decoded node kind=${node.kind}, childNames=${node.childNames?.length ?? 0}`);
+
+        if (node.kind === "collection" && node.childNames && node.children) {
+          const { childNames, children } = node;
           const result: Record<string, unknown> = {
             kind: "collection",
             key,
-            size: metadata.casSize ?? content.length,
+            size: node.size,
             children: {} as Record<string, unknown>,
           };
 
-          for (const [name, childKey] of Object.entries(children)) {
+          // Build child map from children and childNames arrays
+          for (let i = 0; i < childNames.length; i++) {
+            const name = childNames[i];
+            const childHash = children[i];
+            if (!name || !childHash) continue;
+            // Convert hash bytes to sha256:hex format
+            const childKey = `sha256:${Buffer.from(childHash).toString("hex")}`;
             const childTree = await buildTree(childKey);
             if (childTree) {
               (result.children as Record<string, unknown>)[name] = childTree;
             }
           }
           return result;
-        } catch (e) {
-          console.log(`[tree] JSON parse error for ${key}:`, e);
-          return null;
+        } else {
+          // It's a file/chunk
+          return {
+            kind: "file",
+            key,
+            size: node.size,
+            contentType: node.contentType ?? metadata.casContentType,
+          };
         }
-      } else {
-        // It's a file/chunk
-        return {
-          kind: "file",
-          key,
-          size: metadata.casSize ?? content.length,
-          contentType: metadata.casContentType ?? contentType,
-        };
+      } catch (e) {
+        console.log(`[tree] decodeNode error for ${key}:`, e);
+        return null;
       }
     };
 
