@@ -772,6 +772,18 @@ class MemoryDepotDb {
     const historyList = this.history.get(historyKey) ?? [];
     return historyList.find((h) => h.version === version) ?? null;
   }
+
+  async ensureMainDepot(realm: string, emptyCollectionKey: string): Promise<MemoryDepotRecord> {
+    const existing = await this.getByName(realm, MAIN_DEPOT_NAME);
+    if (existing) {
+      return existing;
+    }
+    return await this.create(realm, {
+      name: MAIN_DEPOT_NAME,
+      root: emptyCollectionKey,
+      description: "Default depot",
+    });
+  }
 }
 
 /** Adapter: TokensDb agent-token API → same shape as MemoryAgentTokensDb for server routes */
@@ -1743,6 +1755,8 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
     if (!auth.canRead) {
       return errorResponse(403, "Read access required");
     }
+    // Ensure main depot exists
+    await depotDb.ensureMainDepot(realm, EMPTY_COLLECTION_KEY);
     const result = await depotDb.list(realm);
     return jsonResponse(200, {
       depots: result.depots.map((d) => ({
