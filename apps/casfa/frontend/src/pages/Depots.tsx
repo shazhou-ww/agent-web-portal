@@ -361,11 +361,11 @@ export default function Depots() {
                         sx={{ display: "flex", flexDirection: "column", gap: 0.5, mt: 0.5 }}
                       >
                         {depot.description && (
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography component="span" variant="body2" color="text.secondary">
                             {depot.description}
                           </Typography>
                         )}
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography component="span" variant="caption" color="text.secondary">
                           Root: {truncateKey(depot.root)} • Updated {formatDate(depot.updatedAt)}
                         </Typography>
                       </Box>
