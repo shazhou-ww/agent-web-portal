@@ -1721,6 +1721,11 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
     }
     const rootKey = decodeURIComponent(getTreeMatch[1]!);
 
+    // Special case: empty collection - ensure it exists
+    if (rootKey === EMPTY_COLLECTION_KEY) {
+      await ensureEmptyCollection(realm, auth.tokenId);
+    }
+
     const hasAccess = await ownershipDb.hasOwnership(realm, rootKey);
     if (!hasAccess) {
       return errorResponse(404, "Not found");
