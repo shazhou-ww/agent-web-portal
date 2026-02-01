@@ -152,7 +152,7 @@ export class AuthService {
       auth.realm,
       issuerId,
       request.scope,
-      request.writable,
+      request.commit,
       request.expiresIn
     );
 
@@ -167,7 +167,7 @@ export class AuthService {
       expiresAt: new Date(ticket.expiresAt).toISOString(),
       realm: ticket.realm,
       scope: ticket.scope,
-      writable: ticket.writable ?? false,
+      commit: ticket.commit ?? false,
       config: ticket.config,
     };
   }

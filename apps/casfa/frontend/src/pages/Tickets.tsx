@@ -31,8 +31,8 @@ interface CreatedTicket {
   endpoint: string;
   expiresAt: string;
   shard: string;
-  scope: string | string[];
-  writable: boolean | { quota?: number; accept?: string[] };
+  scope?: string[];
+  commit: { quota?: number; accept?: string[]; root?: string } | false;
 }
 
 function formatDate(timestamp: string): string {
@@ -92,7 +92,7 @@ export default function Tickets() {
           },
           body: JSON.stringify({
             scope,
-            writable: newTicketWritable || undefined,
+            commit: newTicketWritable || undefined,
             expiresIn: parseInt(newTicketExpiresIn, 10),
           }),
         },
@@ -377,8 +377,8 @@ export default function Tickets() {
               Permissions
             </Typography>
             <Chip
-              label={createdTicket?.writable ? "Read & Write" : "Read Only"}
-              color={createdTicket?.writable ? "success" : "default"}
+              label={createdTicket?.commit ? "Read & Commit" : "Read Only"}
+              color={createdTicket?.commit ? "success" : "default"}
               size="small"
             />
           </Box>

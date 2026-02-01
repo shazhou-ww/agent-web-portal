@@ -33,14 +33,14 @@ export interface AgentToken extends BaseToken {
 }
 
 /**
- * Writable configuration for tickets
+ * Commit configuration for tickets
+ * Allows a single commit with optional constraints
  */
-export type WritableConfig =
-  | boolean
-  | {
-      quota?: number; // bytes limit
-      accept?: string[]; // allowed MIME types for root node
-    };
+export interface CommitConfig {
+  quota?: number; // total bytes limit
+  accept?: string[]; // allowed MIME types
+  root?: string; // already committed root key (if set, cannot commit again)
+}
 
 /**
  * Ticket - provides limited access to CAS resources
@@ -49,12 +49,10 @@ export interface Ticket extends BaseToken {
   type: "ticket";
   realm: string; // user namespace (e.g., "usr_{userId}")
   issuerId: string; // who issued this ticket
-  scope: string | string[]; // DAG root keys that can be accessed
-  writable?: WritableConfig; // write permission config
-  written?: string; // root key after write (ensures single write)
+  scope?: string[]; // readable root keys (undefined = full read access)
+  commit?: CommitConfig; // commit permission (undefined = read-only)
   config: {
-    chunkSize: number; // chunk size in bytes
-    maxChildren: number; // max B-tree children per node
+    nodeLimit: number; // max size for any node (chunk/file/collection)
   };
 }
 
@@ -134,8 +132,8 @@ export interface ListAgentTokensResponse {
 // ============================================================================
 
 export interface CreateTicketRequest {
-  scope: string | string[]; // DAG root keys to allow access
-  writable?: WritableConfig; // write permission config
+  scope?: string | string[]; // DAG root keys to allow access (optional, undefined = full read)
+  commit?: boolean | { quota?: number; accept?: string[] }; // commit permission config
   expiresIn?: number; // seconds, default 3600
 }
 
@@ -144,11 +142,10 @@ export interface CreateTicketResponse {
   endpoint: string; // Full endpoint URL: /api/ticket/{ticketId}
   expiresAt: string;
   realm: string;
-  scope: string | string[];
-  writable: WritableConfig | false;
+  scope?: string[];
+  commit: CommitConfig | false;
   config: {
-    chunkSize: number;
-    maxChildren: number;
+    nodeLimit: number;
   };
 }
 
@@ -285,8 +282,8 @@ export interface AuthContext {
   role?: UserRole;
   /** True only for admin; allows user management APIs */
   canManageUsers?: boolean;
-  // For tickets, the allowed DAG root keys
-  allowedScope?: string | string[];
+  /** For tickets, the allowed readable root keys */
+  allowedScope?: string[];
 }
 
 // ============================================================================
@@ -317,8 +314,7 @@ export interface HttpResponse {
 // ============================================================================
 
 export interface CasServerConfig {
-  chunkSize: number; // chunk size in bytes, default 256KB
-  maxChildren: number; // max B-tree children per node, default 256
+  nodeLimit: number; // max size for any node, default 4MB
   maxCollectionChildren: number; // max collection children, default 10000
   maxPayloadSize: number; // default 10MB
   maxTicketTtl: number; // max ticket TTL in seconds, default 86400 (24h)
@@ -341,8 +337,7 @@ export interface CasConfig {
 
 export function loadServerConfig(): CasServerConfig {
   return {
-    chunkSize: parseInt(process.env.CAS_CHUNK_SIZE ?? "4194304", 10), // 4MB
-    maxChildren: parseInt(process.env.CAS_MAX_CHILDREN ?? "256", 10), // 256
+    nodeLimit: parseInt(process.env.CAS_NODE_LIMIT ?? "4194304", 10), // 4MB
     maxCollectionChildren: parseInt(process.env.CAS_MAX_COLLECTION_CHILDREN ?? "10000", 10),
     maxPayloadSize: parseInt(process.env.CAS_MAX_PAYLOAD_SIZE ?? "10485760", 10), // 10MB
     maxTicketTtl: parseInt(process.env.CAS_MAX_TICKET_TTL ?? "86400", 10), // 24 hours
@@ -371,36 +366,34 @@ export function loadConfig(): CasConfig {
 
 /**
  * CasEndpointInfo - describes endpoint capabilities and configuration
- * Returned by GET /cas/{realm}
+ * Returned by GET /ticket/{ticketId} or GET /realm/{realmId}
  */
 export interface CasEndpointInfo {
-  /** The actual realm (e.g., "usr_xxx" for tickets) */
+  /** The actual realm (e.g., "usr_xxx") */
   realm: string;
 
-  /** Read permission: true=full access, string[]=only these keys */
-  read: boolean | string[];
+  /** Readable scope: undefined=full access, string[]=only these root keys */
+  scope?: string[];
 
-  /** Write permission: false=no write, object=write config */
-  write:
-    | false
-    | {
-        quota?: number; // bytes limit
-        accept?: string[]; // allowed MIME types
-      };
+  /** Commit permission: undefined=read-only, object=can commit once */
+  commit?: {
+    quota?: number; // bytes limit
+    accept?: string[]; // allowed MIME types
+    root?: string; // already committed root (if set, cannot commit again)
+  };
 
   /** Expiration time (for tickets) */
   expiresAt?: string;
 
-  /** Required configuration for chunking */
+  /** Configuration */
   config: {
-    chunkSize: number; // chunk size in bytes
-    maxChildren: number; // max B-tree children per node
+    nodeLimit: number; // max size for any node
   };
 }
 
+/** @deprecated Use CasEndpointInfo.config.nodeLimit instead */
 export interface CasConfigResponse {
-  chunkSize: number;
-  maxChildren: number;
+  nodeLimit: number;
   maxCollectionChildren: number;
   maxPayloadSize: number;
 }

@@ -284,11 +284,12 @@ export class McpHandler {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
     }
 
+    // writable from MCP schema -> commit for internal API
     const ticket = await this.tokensDb.createTicket(
       auth.realm,
       TokensDb.extractTokenId(auth.token.pk),
       parsed.data.scope,
-      parsed.data.writable ? true : undefined,
+      parsed.data.writable ? true : undefined, // writable -> commit
       parsed.data.expiresIn
     );
 
@@ -447,14 +448,14 @@ export class McpHandler {
 
     const [, realm, ticketId] = endpointMatch;
 
-    // Verify ticket is writable
+    // Verify ticket has commit permission
     const ticket = await this.tokensDb.getToken(ticketId!);
     if (!ticket || ticket.type !== "ticket" || ticket.realm !== realm) {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid or expired ticket");
     }
 
-    if (!ticket.writable || ticket.written) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Ticket is not writable or already used");
+    if (!ticket.commit || ticket.commit.root) {
+      return mcpError(id, MCP_INVALID_PARAMS, "Ticket has no commit permission or already used");
     }
 
     // Decode content

@@ -49,18 +49,15 @@ const AwpAuthCompleteSchema = z.object({
   verification_code: z.string().min(1),
 });
 
-// New CreateTicketSchema with updated structure
+// CreateTicketSchema - new format with scope/commit
 const CreateTicketSchema = z.object({
-  scope: z.union([z.string(), z.array(z.string())]),
-  writable: z
-    .union([
-      z.boolean(),
-      z.object({
-        quota: z.number().positive().optional(),
-        accept: z.array(z.string()).optional(),
-      }),
-    ])
-    .optional(),
+  // Readable scope - undefined means full read access
+  scope: z.array(z.string()).optional(),
+  // Commit permission - undefined means read-only
+  commit: z.object({
+    quota: z.number().positive().optional(),
+    accept: z.array(z.string()).optional(),
+  }).optional(),
   expiresIn: z.number().positive().optional(),
 });
 
@@ -559,7 +556,7 @@ export class Router {
           auth.realm,
           TokensDb.extractTokenId(auth.token.pk),
           parsed.data.scope,
-          parsed.data.writable,
+          parsed.data.commit,
           parsed.data.expiresIn
         );
 
@@ -573,7 +570,7 @@ export class Router {
           expiresAt: new Date(ticket.expiresAt).toISOString(),
           realm: ticket.realm,
           scope: ticket.scope,
-          writable: ticket.writable ?? false,
+          commit: ticket.commit,
           config: ticket.config,
         });
       } catch (error: any) {
@@ -868,11 +865,12 @@ export class Router {
 
     const info: CasEndpointInfo = {
       realm: realmId,
-      read: true,
-      write: auth.canWrite ? {} : false,
+      // User/Agent tokens have full access, no scope restriction
+      scope: undefined,
+      // User/Agent tokens can always commit
+      commit: auth.canWrite ? {} : undefined,
       config: {
-        chunkSize: serverConfig.chunkSize,
-        maxChildren: serverConfig.maxChildren,
+        nodeLimit: serverConfig.nodeLimit,
       },
     };
 
@@ -894,32 +892,13 @@ export class Router {
       return errorResponse(410, "Ticket expired");
     }
 
-    // Build read permission
-    const read: boolean | string[] = Array.isArray(ticket.scope)
-      ? ticket.scope
-      : [ticket.scope];
-
-    // Build write permission
-    let write: false | { quota?: number; accept?: string[] } = false;
-    if (ticket.writable && !ticket.written) {
-      if (ticket.writable === true) {
-        write = {};
-      } else {
-        write = {
-          quota: ticket.writable.quota,
-          accept: ticket.writable.accept,
-        };
-      }
-    }
-
     const info: CasEndpointInfo = {
       realm: ticket.realm,
-      read,
-      write,
+      scope: ticket.scope,
+      commit: ticket.commit,
       expiresAt: new Date(ticket.expiresAt).toISOString(),
       config: {
-        chunkSize: ticket.config.chunkSize,
-        maxChildren: ticket.config.maxChildren,
+        nodeLimit: ticket.config.nodeLimit,
       },
     };
 
@@ -1111,12 +1090,12 @@ export class Router {
     // Record commit
     await this.commitsDb.create(realm, root, tokenId, title);
 
-    // Mark ticket as written if applicable
+    // Mark ticket as committed if applicable
     if (auth.token.type === "ticket") {
       const ticketId = TokensDb.extractTokenId(auth.token.pk);
-      const marked = await this.tokensDb.markTicketWritten(ticketId, root);
+      const marked = await this.tokensDb.markTicketCommitted(ticketId, root);
       if (!marked) {
-        return errorResponse(403, "Ticket already consumed");
+        return errorResponse(403, "Ticket already committed");
       }
     }
 

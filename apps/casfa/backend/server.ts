@@ -73,23 +73,34 @@ class MemoryTokensDb {
   async createTicket(
     realm: string,
     issuerId: string,
-    scope: string | string[],
-    writable?: boolean | { quota?: number; accept?: string[] },
+    scope?: string | string[],
+    commit?: boolean | { quota?: number; accept?: string[] },
     expiresIn?: number
   ): Promise<Ticket> {
     const ticketId = `tkt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const defaultExpiry = writable ? 300 : 3600;
+    const defaultExpiry = commit ? 300 : 3600;
     const serverConfig = loadServerConfig();
+
+    // Convert scope to array or undefined
+    const scopeArr = scope === undefined ? undefined : Array.isArray(scope) ? scope : [scope];
+
+    // Convert commit to CommitConfig or undefined
+    const commitConfig =
+      commit === false || commit === undefined
+        ? undefined
+        : commit === true
+          ? {}
+          : { quota: commit.quota, accept: commit.accept };
+
     const ticket: Ticket = {
       pk: `token#${ticketId}`,
       type: "ticket",
       realm,
       issuerId,
-      scope,
-      writable,
+      scope: scopeArr,
+      commit: commitConfig,
       config: {
-        chunkSize: serverConfig.chunkSize,
-        maxChildren: serverConfig.maxChildren,
+        nodeLimit: serverConfig.nodeLimit,
       },
       createdAt: Date.now(),
       expiresAt: Date.now() + (expiresIn ?? defaultExpiry) * 1000,
@@ -632,10 +643,10 @@ async function authenticate(req: Request): Promise<AuthContext | null> {
       userId: "",
       scope: token.realm,
       canRead: true,
-      canWrite: !!token.writable,
+      canWrite: !!token.commit && !token.commit.root,
       canIssueTicket: false,
       tokenId: id,
-      allowedKey: Array.isArray(token.scope) ? token.scope[0] : token.scope,
+      allowedKey: token.scope?.[0],
     };
   }
 
@@ -651,10 +662,10 @@ async function authenticateByTicketId(ticketId: string): Promise<AuthContext | n
     userId: "",
     scope: token.realm,
     canRead: true,
-    canWrite: !!token.writable,
+    canWrite: !!token.commit && !token.commit.root,
     canIssueTicket: false,
     tokenId: id,
-    allowedKey: Array.isArray(token.scope) ? token.scope[0] : token.scope,
+    allowedKey: token.scope?.[0],
   };
 }
 
@@ -945,26 +956,25 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
     }
     const body = (await req.json()) as {
       scope?: string | string[];
-      writable?: boolean | { quota?: number; accept?: string[] };
+      commit?: boolean | { quota?: number; accept?: string[] };
       expiresIn?: number;
     };
-    if (!body.scope) {
-      return errorResponse(400, "Missing scope");
-    }
     const ticket = await tokensDb.createTicket(
       auth.scope,
       auth.tokenId,
       body.scope,
-      body.writable,
+      body.commit,
       body.expiresIn
     );
     const ticketId = tokenIdFromPk(ticket.pk);
+    const serverConfig = loadServerConfig();
     return jsonResponse(201, {
       id: ticketId,
+      endpoint: `${serverConfig.baseUrl}/api/ticket/${ticketId}`,
       expiresAt: new Date(ticket.expiresAt).toISOString(),
       realm: ticket.realm,
       scope: ticket.scope,
-      writable: ticket.writable ?? false,
+      commit: ticket.commit ?? false,
       config: ticket.config,
     });
   }
@@ -1106,32 +1116,23 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
         return errorResponse(410, "Ticket expired");
       }
 
-      // Build read permission
-      const read: boolean | string[] = Array.isArray(token.scope)
-        ? token.scope
-        : [token.scope];
-
-      // Build write permission
-      let write: false | { quota?: number; accept?: string[] } = false;
-      if (token.writable && !token.written) {
-        if (token.writable === true) {
-          write = {};
-        } else {
-          write = {
-            quota: (token.writable as any).quota,
-            accept: (token.writable as any).accept,
-          };
-        }
+      // Build commit permission
+      let commit: { quota?: number; accept?: string[]; root?: string } | undefined;
+      if (token.commit) {
+        commit = {
+          quota: token.commit.quota,
+          accept: token.commit.accept,
+          root: token.commit.root,
+        };
       }
 
       return jsonResponse(200, {
         realm: token.realm,
-        read,
-        write,
+        scope: token.scope,
+        commit,
         expiresAt: new Date(token.expiresAt).toISOString(),
         config: {
-          chunkSize: serverConfig.chunkSize,
-          maxChildren: serverConfig.maxChildren,
+          nodeLimit: serverConfig.nodeLimit,
         },
       });
     }
@@ -1154,11 +1155,10 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
 
     return jsonResponse(200, {
       realm: effectiveScope,
-      read: true,
-      write: auth.canWrite ? {} : false,
+      // No scope restriction for user realm (full access)
+      commit: auth.canWrite ? {} : undefined,
       config: {
-        chunkSize: serverConfig.chunkSize,
-        maxChildren: serverConfig.maxChildren,
+        nodeLimit: serverConfig.nodeLimit,
       },
     });
   }

@@ -45,7 +45,7 @@ class DefaultTicketProvider implements CasTicketProvider {
 
   async createTicket(
     scope: string | string[],
-    writable?: boolean | { quota?: number; accept?: string[] }
+    commit?: boolean | { quota?: number; accept?: string[] }
   ): Promise<TicketResult> {
     const res = await fetch(`${this.endpoint}/auth/ticket`, {
       method: "POST",
@@ -55,7 +55,7 @@ class DefaultTicketProvider implements CasTicketProvider {
       },
       body: JSON.stringify({
         scope,
-        writable: writable ?? true,
+        commit: commit ?? true,
         expiresIn: this.defaultTtl,
       }),
     });
@@ -70,18 +70,16 @@ class DefaultTicketProvider implements CasTicketProvider {
       endpoint: string;
       expiresAt: string;
       realm: string;
-      scope: string | string[];
-      writable: boolean | { quota?: number; accept?: string[] };
-      config: { chunkSize: number; maxChildren: number };
+      scope?: string[];
+      commit?: { quota?: number; accept?: string[]; root?: string } | false;
+      config: { nodeLimit: number };
     };
 
     // Build CasEndpointInfo from ticket response
     const info: CasEndpointInfo = {
       realm: ticket.realm,
-      read: Array.isArray(ticket.scope) ? ticket.scope : [ticket.scope],
-      write: ticket.writable === false ? false : 
-        ticket.writable === true ? {} : 
-        { quota: ticket.writable.quota, accept: ticket.writable.accept },
+      scope: ticket.scope,
+      commit: ticket.commit === false ? undefined : ticket.commit,
       expiresAt: ticket.expiresAt,
       config: ticket.config,
     };
@@ -494,11 +492,8 @@ export class ServerPortal {
     // Create minimal endpoint info that will fail on actual CAS operations
     const dummyInfo: CasEndpointInfo = {
       realm: "dummy",
-      read: false,
-      write: false,
       config: {
-        chunkSize: 262144,
-        maxChildren: 256,
+        nodeLimit: 4194304,
       },
     };
     return new BufferedCasClient(dummyInfo, "http://localhost:0", "dummy");

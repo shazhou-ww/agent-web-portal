@@ -201,7 +201,7 @@ async function handleGetTicket(params: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       scope: params.scope,
-      writable: params.writable || false,
+      commit: params.writable || false, // writable -> commit for internal API
       expiresIn: params.expiresIn,
     }),
   });

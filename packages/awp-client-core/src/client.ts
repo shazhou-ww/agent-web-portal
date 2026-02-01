@@ -103,7 +103,7 @@ export class AwpClient {
     // Create CAS interceptor
     this.casInterceptor = new CasInterceptor({
       casEndpoint: this.casEndpoint,
-      createTicket: (scope, writable) => this.createCasTicket(scope, writable),
+      createTicket: (scope, commit) => this.createCasTicket(scope, commit),
     });
   }
 
@@ -116,7 +116,7 @@ export class AwpClient {
    */
   private async createCasTicket(
     scope: string | string[],
-    writable: boolean
+    commit: boolean
   ): Promise<CreateTicketResponse> {
     const res = await this.fetchFn(`${this.casEndpoint}/auth/ticket`, {
       method: "POST",
@@ -127,7 +127,7 @@ export class AwpClient {
       },
       body: JSON.stringify({
         scope,
-        writable,
+        commit,
       }),
     });
 
@@ -612,12 +612,12 @@ export class AwpClient {
    */
   private async createTicketForTool(
     scope: string | string[],
-    writable: boolean
+    commit: boolean
   ): Promise<CreateTicketResponse> {
     const url = `${this.casEndpoint}/auth/ticket`;
     const body = JSON.stringify({
       scope,
-      writable,
+      commit,
       expiresIn: 3600, // 1 hour
     });
 

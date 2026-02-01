@@ -35,18 +35,16 @@ export class CasClient {
   private endpoint: string;
   private auth: CasAuth;
   private storage?: LocalStorageProvider;
-  private chunkSize: number;
-  private maxChildren: number;
+  private nodeLimit: number;
   private realm?: string;
 
   constructor(
-    config: CasClientConfig & { storage?: LocalStorageProvider; realm?: string; maxChildren?: number }
+    config: CasClientConfig & { storage?: LocalStorageProvider; realm?: string; nodeLimit?: number }
   ) {
     this.endpoint = config.endpoint.replace(/\/$/, "");
     this.auth = config.auth;
     this.storage = config.storage;
-    this.chunkSize = config.chunkSize ?? 262144; // Default 256KB
-    this.maxChildren = config.maxChildren ?? 256; // Default 256
+    this.nodeLimit = config.nodeLimit ?? 4194304; // Default 4MB
     this.realm = config.realm;
   }
 
@@ -107,7 +105,7 @@ export class CasClient {
   }
 
   /**
-   * Create a CasClient from endpoint info (returned by GET /cas/{realm})
+   * Create a CasClient from endpoint info (returned by GET /ticket/{ticketId})
    */
   static fromEndpointInfo(
     baseUrl: string,
@@ -121,8 +119,7 @@ export class CasClient {
       endpoint: baseUrl,
       auth: isTicket ? { type: "ticket", id: realm } : { type: "user", token: "" },
       storage,
-      chunkSize: info.config.chunkSize,
-      maxChildren: info.config.maxChildren,
+      nodeLimit: info.config.nodeLimit,
       realm: info.realm,
     });
   }
@@ -362,14 +359,14 @@ export class CasClient {
     const bytes = content instanceof Uint8Array ? content : await collectBytes(content);
 
     // Check if chunking is needed
-    if (!needsChunking(bytes.length, this.chunkSize)) {
+    if (!needsChunking(bytes.length, this.nodeLimit)) {
       // Small file: upload as single chunk, then create file node
       const chunkKey = await this.uploadChunk(bytes);
       return this.createFileNode([chunkKey], contentType, bytes.length);
     }
 
     // Large file: split into chunks and upload
-    const chunks = splitIntoChunks(bytes, this.chunkSize);
+    const chunks = splitIntoChunks(bytes, this.nodeLimit);
     const chunkKeys: string[] = [];
 
     for (const chunk of chunks) {

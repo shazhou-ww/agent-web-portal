@@ -14,10 +14,10 @@ import type {
   AgentToken,
   CasConfig,
   CasServerConfig,
+  CommitConfig,
   Ticket,
   Token,
   UserToken,
-  WritableConfig,
 } from "../types.ts";
 import { loadServerConfig } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
@@ -122,8 +122,8 @@ export class TokensDb {
   async createTicket(
     realm: string,
     issuerId: string,
-    scope: string | string[],
-    writable?: WritableConfig,
+    scope?: string[],
+    commit?: { quota?: number; accept?: string[] },
     expiresIn?: number
   ): Promise<Ticket> {
     const serverConfig = loadServerConfig();
@@ -141,12 +141,11 @@ export class TokensDb {
       realm,
       issuerId,
       scope,
-      writable,
+      commit,
       createdAt: now,
       expiresAt,
       config: {
-        chunkSize: serverConfig.chunkSize,
-        maxChildren: serverConfig.maxChildren,
+        nodeLimit: serverConfig.nodeLimit,
       },
     };
 
@@ -173,17 +172,22 @@ export class TokensDb {
   }
 
   /**
-   * Mark ticket as written (atomic operation)
-   * Returns true if successful, false if already written
+   * Mark ticket as committed (atomic operation)
+   * Sets commit.root to the committed root key
+   * Returns true if successful, false if already committed
    */
-  async markTicketWritten(ticketId: string, rootKey: string): Promise<boolean> {
+  async markTicketCommitted(ticketId: string, rootKey: string): Promise<boolean> {
     try {
       await this.client.send(
         new UpdateCommand({
           TableName: this.tableName,
           Key: { pk: `token#${ticketId}` },
-          UpdateExpression: "SET written = :rootKey",
-          ConditionExpression: "attribute_not_exists(written)",
+          UpdateExpression: "SET #commit.#root = :rootKey",
+          ConditionExpression: "attribute_exists(#commit) AND attribute_not_exists(#commit.#root)",
+          ExpressionAttributeNames: {
+            "#commit": "commit",
+            "#root": "root",
+          },
           ExpressionAttributeValues: {
             ":rootKey": rootKey,
           },
@@ -197,21 +201,25 @@ export class TokensDb {
         "name" in error &&
         error.name === "ConditionalCheckFailedException"
       ) {
-        return false; // Already written
+        return false; // Already committed or no commit permission
       }
       throw error;
     }
   }
 
   /**
-   * Revert ticket write status (for failed uploads)
+   * Revert ticket commit status (for failed uploads)
    */
-  async revertTicketWrite(ticketId: string): Promise<void> {
+  async revertTicketCommit(ticketId: string): Promise<void> {
     await this.client.send(
       new UpdateCommand({
         TableName: this.tableName,
         Key: { pk: `token#${ticketId}` },
-        UpdateExpression: "REMOVE written",
+        UpdateExpression: "REMOVE #commit.#root",
+        ExpressionAttributeNames: {
+          "#commit": "commit",
+          "#root": "root",
+        },
       })
     );
   }

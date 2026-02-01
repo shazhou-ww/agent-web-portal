@@ -338,7 +338,7 @@ export class AuthMiddleware {
           userId: "", // Tickets don't have direct user context
           realm: token.realm,
           canRead: true, // Tickets always have read access to scope
-          canWrite: !!token.writable && !token.written, // Can write if writable and not already written
+          canWrite: !!token.commit && !token.commit.root, // Can commit if commit permission and not already committed
           canIssueTicket: false,
           allowedScope: token.scope,
         };
@@ -366,14 +366,14 @@ export class AuthMiddleware {
 
   /**
    * Check if auth context can read a specific key
-   * For tickets, the key must be within the allowed scope (DAG roots)
+   * For tickets, the key must be within the allowed scope
    */
   checkReadAccess(auth: AuthContext, key: string): boolean {
     if (!auth.canRead) {
       return false;
     }
 
-    // Tickets are restricted to their scope (DAG roots)
+    // Tickets are restricted to their scope
     if (auth.allowedScope) {
       return this.isKeyInScope(key, auth.allowedScope);
     }
@@ -386,22 +386,21 @@ export class AuthMiddleware {
    * Note: This is a simplified check. Full DAG traversal would be needed
    * to verify if a key is a descendant of one of the scope roots.
    */
-  private isKeyInScope(key: string, scope: string | string[]): boolean {
-    const scopeArray = Array.isArray(scope) ? scope : [scope];
+  private isKeyInScope(key: string, scope: string[]): boolean {
     // For now, check if key is one of the scope roots
     // TODO: Implement full DAG traversal check
-    return scopeArray.includes(key);
+    return scope.includes(key);
   }
 
   /**
-   * Check if auth context can write
+   * Check if auth context can commit (write)
    */
   checkWriteAccess(auth: AuthContext): boolean {
     return auth.canWrite;
   }
 
   /**
-   * Check if ticket has writable quota available
+   * Check if ticket has commit quota available
    */
   checkWritableQuota(auth: AuthContext, size: number): boolean {
     if (!auth.canWrite) {
@@ -413,8 +412,8 @@ export class AuthMiddleware {
     }
 
     const ticket = auth.token;
-    if (typeof ticket.writable === "object" && ticket.writable.quota) {
-      return size <= ticket.writable.quota;
+    if (ticket.commit?.quota) {
+      return size <= ticket.commit.quota;
     }
 
     return true;
@@ -429,8 +428,8 @@ export class AuthMiddleware {
     }
 
     const ticket = auth.token;
-    if (typeof ticket.writable === "object" && ticket.writable.accept) {
-      return this.matchMimeType(contentType, ticket.writable.accept);
+    if (ticket.commit?.accept) {
+      return this.matchMimeType(contentType, ticket.commit.accept);
     }
 
     return true;

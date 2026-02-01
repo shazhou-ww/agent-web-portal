@@ -31,40 +31,36 @@ export type CasAuth =
 export interface CasClientConfig {
   endpoint: string;
   auth: CasAuth;
-  chunkSize?: number;
-  maxChildren?: number;
+  nodeLimit?: number;
 }
 
 // ============================================================================
-// Endpoint Info (from GET /cas/{realm})
+// Endpoint Info (from GET /ticket/{ticketId} or GET /realm/{realmId})
 // ============================================================================
 
 /**
  * CasEndpointInfo - describes endpoint capabilities and configuration
- * Returned by GET /cas/{realm}
  */
 export interface CasEndpointInfo {
-  /** The actual realm (e.g., "usr_xxx" for tickets) */
+  /** The actual realm (e.g., "usr_xxx") */
   realm: string;
 
-  /** Read permission: true=full access, string[]=only these keys */
-  read: boolean | string[];
+  /** Readable scope: undefined=full access, string[]=only these root keys */
+  scope?: string[];
 
-  /** Write permission: false=no write, object=write config */
-  write:
-    | false
-    | {
-        quota?: number;
-        accept?: string[];
-      };
+  /** Commit permission: undefined=read-only, object=can commit once */
+  commit?: {
+    quota?: number;
+    accept?: string[];
+    root?: string; // already committed root (if set, cannot commit again)
+  };
 
   /** Expiration time (for tickets) */
   expiresAt?: string;
 
-  /** Required configuration for chunking */
+  /** Configuration */
   config: {
-    chunkSize: number;
-    maxChildren: number;
+    nodeLimit: number; // max size for any node
   };
 }
 
@@ -226,9 +222,9 @@ export interface LocalStorageProvider {
 // API Response Types
 // ============================================================================
 
+/** @deprecated Use CasEndpointInfo.config.nodeLimit instead */
 export interface CasConfigResponse {
-  chunkSize: number;
-  maxChildren: number;
+  nodeLimit: number;
   maxCollectionChildren: number;
   maxPayloadSize: number;
 }

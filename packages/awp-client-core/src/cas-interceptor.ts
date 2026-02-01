@@ -28,7 +28,7 @@ export interface CasInterceptorOptions {
   /** CAS API endpoint */
   casEndpoint: string;
   /** Function to create a ticket */
-  createTicket: (scope: string | string[], writable: boolean) => Promise<CreateTicketResponse>;
+  createTicket: (scope: string | string[], commit: boolean) => Promise<CreateTicketResponse>;
 }
 
 /**
@@ -55,7 +55,7 @@ export interface CasBlobContext {
 export class CasInterceptor {
   private createTicket: (
     scope: string | string[],
-    writable: boolean
+    commit: boolean
   ) => Promise<CreateTicketResponse>;
 
   constructor(options: CasInterceptorOptions) {
@@ -119,7 +119,7 @@ export class CasInterceptor {
     // Create a write ticket for output blobs (if any)
     let outputTicket: { endpoint: string; scope: string[] } | undefined;
     if (blobSchema.outputBlobs.length > 0) {
-      // Create a writable ticket with empty scope (will be filled on write)
+      // Create a ticket with commit permission (will be filled on write)
       const ticket = await this.createTicket([], true);
       outputTicket = {
         endpoint: ticket.endpoint,

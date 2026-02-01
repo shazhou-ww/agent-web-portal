@@ -234,8 +234,8 @@ export interface ToolCallResult<TOutput = unknown, TBlobs = Record<string, CasBl
  * Ticket creation request
  */
 export interface CreateTicketRequest {
-  scope: string | string[];
-  writable?:
+  scope?: string | string[];
+  commit?:
     | boolean
     | {
         quota?: number;
@@ -252,9 +252,9 @@ export interface CreateTicketResponse {
   endpoint: string;
   expiresAt: string;
   realm: string;
-  scope: string | string[];
-  writable: boolean | { quota?: number; accept?: string[] };
+  scope?: string[];
+  commit: { quota?: number; accept?: string[]; root?: string } | false;
   config: {
-    chunkThreshold: number;
+    nodeLimit: number;
   };
 }
