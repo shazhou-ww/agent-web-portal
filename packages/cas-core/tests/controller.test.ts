@@ -145,6 +145,43 @@ describe("CasController", () => {
       const key = await controller.makeCollection([]);
       expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
     });
+
+    it("should compute size as sum of children logical sizes", async () => {
+      // Create files with known sizes
+      const file1 = await controller.writeFile(new Uint8Array(100), "text/plain"); // 100 bytes
+      const file2 = await controller.writeFile(new Uint8Array(200), "text/plain"); // 200 bytes
+
+      const collectionKey = await controller.makeCollection([
+        { name: "a.txt", key: file1.key },
+        { name: "b.txt", key: file2.key },
+      ]);
+
+      const node = await controller.getNode(collectionKey);
+      expect(node).not.toBeNull();
+      expect(node!.size).toBe(300); // 100 + 200
+    });
+
+    it("should compute nested collection size correctly", async () => {
+      // Create files
+      const file1 = await controller.writeFile(new Uint8Array(50), "text/plain");
+      const file2 = await controller.writeFile(new Uint8Array(150), "text/plain");
+
+      // Create inner collection with file1
+      const innerCollection = await controller.makeCollection([
+        { name: "inner.txt", key: file1.key },
+      ]);
+
+      // Create outer collection with inner collection and file2
+      const outerCollection = await controller.makeCollection([
+        { name: "subdir", key: innerCollection },
+        { name: "outer.txt", key: file2.key },
+      ]);
+
+      const node = await controller.getNode(outerCollection);
+      expect(node).not.toBeNull();
+      // Outer size = inner collection size (50) + file2 size (150) = 200
+      expect(node!.size).toBe(200);
+    });
   });
 
   describe("getTree", () => {
@@ -174,6 +211,8 @@ describe("CasController", () => {
       const collectionNode = tree.nodes[collectionKey];
       expect(collectionNode!.kind).toBe("collection");
       expect(collectionNode!.childNames).toEqual(["a.txt", "b.txt"]);
+      // Collection size should be sum of children's logical sizes (3 + 3 = 6)
+      expect(collectionNode!.size).toBe(6);
     });
 
     it("should respect limit parameter", async () => {
