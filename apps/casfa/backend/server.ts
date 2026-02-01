@@ -2018,6 +2018,7 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
 
 async function handleCas(req: Request, requestedRealm: string, subPath: string): Promise<Response> {
   const serverConfig = loadServerConfig();
+  console.log(`[handleCas] method=${req.method}, realm=${requestedRealm}, subPath="${subPath}"`);
 
   // GET /cas/{realm} - Return endpoint info
   if (req.method === "GET" && subPath === "") {
@@ -2112,6 +2113,41 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
       return errorResponse(403, "Write access denied");
     }
     const key = decodeURIComponent(putChunkMatch[1]!);
+    const content = Buffer.from(await req.arrayBuffer());
+    if (content.length === 0) {
+      return errorResponse(400, "Empty body");
+    }
+    const contentType = req.headers.get("Content-Type") ?? "application/octet-stream";
+
+    const result = await casStorage.putWithKey(key, content, contentType);
+    if ("error" in result) {
+      return errorResponse(400, "Hash mismatch", {
+        expected: result.expected,
+        actual: result.actual,
+      });
+    }
+
+    await ownershipDb.addOwnership(
+      effectiveScope,
+      result.key,
+      auth.tokenId,
+      contentType,
+      result.size
+    );
+
+    return jsonResponse(200, {
+      key: result.key,
+      size: result.size,
+    });
+  }
+
+  // PUT /raw/:key - Upload raw node data (alias for /chunk/:key)
+  const putRawMatch = subPath.match(/^\/raw\/(.+)$/);
+  if (req.method === "PUT" && putRawMatch) {
+    if (!auth.canWrite) {
+      return errorResponse(403, "Write access denied");
+    }
+    const key = decodeURIComponent(putRawMatch[1]!);
     const content = Buffer.from(await req.arrayBuffer());
     if (content.length === 0) {
       return errorResponse(400, "Empty body");
