@@ -17,6 +17,11 @@ import {
   Chip,
   Tooltip,
   Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from "@mui/material";
 import {
   Folder as FolderIcon,
@@ -27,6 +32,8 @@ import {
   Check as CheckIcon,
   Download as DownloadIcon,
   Refresh as RefreshIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 import { apiRequest, API_URL } from "../utils/api";
@@ -83,7 +90,19 @@ export default function CommitDetail() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  // Fetch tree
+  // Commit metadata
+  const [commitTitle, setCommitTitle] = useState<string>("");
+
+  // Rename dialog state
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renaming, setRenaming] = useState(false);
+
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Fetch tree and commit metadata
   const fetchTree = useCallback(async () => {
     if (!realm || !decodedRoot) return;
 
@@ -97,18 +116,31 @@ export default function CommitDetail() {
         return;
       }
 
-      const response = await apiRequest(
-        `/api/realm/${realm}/tree/${encodeURIComponent(decodedRoot)}`,
-        {},
-        accessToken
-      );
+      // Fetch tree and commit details in parallel
+      const [treeResponse, commitResponse] = await Promise.all([
+        apiRequest(
+          `/api/realm/${realm}/tree/${encodeURIComponent(decodedRoot)}`,
+          {},
+          accessToken
+        ),
+        apiRequest(
+          `/api/realm/${realm}/commits/${encodeURIComponent(decodedRoot)}`,
+          {},
+          accessToken
+        ),
+      ]);
 
-      if (response.ok) {
-        const data = await response.json();
+      if (treeResponse.ok) {
+        const data = await treeResponse.json();
         setTree(data);
       } else {
-        const errData = await response.json().catch(() => ({}));
+        const errData = await treeResponse.json().catch(() => ({}));
         setError(errData.error || "Failed to load tree");
+      }
+
+      if (commitResponse.ok) {
+        const commitData = await commitResponse.json();
+        setCommitTitle(commitData.title || "");
       }
     } catch {
       setError("Network error");
@@ -214,6 +246,74 @@ export default function CommitDetail() {
     }
   };
 
+  // Open rename dialog
+  const handleRenameClick = () => {
+    setRenameTitle(commitTitle);
+    setRenameDialogOpen(true);
+  };
+
+  // Submit rename
+  const handleRenameSubmit = async () => {
+    if (!realm || !decodedRoot) return;
+
+    try {
+      setRenaming(true);
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const response = await apiRequest(
+        `/api/realm/${realm}/commits/${encodeURIComponent(decodedRoot)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: renameTitle.trim() || null }),
+        },
+        accessToken
+      );
+
+      if (response.ok) {
+        setCommitTitle(renameTitle.trim());
+        setRenameDialogOpen(false);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.error || "Failed to rename commit");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  // Submit delete
+  const handleDeleteSubmit = async () => {
+    if (!realm || !decodedRoot) return;
+
+    try {
+      setDeleting(true);
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const response = await apiRequest(
+        `/api/realm/${realm}/commits/${encodeURIComponent(decodedRoot)}`,
+        { method: "DELETE" },
+        accessToken
+      );
+
+      if (response.ok) {
+        // Navigate back to commits list
+        navigate("/commits");
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.error || "Failed to delete commit");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const currentNode = getCurrentNode();
   const children = currentNode?.children
     ? Object.entries(currentNode.children).sort(([a], [b]) => a.localeCompare(b))
@@ -231,9 +331,16 @@ export default function CommitDetail() {
           <ArrowBackIcon />
         </IconButton>
         <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="h5" fontWeight={600}>
-            Commit Details
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="h5" fontWeight={600}>
+              {commitTitle || "Untitled Commit"}
+            </Typography>
+            <Tooltip title="Rename">
+              <IconButton size="small" onClick={handleRenameClick}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Chip
               label={truncateKey(decodedRoot, 40)}
@@ -252,6 +359,11 @@ export default function CommitDetail() {
             </Tooltip>
           </Box>
         </Box>
+        <Tooltip title="Delete commit">
+          <IconButton onClick={() => setDeleteDialogOpen(true)} color="error">
+            <DeleteIcon />
+          </IconButton>
+        </Tooltip>
         <IconButton onClick={fetchTree} disabled={loading}>
           <RefreshIcon />
         </IconButton>
@@ -415,6 +527,63 @@ export default function CommitDetail() {
           </List>
         )}
       </Paper>
+
+      {/* Rename dialog */}
+      <Dialog open={renameDialogOpen} onClose={() => setRenameDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Rename Commit</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Title"
+            placeholder="Enter a title for this commit"
+            value={renameTitle}
+            onChange={(e) => setRenameTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !renaming) handleRenameSubmit();
+            }}
+            disabled={renaming}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameDialogOpen(false)} disabled={renaming}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleRenameSubmit} disabled={renaming}>
+            {renaming ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Commit?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this commit?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {commitTitle || "Untitled Commit"}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            Note: This only removes the commit record. The underlying data will not be deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteSubmit}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

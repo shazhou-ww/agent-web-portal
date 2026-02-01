@@ -127,13 +127,13 @@ export default function Layout() {
                 letterSpacing: "0.02em",
               }}
             >
-              CAS Console
+              Casfa
             </Typography>
             <Typography
               variant="caption"
               sx={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem" }}
             >
-              Agent Management
+              Cloud Storage for Agents
             </Typography>
           </Box>
         </Box>
@@ -299,7 +299,7 @@ export default function Layout() {
               <HubIcon sx={{ fontSize: 18 }} />
             </Box>
             <Typography variant="h6" sx={{ fontWeight: 700, fontSize: "1rem" }}>
-              CAS Console
+              Casfa
             </Typography>
           </Box>
         </Toolbar>
