@@ -142,6 +142,65 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
+  # Reference count table: tracks direct references for GC and usage
+  RefCountTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-refcount"
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gcStatus
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: N
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        # GSI for querying pending GC nodes by creation time
+        - IndexName: by-gc-status
+          KeySchema:
+            - AttributeName: gcStatus
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # GSI for counting global references to a key (for S3 blob deletion)
+        - IndexName: by-key
+          KeySchema:
+            - AttributeName: sk
+              KeyType: HASH
+            - AttributeName: pk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - count
+
+  # Usage table: aggregated storage usage per realm for quota enforcement
+  UsageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-usage"
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
   # ============================================================================
   # S3 Bucket for CAS Storage
   # ============================================================================
@@ -306,6 +365,8 @@ Resources:
           CAS_REALM_TABLE: !Ref CasRealmTable
           CAS_DAG_TABLE: !Ref CasDagTable
           CAS_BUCKET: !Ref CasBucket
+          CAS_REFCOUNT_TABLE: !Ref RefCountTable
+          CAS_USAGE_TABLE: !Ref UsageTable
           COGNITO_USER_POOL_ID: !ImportValue
             Fn::Sub: "${AuthStackName}-UserPoolId"
           COGNITO_CLIENT_ID: !Ref UserPoolClient
@@ -325,6 +386,10 @@ Resources:
             TableName: !Ref CasRealmTable
         - DynamoDBCrudPolicy:
             TableName: !Ref CasDagTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RefCountTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsageTable
         - S3CrudPolicy:
             BucketName: !Ref CasBucket
         - Version: "2012-10-17"
@@ -359,6 +424,47 @@ Resources:
             Path: /
             Method: OPTIONS
             RestApiId: !Ref CasApi
+
+  # ============================================================================
+  # GC Lambda Function
+  # ============================================================================
+  GcFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-gc"
+      CodeUri: backend/dist/
+      Handler: gc.handler
+      Timeout: 300  # 5 minutes for batch processing
+      MemorySize: 1024
+      Environment:
+        Variables:
+          CAS_REALM_TABLE: !Ref CasRealmTable
+          CAS_DAG_TABLE: !Ref CasDagTable
+          CAS_BUCKET: !Ref CasBucket
+          CAS_REFCOUNT_TABLE: !Ref RefCountTable
+          CAS_USAGE_TABLE: !Ref UsageTable
+          GC_PROTECTION_HOURS: "72"
+          GC_BATCH_SIZE: "100"
+          GC_MAX_BATCHES: "50"
+          NODE_OPTIONS: "--enable-source-maps"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CasRealmTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CasDagTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RefCountTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsageTable
+        - S3CrudPolicy:
+            BucketName: !Ref CasBucket
+      Events:
+        ScheduledGC:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+            Description: Hourly garbage collection
+            Enabled: true
 
   # ============================================================================
   # API Gateway
@@ -412,6 +518,14 @@ Outputs:
   CasDagTableName:
     Description: DynamoDB table for CAS DAG
     Value: !Ref CasDagTable
+
+  RefCountTableName:
+    Description: DynamoDB table for reference counting (GC and usage)
+    Value: !Ref RefCountTable
+
+  UsageTableName:
+    Description: DynamoDB table for realm usage statistics
+    Value: !Ref UsageTable
 
   UiBucketName:
     Description: S3 bucket for WebUI static files

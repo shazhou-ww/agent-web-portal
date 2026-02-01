@@ -18,6 +18,10 @@ export { CasfaSession } from "./session.ts";
 // Client (full user features)
 export { CasfaClient } from "./client.ts";
 
+// VirtualFS (collection editing)
+export { VirtualFS } from "./vfs.ts";
+export type { FileInfo, WriteFileOptions } from "./vfs.ts";
+
 // Types
 export type {
   // Endpoint types
@@ -51,6 +55,13 @@ export type {
   CollectionEntry,
   WriteResult,
   CasBlobRef,
+  // Depot types
+  DepotInfo,
+  CreateDepotOptions,
+  UpdateDepotOptions,
+  DepotHistoryEntry,
+  ListHistoryOptions,
+  PaginatedResult,
 } from "./types.ts";
 
 // Re-export useful types from cas-core

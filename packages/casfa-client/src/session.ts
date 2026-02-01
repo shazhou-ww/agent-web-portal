@@ -20,6 +20,12 @@ import type {
   EndpointInfo,
   CreateTicketOptions,
   TicketInfo,
+  DepotInfo,
+  CreateDepotOptions,
+  UpdateDepotOptions,
+  DepotHistoryEntry,
+  ListHistoryOptions,
+  PaginatedResult,
 } from "./types.ts";
 
 /**
@@ -166,6 +172,150 @@ export class CasfaSession {
       const error = await res.text();
       throw new Error(`Failed to revoke ticket: ${res.status} - ${error}`);
     }
+  }
+
+  // ============================================================================
+  // Depot Management
+  // ============================================================================
+
+  /**
+   * List all depots in a realm
+   */
+  async listDepots(realm: string, cursor?: string): Promise<PaginatedResult<DepotInfo>> {
+    const params = new URLSearchParams();
+    if (cursor) params.set("cursor", cursor);
+
+    const url = `/cas/${realm}/depots${params.toString() ? `?${params}` : ""}`;
+    const res = await this.fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`Failed to list depots: ${res.status}`);
+    }
+
+    const data = (await res.json()) as { depots: DepotInfo[]; cursor?: string };
+    return { items: data.depots, cursor: data.cursor };
+  }
+
+  /**
+   * Create a new depot
+   */
+  async createDepot(realm: string, options: CreateDepotOptions): Promise<DepotInfo> {
+    const res = await this.fetch(`/cas/${realm}/depots`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Failed to create depot: ${res.status} - ${error}`);
+    }
+
+    return (await res.json()) as DepotInfo;
+  }
+
+  /**
+   * Get a depot by ID
+   */
+  async getDepot(realm: string, depotId: string): Promise<DepotInfo> {
+    const res = await this.fetch(`/cas/${realm}/depots/${depotId}`);
+
+    if (!res.ok) {
+      throw new Error(`Failed to get depot: ${res.status}`);
+    }
+
+    return (await res.json()) as DepotInfo;
+  }
+
+  /**
+   * Get the main depot for a realm
+   */
+  async getMainDepot(realm: string): Promise<DepotInfo> {
+    const result = await this.listDepots(realm);
+    const mainDepot = result.items.find((d) => d.name === "main");
+
+    if (!mainDepot) {
+      throw new Error("Main depot not found");
+    }
+
+    return mainDepot;
+  }
+
+  /**
+   * Update a depot's root
+   */
+  async updateDepot(
+    realm: string,
+    depotId: string,
+    options: UpdateDepotOptions
+  ): Promise<DepotInfo> {
+    const res = await this.fetch(`/cas/${realm}/depots/${depotId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Failed to update depot: ${res.status} - ${error}`);
+    }
+
+    return (await res.json()) as DepotInfo;
+  }
+
+  /**
+   * Delete a depot
+   */
+  async deleteDepot(realm: string, depotId: string): Promise<void> {
+    const res = await this.fetch(`/cas/${realm}/depots/${depotId}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Failed to delete depot: ${res.status} - ${error}`);
+    }
+  }
+
+  /**
+   * Get depot history
+   */
+  async getDepotHistory(
+    realm: string,
+    depotId: string,
+    options?: ListHistoryOptions
+  ): Promise<PaginatedResult<DepotHistoryEntry>> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set("limit", String(options.limit));
+    if (options?.cursor) params.set("cursor", options.cursor);
+
+    const url = `/cas/${realm}/depots/${depotId}/history${params.toString() ? `?${params}` : ""}`;
+    const res = await this.fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`Failed to get depot history: ${res.status}`);
+    }
+
+    const data = (await res.json()) as { history: DepotHistoryEntry[]; cursor?: string };
+    return { items: data.history, cursor: data.cursor };
+  }
+
+  /**
+   * Rollback a depot to a previous version
+   */
+  async rollbackDepot(realm: string, depotId: string, version: number): Promise<DepotInfo> {
+    const res = await this.fetch(`/cas/${realm}/depots/${depotId}/rollback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version }),
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Failed to rollback depot: ${res.status} - ${error}`);
+    }
+
+    return (await res.json()) as DepotInfo;
   }
 
   // ============================================================================

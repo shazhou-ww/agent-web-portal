@@ -197,6 +197,13 @@ export interface CreateTicketResponse {
 export type NodeKind = "chunk" | "inline-file" | "file" | "collection";
 
 /**
+ * GC status for reference count records
+ * - active: count > 0, node is in use
+ * - pending: count = 0, eligible for GC after protection period
+ */
+export type GcStatus = "active" | "pending";
+
+/**
  * CAS Ownership - tracks which realm owns a key
  */
 export interface CasOwnership {
@@ -207,6 +214,46 @@ export interface CasOwnership {
   createdBy: string;
   contentType?: string;
   size: number;
+}
+
+/**
+ * Reference count record - tracks direct references from realm to CAS keys
+ * Used for GC and usage statistics
+ */
+export interface RefCount {
+  /** Realm that owns this reference */
+  realm: string;
+  /** CAS key being referenced */
+  key: string;
+  /** Number of direct references from this realm */
+  count: number;
+  /** Physical size of the node in bytes (header + children + data) */
+  physicalSize: number;
+  /** Logical size - only chunk data, 0 for collections */
+  logicalSize: number;
+  /** GC status: active (in use) or pending (eligible for GC) */
+  gcStatus: GcStatus;
+  /** Timestamp when this reference was first created */
+  createdAt: number;
+}
+
+/**
+ * Aggregated usage statistics for a realm
+ * Used for quota enforcement and usage reporting
+ */
+export interface RealmUsage {
+  /** Realm identifier */
+  realm: string;
+  /** Total physical storage in bytes (deduplicated) */
+  physicalBytes: number;
+  /** Total logical storage in bytes (chunk data only, deduplicated) */
+  logicalBytes: number;
+  /** Number of unique nodes referenced */
+  nodeCount: number;
+  /** Quota limit in bytes (0 = unlimited) */
+  quotaLimit: number;
+  /** Last update timestamp */
+  updatedAt: number;
 }
 
 // ============================================================================
@@ -366,6 +413,10 @@ export interface CasConfig {
   casRealmTable: string;
   casDagTable: string;
   casBucket: string;
+  /** Reference count table for GC and usage tracking */
+  refCountTable: string;
+  /** Realm usage table for quota management */
+  usageTable: string;
   cognitoUserPoolId: string;
   cognitoClientId: string;
   cognitoRegion: string;
@@ -392,6 +443,8 @@ export function loadConfig(): CasConfig {
     casRealmTable: process.env.CAS_REALM_TABLE ?? "cas-realm",
     casDagTable: process.env.CAS_DAG_TABLE ?? "cas-dag",
     casBucket: process.env.CAS_BUCKET ?? "cas-bucket",
+    refCountTable: process.env.CAS_REFCOUNT_TABLE ?? "cas-refcount",
+    usageTable: process.env.CAS_USAGE_TABLE ?? "cas-usage",
     cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
     cognitoClientId: process.env.CASFA_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? "",
     cognitoRegion: process.env.COGNITO_REGION ?? "us-east-1",
@@ -482,4 +535,70 @@ export interface PutCollectionRequest {
 
 export interface PutCollectionResponse {
   key: string;
+}
+
+// ============================================================================
+// Depot API Types
+// ============================================================================
+
+/**
+ * Depot info returned from API
+ */
+export interface DepotInfo {
+  depotId: string;
+  name: string;
+  root: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  description?: string;
+}
+
+/**
+ * Request to create a new depot
+ */
+export interface CreateDepotRequest {
+  name: string;
+  description?: string;
+}
+
+/**
+ * Request to update depot root
+ */
+export interface UpdateDepotRequest {
+  root: string;
+  message?: string;
+}
+
+/**
+ * Request to rollback depot to a previous version
+ */
+export interface RollbackDepotRequest {
+  version: number;
+}
+
+/**
+ * Depot history entry
+ */
+export interface DepotHistoryEntry {
+  version: number;
+  root: string;
+  createdAt: string;
+  message?: string;
+}
+
+/**
+ * Response from listing depots
+ */
+export interface ListDepotsResponse {
+  depots: DepotInfo[];
+  cursor?: string;
+}
+
+/**
+ * Response from listing depot history
+ */
+export interface ListDepotHistoryResponse {
+  history: DepotHistoryEntry[];
+  cursor?: string;
 }

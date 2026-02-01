@@ -13,6 +13,8 @@
  *   TOKENS_TABLE      - default awp-cas-tokens
  *   CAS_REALM_TABLE   - default awp-cas-cas-realm
  *   CAS_DAG_TABLE     - default awp-cas-cas-dag
+ *   CAS_REFCOUNT_TABLE - default awp-cas-refcount
+ *   CAS_USAGE_TABLE    - default awp-cas-usage
  */
 
 import {
@@ -25,6 +27,8 @@ const endpoint = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8000";
 const tokensTable = process.env.TOKENS_TABLE ?? "awp-cas-tokens";
 const realmTable = process.env.CAS_REALM_TABLE ?? "awp-cas-cas-realm";
 const dagTable = process.env.CAS_DAG_TABLE ?? "awp-cas-cas-dag";
+const refCountTable = process.env.CAS_REFCOUNT_TABLE ?? "awp-cas-refcount";
+const usageTable = process.env.CAS_USAGE_TABLE ?? "awp-cas-usage";
 
 const client = new DynamoDBClient({
   region: process.env.AWS_REGION ?? "us-east-1",
@@ -109,11 +113,64 @@ async function main(): Promise<void> {
     BillingMode: "PAY_PER_REQUEST",
   });
 
+  // Reference count table for GC and usage tracking
+  await createTable({
+    TableName: refCountTable,
+    AttributeDefinitions: [
+      { AttributeName: "pk", AttributeType: "S" },
+      { AttributeName: "sk", AttributeType: "S" },
+      { AttributeName: "gcStatus", AttributeType: "S" },
+      { AttributeName: "createdAt", AttributeType: "N" },
+    ],
+    KeySchema: [
+      { AttributeName: "pk", KeyType: "HASH" },
+      { AttributeName: "sk", KeyType: "RANGE" },
+    ],
+    BillingMode: "PAY_PER_REQUEST",
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: "by-gc-status",
+        KeySchema: [
+          { AttributeName: "gcStatus", KeyType: "HASH" },
+          { AttributeName: "createdAt", KeyType: "RANGE" },
+        ],
+        Projection: { ProjectionType: "ALL" },
+      },
+      {
+        IndexName: "by-key",
+        KeySchema: [
+          { AttributeName: "sk", KeyType: "HASH" },
+          { AttributeName: "pk", KeyType: "RANGE" },
+        ],
+        Projection: {
+          ProjectionType: "INCLUDE",
+          NonKeyAttributes: ["count"],
+        },
+      },
+    ],
+  });
+
+  // Usage table for quota management
+  await createTable({
+    TableName: usageTable,
+    AttributeDefinitions: [
+      { AttributeName: "pk", AttributeType: "S" },
+      { AttributeName: "sk", AttributeType: "S" },
+    ],
+    KeySchema: [
+      { AttributeName: "pk", KeyType: "HASH" },
+      { AttributeName: "sk", KeyType: "RANGE" },
+    ],
+    BillingMode: "PAY_PER_REQUEST",
+  });
+
   console.log("\nDone. Set in .env:");
   console.log(`  DYNAMODB_ENDPOINT=${endpoint}`);
   console.log(`  TOKENS_TABLE=${tokensTable}`);
   console.log(`  CAS_REALM_TABLE=${realmTable}`);
   console.log(`  CAS_DAG_TABLE=${dagTable}`);
+  console.log(`  CAS_REFCOUNT_TABLE=${refCountTable}`);
+  console.log(`  CAS_USAGE_TABLE=${usageTable}`);
 }
 
 main().catch((err) => {

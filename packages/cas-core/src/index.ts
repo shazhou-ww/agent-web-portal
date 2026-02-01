@@ -93,3 +93,10 @@ export {
   type ExistsChecker,
   type ValidationResult,
 } from "./validation.ts";
+
+// Well-known keys and data
+export {
+  EMPTY_COLLECTION_BYTES,
+  EMPTY_COLLECTION_KEY,
+  WELL_KNOWN_KEYS,
+} from "./well-known.ts";

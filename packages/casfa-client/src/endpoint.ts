@@ -27,6 +27,7 @@ import type {
   WriteResult,
   CasBlobRef,
 } from "./types.ts";
+import { VirtualFS } from "./vfs.ts";
 
 /**
  * CasfaEndpoint - operations on a single CAS realm
@@ -354,6 +355,43 @@ export class CasfaEndpoint {
     if (this.cache) {
       await this.cache.put(key, data);
     }
+  }
+
+  // ============================================================================
+  // Collection Editing
+  // ============================================================================
+
+  /**
+   * Edit a collection using virtual filesystem operations
+   *
+   * @param rootKey - Root collection key to edit (or undefined for empty)
+   * @param editor - Async function that performs edits on the VFS
+   * @returns New root key after edits
+   *
+   * @example
+   * ```ts
+   * const newRoot = await endpoint.editCollection(currentRoot, async (vfs) => {
+   *   await vfs.writeFile("docs/readme.md", readmeContent);
+   *   await vfs.move("old/path", "new/path");
+   *   await vfs.delete("temp/file.txt");
+   *   await vfs.mount("libs/external", someExistingKey);
+   * });
+   * ```
+   */
+  async editCollection(
+    rootKey: string | undefined,
+    editor: (vfs: VirtualFS) => Promise<void>
+  ): Promise<string> {
+    // Create VFS from existing collection or empty
+    const vfs = rootKey
+      ? await VirtualFS.fromCollection(this, rootKey)
+      : VirtualFS.empty(this);
+
+    // Run the editor
+    await editor(vfs);
+
+    // Build and return new root
+    return vfs.build();
   }
 
   // ============================================================================

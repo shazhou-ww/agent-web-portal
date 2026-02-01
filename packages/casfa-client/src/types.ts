@@ -337,3 +337,62 @@ export interface CasBlobRef {
   "cas-node": string;
   [key: string]: string;
 }
+
+// ============================================================================
+// Depot Types
+// ============================================================================
+
+/**
+ * Depot information
+ */
+export interface DepotInfo {
+  depotId: string;
+  name: string;
+  root: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  description?: string;
+}
+
+/**
+ * Options for creating a depot
+ */
+export interface CreateDepotOptions {
+  name: string;
+  description?: string;
+}
+
+/**
+ * Options for updating a depot root
+ */
+export interface UpdateDepotOptions {
+  root: string;
+  message?: string;
+}
+
+/**
+ * Depot history entry
+ */
+export interface DepotHistoryEntry {
+  version: number;
+  root: string;
+  createdAt: string;
+  message?: string;
+}
+
+/**
+ * Options for listing depot history
+ */
+export interface ListHistoryOptions {
+  limit?: number;
+  cursor?: string;
+}
+
+/**
+ * Paginated list result
+ */
+export interface PaginatedResult<T> {
+  items: T[];
+  cursor?: string;
+}

@@ -4,6 +4,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -272,6 +273,27 @@ export class CasStorage {
     } catch (error: any) {
       if (error.name === "NotFound" || error.$metadata?.httpStatusCode === 404) {
         return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete blob from S3
+   * Used by GC when all references to a blob are removed
+   */
+  async delete(casKey: string): Promise<boolean> {
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucket,
+          Key: this.toS3Key(casKey),
+        })
+      );
+      return true;
+    } catch (error: any) {
+      if (error.name === "NotFound" || error.$metadata?.httpStatusCode === 404) {
+        return false;
       }
       throw error;
     }

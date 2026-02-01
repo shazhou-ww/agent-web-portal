@@ -6,8 +6,10 @@
 
 ### P0 - 必须完成
 
-- [ ] [GC-001: 垃圾回收机制](./GC-001-garbage-collection.md)
-- [ ] [QUOTA-001: 配额管理](./QUOTA-001-quota-management.md)
+- [x] [REFCOUNT-001: 引用计数统一方案](./REFCOUNT-001-reference-counting.md) ⬅️ **整合 GC + Quota**
+- [x] [GC-001: 垃圾回收机制](./GC-001-garbage-collection.md) → 已整合到 REFCOUNT-001
+- [x] [QUOTA-001: 配额管理](./QUOTA-001-quota-management.md) → 已整合到 REFCOUNT-001
+- [ ] [DEPOT-001: Depot 管理](./DEPOT-001-depot-management.md) ⬅️ **持久化树结构**
 
 ### P1 - 高优先级
 
@@ -16,7 +18,8 @@
 
 ### P2 - 中优先级
 
-- [ ] VERSION-001: 版本历史（待细化）
+- [ ] COMMIT-CLEANUP-001: Commit 自动清理（待细化）→ 基于 commitRetentionDays
+- [ ] VERSION-001: 版本历史（待细化）→ 已由 DEPOT-001 部分覆盖
 - [ ] SEARCH-001: 搜索索引（待细化）
 - [ ] UI-001: 前端文件浏览器增强（待细化）
 - [ ] MONITOR-001: 监控统计（待细化）
