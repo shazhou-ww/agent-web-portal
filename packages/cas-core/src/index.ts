@@ -85,3 +85,11 @@ export {
   MemoryStorageProvider,
   WebCryptoHashProvider,
 } from "./providers.ts";
+
+// Validation
+export {
+  validateNode,
+  validateNodeStructure,
+  type ExistsChecker,
+  type ValidationResult,
+} from "./validation.ts";

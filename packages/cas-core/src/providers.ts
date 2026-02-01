@@ -4,7 +4,7 @@
  * In-memory implementation of StorageProvider for testing
  */
 
-import type { StorageProvider } from "./types.ts";
+import type { HashProvider, StorageProvider } from "./types.ts";
 
 /**
  * In-memory storage provider for testing
@@ -63,9 +63,11 @@ export class MemoryStorageProvider implements StorageProvider {
  * Web Crypto based hash provider
  * Works in both browser and Node.js (with Web Crypto API)
  */
-export class WebCryptoHashProvider {
+export class WebCryptoHashProvider implements HashProvider {
   async sha256(data: Uint8Array): Promise<Uint8Array> {
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    // Create a copy to ensure we have a proper ArrayBuffer
+    const buffer = new Uint8Array(data).buffer;
+    const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
     return new Uint8Array(hashBuffer);
   }
 }

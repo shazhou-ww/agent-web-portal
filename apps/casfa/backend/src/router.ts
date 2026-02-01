@@ -2,11 +2,19 @@
  * CAS Stack - HTTP Router
  */
 
+import {
+  decodeNode,
+  validateNode,
+  validateNodeStructure,
+  hashToKey,
+  type ValidationResult,
+} from "@agent-web-portal/cas-core";
 import { generateVerificationCode } from "@agent-web-portal/auth";
 import { z } from "zod";
 import { getCognitoUserMap } from "./auth/cognito-users.ts";
 import { AuthService } from "./auth/service.ts";
 import { CasStorage } from "./cas/storage.ts";
+import { NodeHashProvider, S3StorageProvider } from "./cas/providers.ts";
 import {
   AwpPendingAuthStore,
   AwpPubkeyStore,
@@ -63,19 +71,11 @@ const CreateTicketSchema = z.object({
   expiresIn: z.number().positive().optional(),
 });
 
-// Commit schema - unified endpoint for creating files and collections
+// Commit schema - simplified: just root and optional title
+// All nodes (chunks, collections) must be uploaded via PUT /chunks/:key first
 const CommitSchema = z.object({
-  root: z.string(),
-  title: z.string().optional(),
-  files: z.record(z.object({
-    chunks: z.array(z.string()),
-    contentType: z.string(),
-    size: z.number(),
-  })).optional(),
-  collections: z.record(z.object({
-    children: z.record(z.string()),
-    size: z.number(),
-  })).optional(),
+  root: z.string().regex(/^sha256:[a-f0-9]{64}$/, "Invalid root key format"),
+  title: z.string().max(500).optional(),
 });
 
 // Update commit title schema
@@ -151,6 +151,9 @@ export class Router {
   private awpPendingStore: AwpPendingAuthStore;
   private awpPubkeyStore: AwpPubkeyStore;
   private mcpHandler: McpHandler;
+  // CAS-core providers for binary format validation
+  private hashProvider: NodeHashProvider;
+  private storageProvider: S3StorageProvider;
 
   constructor(config: CasConfig) {
     this.config = config;
@@ -169,6 +172,9 @@ export class Router {
     this.authService = new AuthService(config, this.tokensDb, this.userRolesDb);
     this.casStorage = new CasStorage(config);
     this.mcpHandler = new McpHandler(config, loadServerConfig());
+    // Initialize cas-core providers
+    this.hashProvider = new NodeHashProvider();
+    this.storageProvider = new S3StorageProvider({ bucket: config.casBucket });
   }
 
   /**
@@ -823,11 +829,18 @@ export class Router {
       return this.handleDeleteCommit(auth, realm, root);
     }
 
-    // PUT /chunk/:key - Upload chunk (client-side chunking)
-    const putChunkMatch = subPath.match(/^\/chunk\/(.+)$/);
+    // PUT /chunks/:key - Upload CAS node (binary format with cas-core validation)
+    const putChunkMatch = subPath.match(/^\/chunks\/(.+)$/);
     if (req.method === "PUT" && putChunkMatch) {
       const key = decodeURIComponent(putChunkMatch[1]!);
       return this.handlePutChunk(auth, realm, key, req);
+    }
+
+    // GET /chunks/:key - Get raw node data (binary)
+    const getChunkMatch = subPath.match(/^\/chunks\/(.+)$/);
+    if (req.method === "GET" && getChunkMatch) {
+      const key = decodeURIComponent(getChunkMatch[1]!);
+      return this.handleGetChunk(auth, realm, key);
     }
 
     // GET /tree/:key - Get complete DAG structure
@@ -835,13 +848,6 @@ export class Router {
     if (req.method === "GET" && getTreeMatch) {
       const key = decodeURIComponent(getTreeMatch[1]!);
       return this.handleGetTree(auth, realm, key);
-    }
-
-    // GET /raw/:key - Get raw node data (binary or JSON depending on type)
-    const getRawMatch = subPath.match(/^\/raw\/(.+)$/);
-    if (req.method === "GET" && getRawMatch) {
-      const key = decodeURIComponent(getRawMatch[1]!);
-      return this.handleGetRaw(auth, realm, key);
     }
 
     return errorResponse(404, "Endpoint not found");
@@ -894,21 +900,19 @@ export class Router {
   }
 
   /**
-   * POST /commit - Create file/collection nodes and record commit
+   * POST /commit - Record a commit pointing to an existing root node
    *
    * Request body:
    * {
-   *   root: string,           // Required: top-level node key
+   *   root: string,           // Required: top-level node key (must exist via PUT /chunks/:key)
    *   title?: string,         // Optional: user-visible title
-   *   files?: Record<key, { chunks: string[], contentType: string, size: number }>,
-   *   collections?: Record<key, { children: Record<string, string>, size: number }>
    * }
    *
    * Response (success):
-   * { success: true, root: string, committed: string[] }
+   * { success: true, root: string }
    *
-   * Response (missing nodes):
-   * { success: false, error: "missing_nodes", missing: string[] }
+   * Response (root not found):
+   * { success: false, error: "root_not_found" }
    */
   private async handleCommit(
     auth: AuthContext,
@@ -925,208 +929,23 @@ export class Router {
       return errorResponse(400, "Invalid request", parsed.error.issues);
     }
 
-    const { root, title, files, collections } = parsed.data;
-    const serverConfig = loadServerConfig();
+    const { root, title } = parsed.data;
     const tokenId = TokensDb.extractTokenId(auth.token.pk);
 
-    // Collect all chunk keys referenced by files
-    const referencedChunks = new Set<string>();
-    if (files) {
-      for (const file of Object.values(files)) {
-        for (const chunkKey of file.chunks) {
-          referencedChunks.add(chunkKey);
-        }
-      }
+    // Verify root exists in storage
+    const rootExists = await this.storageProvider.has(root);
+    if (!rootExists) {
+      return jsonResponse(200, {
+        success: false,
+        error: "root_not_found",
+        message: `Root node ${root} not found. Upload it via PUT /chunks/${root} first.`,
+      });
     }
 
-    // Check if all referenced chunks exist
-    if (referencedChunks.size > 0) {
-      const { missing } = await this.ownershipDb.checkOwnership(
-        realm,
-        Array.from(referencedChunks)
-      );
-      if (missing.length > 0) {
-        return jsonResponse(200, {
-          success: false,
-          error: "missing_nodes",
-          missing,
-        });
-      }
-    }
-
-    // Validate root exists in files or collections
-    const allNodeKeys = new Set<string>([
-      ...Object.keys(files ?? {}),
-      ...Object.keys(collections ?? {}),
-    ]);
-    if (!allNodeKeys.has(root)) {
-      // Root might be an existing node
-      const rootExists = await this.ownershipDb.hasOwnership(realm, root);
-      if (!rootExists) {
-        return errorResponse(400, `Root key not found in commit or realm: ${root}`);
-      }
-    }
-
-    const committedKeys: string[] = [];
-
-    // Process files first (they depend only on chunks)
-    if (files) {
-      for (const [key, file] of Object.entries(files)) {
-        // Check accepted MIME type
-        if (!this.authMiddleware.checkAcceptedMimeType(auth, file.contentType)) {
-          return errorResponse(415, `Content type not accepted: ${file.contentType}`);
-        }
-
-        // Determine if this is an inline-file (single chunk) or multi-chunk file
-        const isInline = file.chunks.length === 1;
-        
-        if (isInline) {
-          // Inline file: store the actual chunk content directly
-          // First, get the chunk content
-          const chunkKey = file.chunks[0]!;
-          const chunkData = await this.casStorage.get(chunkKey);
-          if (!chunkData) {
-            return jsonResponse(200, {
-              success: false,
-              error: "missing_nodes",
-              missing: [chunkKey],
-            });
-          }
-
-          // Store as inline-file with CAS metadata
-          const result = await this.casStorage.putWithKey(
-            key,
-            chunkData.content,
-            CAS_CONTENT_TYPES.INLINE_FILE,
-            {
-              casContentType: file.contentType,
-              casSize: file.size,
-            }
-          );
-
-          if ("error" in result) {
-            return errorResponse(400, `File key mismatch for ${key}`, {
-              expected: result.expected,
-              actual: result.actual,
-            });
-          }
-
-          // Add ownership
-          await this.ownershipDb.addOwnership(
-            realm,
-            key,
-            tokenId,
-            file.contentType,
-            file.size,
-            "inline-file"
-          );
-        } else {
-          // Multi-chunk file: store chunk keys as binary (hex strings concatenated)
-          // Each chunk key is "sha256:XXXX..." - we store the hex part (64 chars)
-          const chunkKeysHex = file.chunks.map((k) => {
-            // Remove "sha256:" prefix if present
-            return k.startsWith("sha256:") ? k.slice(7) : k;
-          }).join("");
-          const fileNodeBuffer = Buffer.from(chunkKeysHex, "utf-8");
-
-          const result = await this.casStorage.putWithKey(
-            key,
-            fileNodeBuffer,
-            CAS_CONTENT_TYPES.FILE,
-            {
-              casContentType: file.contentType,
-              casSize: file.size,
-            }
-          );
-
-          if ("error" in result) {
-            return errorResponse(400, `File key mismatch for ${key}`, {
-              expected: result.expected,
-              actual: result.actual,
-            });
-          }
-
-          // Add ownership
-          await this.ownershipDb.addOwnership(
-            realm,
-            key,
-            tokenId,
-            file.contentType,
-            file.size,
-            "file"
-          );
-        }
-        committedKeys.push(key);
-      }
-    }
-
-    // Process collections (they depend on files/other collections)
-    // Simple approach: process all collections, verify children exist
-    if (collections) {
-      // Collect all collection keys that need to be created
-      const collectionKeys = Object.keys(collections);
-
-      // Check children count for each collection
-      for (const [key, collection] of Object.entries(collections)) {
-        if (Object.keys(collection.children).length > serverConfig.maxCollectionChildren) {
-          return errorResponse(
-            400,
-            `Too many children for ${key} (max ${serverConfig.maxCollectionChildren})`
-          );
-        }
-      }
-
-      // Topological sort: process collections in dependency order
-      const sorted = this.topologicalSortCollections(collections);
-
-      for (const key of sorted) {
-        const collection = collections[key]!;
-
-        // Verify all children exist (either in realm, in files we just created, or in prior collections)
-        for (const [name, childKey] of Object.entries(collection.children)) {
-          const existsInRealm = await this.ownershipDb.hasOwnership(realm, childKey);
-          const existsInCommit = committedKeys.includes(childKey);
-          if (!existsInRealm && !existsInCommit) {
-            return jsonResponse(200, {
-              success: false,
-              error: "missing_nodes",
-              missing: [childKey],
-            });
-          }
-        }
-
-        // Create collection node (JSON format)
-        const collectionNodeData = JSON.stringify({
-          children: collection.children,
-        });
-        const collectionNodeBuffer = Buffer.from(collectionNodeData, "utf-8");
-        const result = await this.casStorage.putWithKey(
-          key,
-          collectionNodeBuffer,
-          CAS_CONTENT_TYPES.COLLECTION,
-          {
-            casSize: collection.size,
-          }
-        );
-
-        if ("error" in result) {
-          return errorResponse(400, `Collection key mismatch for ${key}`, {
-            expected: result.expected,
-            actual: result.actual,
-          });
-        }
-
-        // Add ownership
-        await this.ownershipDb.addOwnership(
-          realm,
-          key,
-          tokenId,
-          "application/vnd.cas.collection",
-          collection.size,
-          "collection"
-        );
-        committedKeys.push(key);
-      }
+    // Verify ownership (root must be owned by this realm)
+    const hasOwnership = await this.ownershipDb.hasOwnership(realm, root);
+    if (!hasOwnership) {
+      return errorResponse(403, "Root node not owned by this realm");
     }
 
     // Record commit
@@ -1144,11 +963,11 @@ export class Router {
     return jsonResponse(200, {
       success: true,
       root,
-      committed: committedKeys,
     });
   }
 
   /**
+   * @deprecated Legacy topological sort - no longer needed with simplified commit
    * Topological sort collections by their dependencies
    * Returns collection keys in order that respects child dependencies
    */
@@ -1292,7 +1111,13 @@ export class Router {
   }
 
   /**
-   * PUT /cas/{realm}/chunk/:key - Upload chunk data
+   * PUT /chunks/:key - Upload CAS node (binary format)
+   * 
+   * Validates:
+   * - Magic bytes and header structure
+   * - Hash matches expected key
+   * - All children exist in storage
+   * - For collections: size equals sum of children sizes
    */
   private async handlePutChunk(
     auth: AuthContext,
@@ -1315,33 +1140,68 @@ export class Router {
       return errorResponse(413, "Quota exceeded");
     }
 
-    const contentType =
-      req.headers["content-type"] ?? req.headers["Content-Type"] ?? "application/octet-stream";
+    // Convert to Uint8Array for cas-core
+    const bytes = new Uint8Array(content);
 
-    // Store with hash validation
-    const result = await this.casStorage.putWithKey(key, content, contentType);
-
-    if ("error" in result) {
-      return errorResponse(400, "Hash mismatch", {
-        expected: result.expected,
-        actual: result.actual,
-      });
+    // Quick structure validation first (no async, fast fail)
+    const structureResult = validateNodeStructure(bytes);
+    if (!structureResult.valid) {
+      return errorResponse(400, "Invalid node structure", { error: structureResult.error });
     }
+
+    // Helper to get child size from storage
+    const getChildSize = async (childKey: string): Promise<number | null> => {
+      const childData = await this.storageProvider.get(childKey);
+      if (!childData) return null;
+      try {
+        const node = decodeNode(childData);
+        return node.size;
+      } catch {
+        return null;
+      }
+    };
+
+    // Full validation with hash check, children existence, and size validation
+    const validationResult = await validateNode(
+      bytes,
+      key,
+      this.hashProvider,
+      (childKey) => this.storageProvider.has(childKey),
+      structureResult.kind === "collection" ? getChildSize : undefined
+    );
+
+    if (!validationResult.valid) {
+      // Check if it's a missing children error
+      if (validationResult.error?.includes("Missing children")) {
+        return jsonResponse(200, {
+          success: false,
+          error: "missing_nodes",
+          missing: validationResult.childKeys?.filter(async (k) => 
+            !(await this.storageProvider.has(k))
+          ) ?? [],
+        });
+      }
+      return errorResponse(400, "Node validation failed", { error: validationResult.error });
+    }
+
+    // Store the node
+    await this.storageProvider.put(key, bytes);
 
     // Add ownership record
     const tokenId = TokensDb.extractTokenId(auth.token.pk);
     await this.ownershipDb.addOwnership(
       realm,
-      result.key,
+      key,
       tokenId,
-      contentType,
-      result.size,
-      "chunk"
+      "application/octet-stream", // Binary format
+      validationResult.size ?? bytes.length,
+      validationResult.kind ?? "chunk"
     );
 
     return jsonResponse(200, {
-      key: result.key,
-      size: result.size,
+      key,
+      size: validationResult.size,
+      kind: validationResult.kind,
     });
   }
 
@@ -1436,7 +1296,70 @@ export class Router {
   }
 
   /**
+   * GET /chunks/:key - Get raw CAS node data (binary format)
+   * Returns the binary blob directly
+   */
+  private async handleGetChunk(
+    auth: AuthContext,
+    realm: string,
+    key: string
+  ): Promise<HttpResponse> {
+    if (!this.authMiddleware.checkReadAccess(auth, key)) {
+      return errorResponse(403, "Read access denied");
+    }
+
+    // Check ownership
+    const hasAccess = await this.ownershipDb.hasOwnership(realm, key);
+    if (!hasAccess) {
+      return errorResponse(404, "Not found");
+    }
+
+    // Get content from S3 via cas-core provider
+    const bytes = await this.storageProvider.get(key);
+    if (!bytes) {
+      return errorResponse(404, "Content not found in storage");
+    }
+
+    // Decode to get metadata for headers
+    let kind: string | undefined;
+    let size: number | undefined;
+    let contentType: string | undefined;
+    try {
+      const node = decodeNode(bytes);
+      kind = node.kind;
+      size = node.size;
+      contentType = node.contentType;
+    } catch {
+      // If decode fails, just return raw data
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(bytes.length),
+      ...CORS_HEADERS,
+    };
+
+    if (kind) {
+      headers["X-CAS-Kind"] = kind;
+    }
+    if (size !== undefined) {
+      headers["X-CAS-Size"] = String(size);
+    }
+    if (contentType) {
+      headers["X-CAS-Content-Type"] = contentType;
+    }
+
+    return {
+      statusCode: 200,
+      headers,
+      body: Buffer.from(bytes).toString("base64"),
+      isBase64Encoded: true,
+    };
+  }
+
+  /**
    * GET /{realm}/raw/:key - Get raw node data
+   * @deprecated Use GET /chunks/:key instead
    * Returns binary data with appropriate Content-Type and CAS headers.
    * - chunk/inline-file/file: returns binary body
    * - collection: returns JSON body

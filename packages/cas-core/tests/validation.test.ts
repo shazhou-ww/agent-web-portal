@@ -1,0 +1,218 @@
+/**
+ * Validation tests
+ */
+
+import { describe, expect, it } from "bun:test";
+import { MAGIC } from "../src/constants.ts";
+import { encodeChunk, encodeCollection } from "../src/node.ts";
+import { MemoryStorageProvider, WebCryptoHashProvider } from "../src/providers.ts";
+import { validateNode, validateNodeStructure } from "../src/validation.ts";
+import { hashToKey } from "../src/utils.ts";
+
+const hashProvider = new WebCryptoHashProvider();
+
+describe("Validation", () => {
+  describe("validateNodeStructure", () => {
+    it("should validate correct chunk", async () => {
+      const encoded = await encodeChunk(
+        { data: new Uint8Array([1, 2, 3]), contentType: "text/plain" },
+        hashProvider
+      );
+
+      const result = validateNodeStructure(encoded.bytes);
+      expect(result.valid).toBe(true);
+      expect(result.kind).toBe("chunk");
+      expect(result.size).toBe(3);
+      expect(result.childKeys).toEqual([]);
+    });
+
+    it("should validate correct collection", async () => {
+      // First create some children
+      const child1 = await encodeChunk({ data: new Uint8Array([1]) }, hashProvider);
+      const child2 = await encodeChunk({ data: new Uint8Array([2]) }, hashProvider);
+
+      const encoded = await encodeCollection(
+        {
+          size: 2,
+          children: [child1.hash, child2.hash],
+          childNames: ["a.txt", "b.txt"],
+        },
+        hashProvider
+      );
+
+      const result = validateNodeStructure(encoded.bytes);
+      expect(result.valid).toBe(true);
+      expect(result.kind).toBe("collection");
+      expect(result.size).toBe(2);
+      expect(result.childKeys).toHaveLength(2);
+    });
+
+    it("should reject buffer too small", () => {
+      const result = validateNodeStructure(new Uint8Array(10));
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("too small");
+    });
+
+    it("should reject invalid magic", () => {
+      const bytes = new Uint8Array(32);
+      bytes[0] = 0xff;
+      const result = validateNodeStructure(bytes);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("magic");
+    });
+
+    it("should reject truncated children section", async () => {
+      const encoded = await encodeChunk(
+        {
+          data: new Uint8Array([1, 2, 3]),
+          children: [new Uint8Array(32)], // Add a child
+        },
+        hashProvider
+      );
+
+      // Truncate to remove child hash
+      const truncated = encoded.bytes.slice(0, 40);
+      const result = validateNodeStructure(truncated);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("exceeds buffer");
+    });
+
+    it("should validate unicode names in collection", async () => {
+      const child = await encodeChunk({ data: new Uint8Array([1]) }, hashProvider);
+
+      const encoded = await encodeCollection(
+        {
+          size: 1,
+          children: [child.hash],
+          childNames: ["文件.txt"],
+        },
+        hashProvider
+      );
+
+      const result = validateNodeStructure(encoded.bytes);
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe("validateNode", () => {
+    it("should validate hash matches", async () => {
+      const encoded = await encodeChunk(
+        { data: new Uint8Array([1, 2, 3]), contentType: "text/plain" },
+        hashProvider
+      );
+      const key = hashToKey(encoded.hash);
+
+      const result = await validateNode(encoded.bytes, key, hashProvider);
+      expect(result.valid).toBe(true);
+      expect(result.kind).toBe("chunk");
+    });
+
+    it("should reject hash mismatch", async () => {
+      const encoded = await encodeChunk(
+        { data: new Uint8Array([1, 2, 3]) },
+        hashProvider
+      );
+
+      // Use wrong key
+      const wrongKey = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+      const result = await validateNode(encoded.bytes, wrongKey, hashProvider);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Hash mismatch");
+    });
+
+    it("should check children existence", async () => {
+      const child = await encodeChunk({ data: new Uint8Array([1]) }, hashProvider);
+      const childKey = hashToKey(child.hash);
+
+      const storage = new MemoryStorageProvider();
+      await storage.put(childKey, child.bytes);
+
+      const collection = await encodeCollection(
+        {
+          size: 1,
+          children: [child.hash],
+          childNames: ["a.txt"],
+        },
+        hashProvider
+      );
+      const collectionKey = hashToKey(collection.hash);
+
+      // With child existing
+      const result1 = await validateNode(
+        collection.bytes,
+        collectionKey,
+        hashProvider,
+        (key) => storage.has(key)
+      );
+      expect(result1.valid).toBe(true);
+
+      // With child missing
+      const result2 = await validateNode(
+        collection.bytes,
+        collectionKey,
+        hashProvider,
+        () => Promise.resolve(false)
+      );
+      expect(result2.valid).toBe(false);
+      expect(result2.error).toContain("Missing children");
+    });
+
+    it("should validate collection size", async () => {
+      const child1 = await encodeChunk({ data: new Uint8Array(100) }, hashProvider);
+      const child2 = await encodeChunk({ data: new Uint8Array(200) }, hashProvider);
+      const child1Key = hashToKey(child1.hash);
+      const child2Key = hashToKey(child2.hash);
+
+      const storage = new MemoryStorageProvider();
+      await storage.put(child1Key, child1.bytes);
+      await storage.put(child2Key, child2.bytes);
+
+      // Correct size (100 + 200 = 300)
+      const correctCollection = await encodeCollection(
+        {
+          size: 300,
+          children: [child1.hash, child2.hash],
+          childNames: ["a.txt", "b.txt"],
+        },
+        hashProvider
+      );
+
+      const result1 = await validateNode(
+        correctCollection.bytes,
+        hashToKey(correctCollection.hash),
+        hashProvider,
+        (key) => storage.has(key),
+        async (key) => {
+          if (key === child1Key) return 100;
+          if (key === child2Key) return 200;
+          return null;
+        }
+      );
+      expect(result1.valid).toBe(true);
+
+      // Wrong size
+      const wrongCollection = await encodeCollection(
+        {
+          size: 999, // Wrong!
+          children: [child1.hash, child2.hash],
+          childNames: ["a.txt", "b.txt"],
+        },
+        hashProvider
+      );
+
+      const result2 = await validateNode(
+        wrongCollection.bytes,
+        hashToKey(wrongCollection.hash),
+        hashProvider,
+        (key) => storage.has(key),
+        async (key) => {
+          if (key === child1Key) return 100;
+          if (key === child2Key) return 200;
+          return null;
+        }
+      );
+      expect(result2.valid).toBe(false);
+      expect(result2.error).toContain("size mismatch");
+    });
+  });
+});
