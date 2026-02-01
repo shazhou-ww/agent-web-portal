@@ -27,10 +27,13 @@ import {
   AwpPubkeyStore,
   CommitsDb,
   DagDb,
+  DepotDb,
+  MAIN_DEPOT_NAME,
   OwnershipDb,
   TokensDb,
   UserRolesDb,
 } from "./src/db/index.ts";
+import type { DepotRecord, DepotHistoryRecord } from "./src/db/index.ts";
 import type { CasDagNode, CasOwnership, Ticket, Token, UserToken } from "./src/types.ts";
 import { loadConfig, loadServerConfig } from "./src/types.ts";
 
@@ -620,6 +623,157 @@ class MemoryCommitsDb {
   }
 }
 
+// ============================================================================
+// In-Memory Depot Storage
+// ============================================================================
+
+const EMPTY_COLLECTION_KEY = "sha256:a78577c5cfc47ab3e4b116f01902a69e2e015b40cdef52f9b552cfb5104e769a";
+
+interface MemoryDepotRecord {
+  realm: string;
+  depotId: string;
+  name: string;
+  root: string;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+  description?: string;
+}
+
+interface MemoryDepotHistory {
+  realm: string;
+  depotId: string;
+  version: number;
+  root: string;
+  createdAt: number;
+  message?: string;
+}
+
+class MemoryDepotDb {
+  private depots = new Map<string, MemoryDepotRecord>();
+  private history = new Map<string, MemoryDepotHistory[]>();
+
+  private buildKey(realm: string, depotId: string): string {
+    return `${realm}#${depotId}`;
+  }
+
+  async create(
+    realm: string,
+    options: { name: string; root?: string; description?: string }
+  ): Promise<MemoryDepotRecord> {
+    const depotId = `dpt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const now = Date.now();
+    const depot: MemoryDepotRecord = {
+      realm,
+      depotId,
+      name: options.name,
+      root: options.root || EMPTY_COLLECTION_KEY,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+      description: options.description,
+    };
+    this.depots.set(this.buildKey(realm, depotId), depot);
+
+    // Add initial history
+    const historyKey = this.buildKey(realm, depotId);
+    this.history.set(historyKey, [
+      {
+        realm,
+        depotId,
+        version: 1,
+        root: depot.root,
+        createdAt: now,
+        message: "Initial version",
+      },
+    ]);
+
+    return depot;
+  }
+
+  async get(realm: string, depotId: string): Promise<MemoryDepotRecord | null> {
+    return this.depots.get(this.buildKey(realm, depotId)) ?? null;
+  }
+
+  async getByName(realm: string, name: string): Promise<MemoryDepotRecord | null> {
+    for (const depot of this.depots.values()) {
+      if (depot.realm === realm && depot.name === name) {
+        return depot;
+      }
+    }
+    return null;
+  }
+
+  async list(
+    realm: string,
+    options?: { limit?: number; startKey?: string }
+  ): Promise<{ depots: MemoryDepotRecord[]; nextKey?: string }> {
+    const limit = options?.limit ?? 100;
+    const realmDepots = Array.from(this.depots.values())
+      .filter((d) => d.realm === realm)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, limit);
+    return { depots: realmDepots };
+  }
+
+  async updateRoot(
+    realm: string,
+    depotId: string,
+    newRoot: string,
+    message?: string
+  ): Promise<{ depot: MemoryDepotRecord; history: MemoryDepotHistory }> {
+    const depot = this.depots.get(this.buildKey(realm, depotId));
+    if (!depot) {
+      throw new Error("Depot not found");
+    }
+
+    const now = Date.now();
+    depot.root = newRoot;
+    depot.version += 1;
+    depot.updatedAt = now;
+
+    const historyRecord: MemoryDepotHistory = {
+      realm,
+      depotId,
+      version: depot.version,
+      root: newRoot,
+      createdAt: now,
+      message,
+    };
+
+    const historyKey = this.buildKey(realm, depotId);
+    const historyList = this.history.get(historyKey) ?? [];
+    historyList.push(historyRecord);
+    this.history.set(historyKey, historyList);
+
+    return { depot, history: historyRecord };
+  }
+
+  async delete(realm: string, depotId: string): Promise<boolean> {
+    const key = this.buildKey(realm, depotId);
+    this.history.delete(key);
+    return this.depots.delete(key);
+  }
+
+  async listHistory(
+    realm: string,
+    depotId: string,
+    options?: { limit?: number; startKey?: string }
+  ): Promise<{ history: MemoryDepotHistory[]; nextKey?: string }> {
+    const limit = options?.limit ?? 50;
+    const historyKey = this.buildKey(realm, depotId);
+    const historyList = this.history.get(historyKey) ?? [];
+    const sorted = [...historyList].sort((a, b) => b.version - a.version).slice(0, limit);
+    return { history: sorted };
+  }
+
+  async getHistory(realm: string, depotId: string, version: number): Promise<MemoryDepotHistory | null> {
+    const historyKey = this.buildKey(realm, depotId);
+    const historyList = this.history.get(historyKey) ?? [];
+    return historyList.find((h) => h.version === version) ?? null;
+  }
+}
+
 /** Adapter: TokensDb agent-token API → same shape as MemoryAgentTokensDb for server routes */
 interface AgentTokenRecord {
   id: string;
@@ -733,6 +887,7 @@ const tokensDb = useDynamo ? new TokensDb(loadConfig()) : new MemoryTokensDb();
 const ownershipDb = useDynamo ? new OwnershipDb(loadConfig()) : new MemoryOwnershipDb();
 const dagDb = useDynamo ? new DagDb(loadConfig()) : new MemoryDagDb();
 const commitsDb = useDynamo ? new CommitsDb(loadConfig()) : new MemoryCommitsDb();
+const depotDb = useDynamo ? new DepotDb(loadConfig()) : new MemoryDepotDb();
 // Use FileCasStorage when CAS_STORAGE_DIR is set, otherwise MemoryCasStorage
 const casStorageDir = process.env.CAS_STORAGE_DIR;
 const casStorage: CasStorageInterface = casStorageDir
@@ -1577,6 +1732,195 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
     }
 
     return jsonResponse(200, tree);
+  }
+
+  // ========================================================================
+  // Depot Routes
+  // ========================================================================
+
+  // GET /depots - List all depots
+  if (req.method === "GET" && subPath === "/depots") {
+    if (!auth.canRead) {
+      return errorResponse(403, "Read access required");
+    }
+    const result = await depotDb.list(realm);
+    return jsonResponse(200, {
+      depots: result.depots.map((d) => ({
+        depotId: d.depotId,
+        name: d.name,
+        root: d.root,
+        version: d.version,
+        createdAt: new Date(d.createdAt).toISOString(),
+        updatedAt: new Date(d.updatedAt).toISOString(),
+        description: d.description,
+      })),
+      cursor: result.nextKey,
+    });
+  }
+
+  // POST /depots - Create a new depot
+  if (req.method === "POST" && subPath === "/depots") {
+    if (!auth.canWrite) {
+      return errorResponse(403, "Write access required");
+    }
+    const body = (await req.json()) as { name: string; description?: string };
+    if (!body.name) {
+      return errorResponse(400, "Name is required");
+    }
+
+    // Check if depot with this name already exists
+    const existing = await depotDb.getByName(realm, body.name);
+    if (existing) {
+      return errorResponse(409, `Depot with name '${body.name}' already exists`);
+    }
+
+    const depot = await depotDb.create(realm, {
+      name: body.name,
+      root: EMPTY_COLLECTION_KEY,
+      description: body.description,
+    });
+
+    return jsonResponse(201, {
+      depotId: depot.depotId,
+      name: depot.name,
+      root: depot.root,
+      version: depot.version,
+      createdAt: new Date(depot.createdAt).toISOString(),
+      updatedAt: new Date(depot.updatedAt).toISOString(),
+      description: depot.description,
+    });
+  }
+
+  // GET /depots/:depotId - Get depot by ID
+  const getDepotMatch = subPath.match(/^\/depots\/([^/]+)$/);
+  if (req.method === "GET" && getDepotMatch) {
+    if (!auth.canRead) {
+      return errorResponse(403, "Read access required");
+    }
+    const depotId = decodeURIComponent(getDepotMatch[1]!);
+    const depot = await depotDb.get(realm, depotId);
+    if (!depot) {
+      return errorResponse(404, "Depot not found");
+    }
+    return jsonResponse(200, {
+      depotId: depot.depotId,
+      name: depot.name,
+      root: depot.root,
+      version: depot.version,
+      createdAt: new Date(depot.createdAt).toISOString(),
+      updatedAt: new Date(depot.updatedAt).toISOString(),
+      description: depot.description,
+    });
+  }
+
+  // PUT /depots/:depotId - Update depot root
+  const putDepotMatch = subPath.match(/^\/depots\/([^/]+)$/);
+  if (req.method === "PUT" && putDepotMatch) {
+    if (!auth.canWrite) {
+      return errorResponse(403, "Write access required");
+    }
+    const depotId = decodeURIComponent(putDepotMatch[1]!);
+    const body = (await req.json()) as { root: string; message?: string };
+    if (!body.root) {
+      return errorResponse(400, "Root is required");
+    }
+
+    const depot = await depotDb.get(realm, depotId);
+    if (!depot) {
+      return errorResponse(404, "Depot not found");
+    }
+
+    const { depot: updatedDepot } = await depotDb.updateRoot(realm, depotId, body.root, body.message);
+    return jsonResponse(200, {
+      depotId: updatedDepot.depotId,
+      name: updatedDepot.name,
+      root: updatedDepot.root,
+      version: updatedDepot.version,
+      createdAt: new Date(updatedDepot.createdAt).toISOString(),
+      updatedAt: new Date(updatedDepot.updatedAt).toISOString(),
+      description: updatedDepot.description,
+    });
+  }
+
+  // DELETE /depots/:depotId - Delete depot
+  const deleteDepotMatch = subPath.match(/^\/depots\/([^/]+)$/);
+  if (req.method === "DELETE" && deleteDepotMatch) {
+    if (!auth.canWrite) {
+      return errorResponse(403, "Write access required");
+    }
+    const depotId = decodeURIComponent(deleteDepotMatch[1]!);
+    const depot = await depotDb.get(realm, depotId);
+    if (!depot) {
+      return errorResponse(404, "Depot not found");
+    }
+    if (depot.name === MAIN_DEPOT_NAME) {
+      return errorResponse(403, "Cannot delete the main depot");
+    }
+    await depotDb.delete(realm, depotId);
+    return jsonResponse(200, { deleted: true });
+  }
+
+  // GET /depots/:depotId/history - List depot history
+  const getHistoryMatch = subPath.match(/^\/depots\/([^/]+)\/history$/);
+  if (req.method === "GET" && getHistoryMatch) {
+    if (!auth.canRead) {
+      return errorResponse(403, "Read access required");
+    }
+    const depotId = decodeURIComponent(getHistoryMatch[1]!);
+    const depot = await depotDb.get(realm, depotId);
+    if (!depot) {
+      return errorResponse(404, "Depot not found");
+    }
+    const result = await depotDb.listHistory(realm, depotId);
+    return jsonResponse(200, {
+      history: result.history.map((h) => ({
+        version: h.version,
+        root: h.root,
+        createdAt: new Date(h.createdAt).toISOString(),
+        message: h.message,
+      })),
+      cursor: result.nextKey,
+    });
+  }
+
+  // POST /depots/:depotId/rollback - Rollback to a previous version
+  const rollbackMatch = subPath.match(/^\/depots\/([^/]+)\/rollback$/);
+  if (req.method === "POST" && rollbackMatch) {
+    if (!auth.canWrite) {
+      return errorResponse(403, "Write access required");
+    }
+    const depotId = decodeURIComponent(rollbackMatch[1]!);
+    const body = (await req.json()) as { version: number };
+    if (!body.version) {
+      return errorResponse(400, "Version is required");
+    }
+
+    const depot = await depotDb.get(realm, depotId);
+    if (!depot) {
+      return errorResponse(404, "Depot not found");
+    }
+
+    const historyRecord = await depotDb.getHistory(realm, depotId, body.version);
+    if (!historyRecord) {
+      return errorResponse(404, `Version ${body.version} not found`);
+    }
+
+    const { depot: updatedDepot } = await depotDb.updateRoot(
+      realm,
+      depotId,
+      historyRecord.root,
+      `Rollback to version ${body.version}`
+    );
+
+    return jsonResponse(200, {
+      depotId: updatedDepot.depotId,
+      name: updatedDepot.name,
+      root: updatedDepot.root,
+      version: updatedDepot.version,
+      createdAt: new Date(updatedDepot.createdAt).toISOString(),
+      updatedAt: new Date(updatedDepot.updatedAt).toISOString(),
+      description: updatedDepot.description,
+    });
   }
 
   return errorResponse(404, "Realm endpoint not found");
