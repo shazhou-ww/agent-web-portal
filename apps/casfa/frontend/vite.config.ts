@@ -41,6 +41,10 @@ export default defineConfig({
         changeOrigin: true,
         // Keep the /api prefix - backend expects it
       },
+      "/cas": {
+        target: apiUrl,
+        changeOrigin: true,
+      },
     },
   },
 });
