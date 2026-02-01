@@ -50,7 +50,7 @@ export interface TreeResponse {
 }
 
 /**
- * Collection entry for uploadCollection
+ * Collection entry for makeCollection
  */
 export interface CollectionEntry {
   name: string;
@@ -58,10 +58,10 @@ export interface CollectionEntry {
 }
 
 /**
- * Upload result
+ * Write result
  */
-export interface UploadResult {
-  /** Root key of the uploaded content */
+export interface WriteResult {
+  /** Root key of the written content */
   key: string;
   /** Total size in bytes */
   size: number;
@@ -84,16 +84,16 @@ export class CasController {
   }
 
   // ============================================================================
-  // File Upload (with automatic B-Tree splitting)
+  // File Write (with automatic B-Tree splitting)
   // ============================================================================
 
   /**
-   * Upload a file, automatically splitting into B-Tree if needed
+   * Write a file, automatically splitting into B-Tree if needed
    * @param data - File content
    * @param contentType - MIME type
-   * @returns Upload result with root key
+   * @returns Write result with root key
    */
-  async uploadFile(data: Uint8Array, contentType: string): Promise<UploadResult> {
+  async writeFile(data: Uint8Array, contentType: string): Promise<WriteResult> {
     const size = data.length;
     const layout = computeLayout(size, this.nodeLimit);
     const nodeCount = this.countNodes(layout);
@@ -152,32 +152,38 @@ export class CasController {
   }
 
   /**
-   * Upload a raw chunk (for cases where caller handles splitting)
+   * Put a raw chunk (for cases where caller handles splitting)
    */
-  async uploadChunk(data: Uint8Array, contentType?: string): Promise<string> {
+  async putChunk(data: Uint8Array, contentType?: string): Promise<string> {
     const encoded = await encodeChunk({ data, contentType }, this.hash);
     await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
     return hashToKey(encoded.hash);
   }
 
   // ============================================================================
-  // Collection Upload
+  // Collection Creation
   // ============================================================================
 
   /**
-   * Upload a collection (directory)
+   * Make a collection (directory) from existing nodes
+   * Size is automatically computed from children
    * @param entries - Array of {name, key} entries
-   * @param totalSize - Total size of all children (for metadata)
    * @returns Collection key
    */
-  async uploadCollection(entries: CollectionEntry[], totalSize: number): Promise<string> {
-    // Convert keys to hashes
+  async makeCollection(entries: CollectionEntry[]): Promise<string> {
+    // Convert keys to hashes and compute total size
     const children: Uint8Array[] = [];
     const childNames: string[] = [];
+    let totalSize = 0;
 
     for (const entry of entries) {
       children.push(this.keyToHash(entry.key));
       childNames.push(entry.name);
+      // Get child node to compute size
+      const childNode = await this.getNode(entry.key);
+      if (childNode) {
+        totalSize += childNode.size;
+      }
     }
 
     const input: CollectionInput = {

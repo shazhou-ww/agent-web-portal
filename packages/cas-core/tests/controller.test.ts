@@ -19,10 +19,10 @@ describe("CasController", () => {
     });
   });
 
-  describe("uploadFile - small files", () => {
-    it("should upload a small file as single node", async () => {
+  describe("writeFile - small files", () => {
+    it("should write a small file as single node", async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const result = await controller.uploadFile(data, "application/octet-stream");
+      const result = await controller.writeFile(data, "application/octet-stream");
 
       expect(result.key).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(result.size).toBe(5);
@@ -30,9 +30,9 @@ describe("CasController", () => {
       expect(storage.size()).toBe(1);
     });
 
-    it("should upload empty file", async () => {
+    it("should write empty file", async () => {
       const data = new Uint8Array([]);
-      const result = await controller.uploadFile(data, "text/plain");
+      const result = await controller.writeFile(data, "text/plain");
 
       expect(result.size).toBe(0);
       expect(result.nodeCount).toBe(1);
@@ -40,14 +40,14 @@ describe("CasController", () => {
 
     it("should produce consistent hashes for same content", async () => {
       const data = new Uint8Array([10, 20, 30, 40, 50]);
-      const result1 = await controller.uploadFile(data, "application/octet-stream");
-      const result2 = await controller.uploadFile(data, "application/octet-stream");
+      const result1 = await controller.writeFile(data, "application/octet-stream");
+      const result2 = await controller.writeFile(data, "application/octet-stream");
 
       expect(result1.key).toBe(result2.key);
     });
   });
 
-  describe("uploadFile - large files with B-Tree", () => {
+  describe("writeFile - large files with B-Tree", () => {
     it("should split file larger than node limit", async () => {
       // Use smaller node limit for testing
       const smallController = new CasController({
@@ -62,7 +62,7 @@ describe("CasController", () => {
         data[i] = i % 256;
       }
 
-      const result = await smallController.uploadFile(data, "application/octet-stream");
+      const result = await smallController.writeFile(data, "application/octet-stream");
 
       expect(result.size).toBe(2048);
       expect(result.nodeCount).toBeGreaterThan(1);
@@ -85,7 +85,7 @@ describe("CasController", () => {
         data[i] = i % 256;
       }
 
-      const result = await tinyController.uploadFile(data, "application/octet-stream");
+      const result = await tinyController.writeFile(data, "application/octet-stream");
 
       expect(result.size).toBe(dataSize);
       expect(result.nodeCount).toBeGreaterThan(2);
@@ -95,7 +95,7 @@ describe("CasController", () => {
   describe("readFile", () => {
     it("should read back small file correctly", async () => {
       const original = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-      const result = await controller.uploadFile(original, "application/octet-stream");
+      const result = await controller.writeFile(original, "application/octet-stream");
 
       const retrieved = await controller.readFile(result.key);
       expect(retrieved).toEqual(original);
@@ -114,7 +114,7 @@ describe("CasController", () => {
         original[i] = i % 256;
       }
 
-      const result = await smallController.uploadFile(original, "application/octet-stream");
+      const result = await smallController.writeFile(original, "application/octet-stream");
       const retrieved = await smallController.readFile(result.key);
 
       expect(retrieved).toEqual(original);
@@ -126,33 +126,30 @@ describe("CasController", () => {
     });
   });
 
-  describe("uploadCollection", () => {
-    it("should upload a collection with entries", async () => {
-      // First upload some files
-      const file1 = await controller.uploadFile(new Uint8Array([1, 2, 3]), "text/plain");
-      const file2 = await controller.uploadFile(new Uint8Array([4, 5, 6]), "text/plain");
+  describe("makeCollection", () => {
+    it("should make a collection with entries", async () => {
+      // First write some files
+      const file1 = await controller.writeFile(new Uint8Array([1, 2, 3]), "text/plain");
+      const file2 = await controller.writeFile(new Uint8Array([4, 5, 6]), "text/plain");
 
-      const collectionKey = await controller.uploadCollection(
-        [
-          { name: "file1.txt", key: file1.key },
-          { name: "file2.txt", key: file2.key },
-        ],
-        6
-      );
+      const collectionKey = await controller.makeCollection([
+        { name: "file1.txt", key: file1.key },
+        { name: "file2.txt", key: file2.key },
+      ]);
 
       expect(collectionKey).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(storage.size()).toBe(3); // 2 files + 1 collection
     });
 
-    it("should upload empty collection", async () => {
-      const key = await controller.uploadCollection([], 0);
+    it("should make empty collection", async () => {
+      const key = await controller.makeCollection([]);
       expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
     });
   });
 
   describe("getTree", () => {
     it("should return tree structure for single file", async () => {
-      const result = await controller.uploadFile(new Uint8Array([1, 2, 3]), "image/png");
+      const result = await controller.writeFile(new Uint8Array([1, 2, 3]), "image/png");
       const tree = await controller.getTree(result.key);
 
       expect(Object.keys(tree.nodes)).toHaveLength(1);
@@ -164,15 +161,12 @@ describe("CasController", () => {
     });
 
     it("should return tree structure for collection", async () => {
-      const file1 = await controller.uploadFile(new Uint8Array([1, 2, 3]), "text/plain");
-      const file2 = await controller.uploadFile(new Uint8Array([4, 5, 6]), "text/plain");
-      const collectionKey = await controller.uploadCollection(
-        [
-          { name: "a.txt", key: file1.key },
-          { name: "b.txt", key: file2.key },
-        ],
-        6
-      );
+      const file1 = await controller.writeFile(new Uint8Array([1, 2, 3]), "text/plain");
+      const file2 = await controller.writeFile(new Uint8Array([4, 5, 6]), "text/plain");
+      const collectionKey = await controller.makeCollection([
+        { name: "a.txt", key: file1.key },
+        { name: "b.txt", key: file2.key },
+      ]);
 
       const tree = await controller.getTree(collectionKey);
 
@@ -186,13 +180,12 @@ describe("CasController", () => {
       // Create nested structure
       const files = await Promise.all(
         [1, 2, 3, 4, 5].map((i) =>
-          controller.uploadFile(new Uint8Array([i]), "text/plain")
+          controller.writeFile(new Uint8Array([i]), "text/plain")
         )
       );
 
-      const collectionKey = await controller.uploadCollection(
-        files.map((f, i) => ({ name: `file${i}.txt`, key: f.key })),
-        5
+      const collectionKey = await controller.makeCollection(
+        files.map((f, i) => ({ name: `file${i}.txt`, key: f.key }))
       );
 
       // Request only 2 nodes
@@ -203,7 +196,7 @@ describe("CasController", () => {
 
   describe("getNode", () => {
     it("should return decoded node", async () => {
-      const result = await controller.uploadFile(new Uint8Array([1, 2, 3]), "image/png");
+      const result = await controller.writeFile(new Uint8Array([1, 2, 3]), "image/png");
       const node = await controller.getNode(result.key);
 
       expect(node).not.toBeNull();
@@ -221,7 +214,7 @@ describe("CasController", () => {
   describe("openFileStream", () => {
     it("should stream file content", async () => {
       const original = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-      const result = await controller.uploadFile(original, "application/octet-stream");
+      const result = await controller.writeFile(original, "application/octet-stream");
 
       const stream = controller.openFileStream(result.key);
       const reader = stream.getReader();
@@ -257,7 +250,7 @@ describe("CasController", () => {
         original[i] = i % 256;
       }
 
-      const result = await smallController.uploadFile(original, "application/octet-stream");
+      const result = await smallController.writeFile(original, "application/octet-stream");
       const stream = smallController.openFileStream(result.key);
       const reader = stream.getReader();
       const chunks: Uint8Array[] = [];
@@ -280,10 +273,10 @@ describe("CasController", () => {
     });
   });
 
-  describe("uploadChunk", () => {
-    it("should upload raw chunk", async () => {
+  describe("putChunk", () => {
+    it("should put raw chunk", async () => {
       const data = new Uint8Array([100, 200, 255]);
-      const key = await controller.uploadChunk(data, "application/octet-stream");
+      const key = await controller.putChunk(data, "application/octet-stream");
 
       expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(await controller.has(key)).toBe(true);
@@ -292,7 +285,7 @@ describe("CasController", () => {
 
   describe("has", () => {
     it("should return true for existing key", async () => {
-      const result = await controller.uploadFile(new Uint8Array([1]), "text/plain");
+      const result = await controller.writeFile(new Uint8Array([1]), "text/plain");
       expect(await controller.has(result.key)).toBe(true);
     });
 

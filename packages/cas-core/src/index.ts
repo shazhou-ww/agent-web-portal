@@ -77,7 +77,7 @@ export {
   type CollectionEntry,
   type TreeNodeInfo,
   type TreeResponse,
-  type UploadResult,
+  type WriteResult,
 } from "./controller.ts";
 
 // Providers
