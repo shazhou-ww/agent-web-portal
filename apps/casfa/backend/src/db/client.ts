@@ -27,6 +27,16 @@ function dynamoClientConfig(): NonNullable<ConstructorParameters<typeof DynamoDB
 let _client: DynamoDBClient | null = null;
 
 /**
+ * Reset the shared client (useful when environment changes)
+ */
+export function resetDynamoDBClient(): void {
+  if (_client) {
+    _client.destroy();
+    _client = null;
+  }
+}
+
+/**
  * Create or return shared DynamoDB client (respects DYNAMODB_ENDPOINT for local DynamoDB)
  */
 export function createDynamoDBClient(): DynamoDBClient {

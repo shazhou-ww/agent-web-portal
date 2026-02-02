@@ -37,6 +37,8 @@ import {
   CognitoIdentityProviderClient,
   ListUsersCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { UserRolesDb } from "../backend/src/db/user-roles.ts";
 import { loadConfig } from "../backend/src/types.ts";
 
@@ -135,22 +137,35 @@ async function listUsers(
 async function main(): Promise<void> {
   const { list, setAdmin, local } = parseArgs();
   
-  // If --local flag is set, force local DynamoDB endpoint
-  if (local) {
-    process.env.DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT || "http://localhost:8000";
-    console.log(`Using local DynamoDB: ${process.env.DYNAMODB_ENDPOINT}\n`);
-  }
-  
   const config = loadConfig();
   const poolId = config.cognitoUserPoolId;
   const region = config.cognitoRegion;
+  
+  // Create DynamoDB client - use local credentials if --local flag is set
+  let userRolesDb: UserRolesDb;
+  if (local) {
+    const endpoint = process.env.DYNAMODB_ENDPOINT || "http://localhost:8000";
+    console.log(`Using local DynamoDB: ${endpoint}\n`);
+    const localClient = new DynamoDBClient({
+      region: "us-east-1",
+      endpoint,
+      credentials: {
+        accessKeyId: "local",
+        secretAccessKey: "local",
+      },
+    });
+    const docClient = DynamoDBDocumentClient.from(localClient, {
+      marshallOptions: { removeUndefinedValues: true },
+    });
+    userRolesDb = new UserRolesDb(config, docClient);
+  } else {
+    userRolesDb = new UserRolesDb(config);
+  }
 
   if (!poolId) {
     console.error("COGNITO_USER_POOL_ID is required. Set it in env or .env.");
     process.exit(1);
   }
-
-  const userRolesDb = new UserRolesDb(config);
 
   if (list) {
     console.log("Listing Cognito users (sub, email, name)...\n");
@@ -175,12 +190,23 @@ async function main(): Promise<void> {
     console.log("  --local             Use local DynamoDB (http://localhost:8000)");
     console.log("\nExample:");
     console.log("  bun run set-admin -- --local --set-admin admin@example.com");
+    console.log("  bun run set-admin -- --local --set-admin <cognito-sub>");
     process.exit(0);
   }
 
-  const users = await listUsers(poolId, region);
-  const bySub = new Map(users.map((u) => [u.sub, u]));
-  const byEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
+  // In --local mode with sub-like IDs, skip Cognito lookup
+  const allLookLikeSubs = setAdmin.every((id) => isLikelySub(id.trim()));
+  
+  let users: { sub: string; email: string; name?: string }[] = [];
+  let bySub = new Map<string, { sub: string; email: string; name?: string }>();
+  let byEmail = new Map<string, { sub: string; email: string; name?: string }>();
+  
+  if (!allLookLikeSubs || !local) {
+    // Need to fetch Cognito users for email lookup
+    users = await listUsers(poolId, region);
+    bySub = new Map(users.map((u) => [u.sub, u]));
+    byEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
+  }
 
   for (const id of setAdmin) {
     const trimmed = id.trim();
@@ -188,11 +214,15 @@ async function main(): Promise<void> {
 
     let sub: string;
     if (isLikelySub(trimmed)) {
-      if (!bySub.has(trimmed)) {
+      // If in local mode with sub, skip validation
+      if (local) {
+        sub = trimmed;
+      } else if (!bySub.has(trimmed)) {
         console.error(`User not found (sub): ${trimmed}`);
         continue;
+      } else {
+        sub = trimmed;
       }
-      sub = trimmed;
     } else {
       const u = byEmail.get(trimmed.toLowerCase());
       if (!u) {
