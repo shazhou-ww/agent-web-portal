@@ -45,7 +45,7 @@ CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的�
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
 | POST | `/api/auth/ticket` | 创建 Ticket | Agent/User Token |
-| DELETE | `/api/auth/ticket/:id` | 撤销 Ticket | User Token |
+| DELETE | `/api/auth/ticket/:id` | 撤销 Ticket | Agent/User Token |
 
 #### Agent Token 管理
 

@@ -12,3 +12,11 @@ export {
   generateAgentTokenId,
   generateDepotId,
 } from "./token-id.ts"
+export {
+  fingerprintFromUser,
+  fingerprintFromToken,
+  fingerprintFromPubkey,
+  fingerprintFromTicket,
+  fingerprintWithType,
+  type IdentityType,
+} from "./fingerprint.ts"

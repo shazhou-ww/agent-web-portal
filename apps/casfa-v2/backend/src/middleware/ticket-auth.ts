@@ -7,6 +7,7 @@
 import type { MiddlewareHandler } from "hono"
 import type { TokensDb } from "../db/tokens.ts"
 import type { AuthContext, Env, Ticket } from "../types.ts"
+import { fingerprintFromTicket } from "../util/fingerprint.ts"
 
 export type TicketAuthDeps = {
   tokensDb: TokensDb
@@ -31,6 +32,8 @@ export const createTicketAuthMiddleware = (deps: TicketAuthDeps): MiddlewareHand
       return c.json({ error: "Invalid or expired ticket" }, 401)
     }
 
+    const fingerprint = await fingerprintFromTicket(ticketId)
+
     // Build auth context from ticket
     const auth: AuthContext = {
       token: ticket,
@@ -40,6 +43,9 @@ export const createTicketAuthMiddleware = (deps: TicketAuthDeps): MiddlewareHand
       canWrite: !!ticket.commit && !ticket.commit.root,
       canIssueTicket: false,
       allowedScope: ticket.scope,
+      identityType: "ticket",
+      fingerprint,
+      isAgent: false, // Tickets are not agents, they have even more restricted permissions
     }
 
     c.set("auth", auth)

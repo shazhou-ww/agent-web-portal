@@ -264,29 +264,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   ticketRouter.get("/:ticketId/chunks/:key", deps.chunks.get)
   ticketRouter.get("/:ticketId/tree/:key", deps.chunks.getTree)
 
-  // Depots via ticket
-  ticketRouter.get("/:ticketId/depots", deps.depots.list)
-  ticketRouter.post(
-    "/:ticketId/depots",
-    deps.writeAccessMiddleware,
-    zValidator("json", CreateDepotSchema),
-    deps.depots.create
-  )
-  ticketRouter.get("/:ticketId/depots/:depotId", deps.depots.get)
-  ticketRouter.put(
-    "/:ticketId/depots/:depotId",
-    deps.writeAccessMiddleware,
-    zValidator("json", UpdateDepotSchema),
-    deps.depots.update
-  )
-  ticketRouter.delete("/:ticketId/depots/:depotId", deps.writeAccessMiddleware, deps.depots.delete)
-  ticketRouter.get("/:ticketId/depots/:depotId/history", deps.depots.history)
-  ticketRouter.post(
-    "/:ticketId/depots/:depotId/rollback",
-    deps.writeAccessMiddleware,
-    zValidator("json", RollbackDepotSchema),
-    deps.depots.rollback
-  )
+  // Note: Depot operations are NOT available via ticket routes
 
   app.route("/api/ticket", ticketRouter)
 

@@ -25,12 +25,26 @@ export type TokensDb = {
   createTicket: (
     realm: string,
     issuerId: string,
-    scope?: string[],
-    commit?: { quota?: number; accept?: string[] },
-    expiresIn?: number
+    options?: {
+      scope?: string[]
+      commit?: { quota?: number; accept?: string[] }
+      expiresIn?: number
+      issuerFingerprint?: string
+    }
   ) => Promise<Ticket>
   markTicketCommitted: (ticketId: string, root: string) => Promise<boolean>
   revokeAgentToken: (userId: string, tokenId: string) => Promise<void>
+  /**
+   * Revoke a ticket with permission check.
+   * - User Token (agentFingerprint undefined): can revoke any ticket in their realm
+   * - Agent Token / AWP Client: can only revoke tickets they issued (matching fingerprint)
+   */
+  revokeTicket: (
+    realm: string,
+    ticketId: string,
+    agentFingerprint?: string
+  ) => Promise<void>
+  deleteToken: (tokenId: string) => Promise<void>
   listAgentTokensByUser: (userId: string) => Promise<AgentToken[]>
 }
 
@@ -124,10 +138,14 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
   const createTicket = async (
     realm: string,
     issuerId: string,
-    scope?: string[],
-    commit?: { quota?: number; accept?: string[] },
-    expiresIn?: number
+    options?: {
+      scope?: string[]
+      commit?: { quota?: number; accept?: string[] }
+      expiresIn?: number
+      issuerFingerprint?: string
+    }
   ): Promise<Ticket> => {
+    const { scope, commit, expiresIn, issuerFingerprint } = options ?? {}
     const serverConfig = loadServerConfig()
     const ticketId = generateTicketId()
     const now = Date.now()
@@ -140,6 +158,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
       type: "ticket",
       realm,
       issuerId,
+      issuerFingerprint,
       scope,
       commit,
       createdAt: now,
@@ -203,6 +222,37 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     return (result.Items ?? []) as AgentToken[]
   }
 
+  const deleteToken = async (tokenId: string): Promise<void> => {
+    await client.send(new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId) } }))
+  }
+
+  const revokeTicket = async (
+    realm: string,
+    ticketId: string,
+    agentFingerprint?: string
+  ): Promise<void> => {
+    const ticket = await getTicket(ticketId)
+    if (!ticket) {
+      throw new Error("Ticket not found")
+    }
+
+    // Verify the ticket belongs to this realm
+    if (ticket.realm !== realm) {
+      throw new Error("Ticket not found or access denied")
+    }
+
+    // Permission check:
+    // - User Token (agentFingerprint undefined): can revoke any ticket in their realm
+    // - Agent Token / AWP Client: can only revoke tickets they issued (matching fingerprint)
+    if (agentFingerprint !== undefined) {
+      if (ticket.issuerFingerprint !== agentFingerprint) {
+        throw new Error("Access denied: can only revoke tickets you issued")
+      }
+    }
+
+    await deleteToken(ticketId)
+  }
+
   return {
     getToken,
     getTicket,
@@ -211,6 +261,8 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     createTicket,
     markTicketCommitted,
     revokeAgentToken,
+    revokeTicket,
+    deleteToken,
     listAgentTokensByUser,
   }
 }

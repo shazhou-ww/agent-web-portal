@@ -123,13 +123,15 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
       ? parsed.data.scope
       : [parsed.data.scope]
 
-    const ticket = await tokensDb.createTicket(
-      auth.realm,
-      extractTokenId(auth.token.pk),
-      normalizedScope,
-      parsed.data.writable ? {} : undefined,
-      parsed.data.expiresIn
-    )
+    // Only store issuerFingerprint for agent-level issuers
+    const issuerFingerprint = auth.isAgent ? auth.fingerprint : undefined
+
+    const ticket = await tokensDb.createTicket(auth.realm, extractTokenId(auth.token.pk), {
+      scope: normalizedScope,
+      commit: parsed.data.writable ? {} : undefined,
+      expiresIn: parsed.data.expiresIn,
+      issuerFingerprint,
+    })
 
     const ticketId = extractTokenId(ticket.pk)
     const endpoint = `${serverConfig.baseUrl}/api/ticket/${ticketId}`

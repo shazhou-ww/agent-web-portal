@@ -61,6 +61,13 @@ export type Ticket = BaseToken & {
   type: "ticket"
   realm: string
   issuerId: string
+  /**
+   * Fingerprint of the issuer for permission verification.
+   * - AWP Client: base64(xxh64('pubkey:${pubkey}'))
+   * - Agent Token: base64(xxh64('token:${token}'))
+   * - User Token: undefined (created by user directly)
+   */
+  issuerFingerprint?: string
   scope?: string[]
   commit?: CommitConfig
   config: {
@@ -81,6 +88,11 @@ export type UserRole = "unauthorized" | "authorized" | "admin"
 // Auth Context
 // ============================================================================
 
+/**
+ * Identity type for the authenticated caller
+ */
+export type IdentityType = "user" | "agent" | "awp" | "ticket"
+
 export type AuthContext = {
   token: Token
   userId: string
@@ -91,6 +103,23 @@ export type AuthContext = {
   role?: UserRole
   canManageUsers?: boolean
   allowedScope?: string[]
+  /**
+   * Identity type for logging and auditing
+   */
+  identityType: IdentityType
+  /**
+   * Unique fingerprint for the caller identity (for logging/auditing).
+   * - User: base64(xxh64('user:${userId}'))
+   * - Agent Token: base64(xxh64('token:${tokenId}'))
+   * - AWP Client: base64(xxh64('pubkey:${pubkey}'))
+   * - Ticket: base64(xxh64('ticket:${ticketId}'))
+   */
+  fingerprint: string
+  /**
+   * Whether this is an agent-level identity (Agent Token or AWP Client).
+   * Agent identities can only revoke tickets they issued.
+   */
+  isAgent: boolean
 }
 
 // ============================================================================

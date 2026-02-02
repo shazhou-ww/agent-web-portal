@@ -23,8 +23,8 @@
     "@agent-web-portal/auth": "workspace:*",
     "@agent-web-portal/cas-core": "workspace:*",
     "@agent-web-portal/cas-storage-core": "workspace:*",
-    "@agent-web-portal/cas-storage-s3": "workspace:*",
     "@agent-web-portal/cas-storage-memory": "workspace:*",
+    "@agent-web-portal/cas-storage-s3": "workspace:*",
     "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
     "@aws-sdk/client-dynamodb": "^3.975.0",
     "@aws-sdk/lib-dynamodb": "^3.975.0",
@@ -32,6 +32,7 @@
     "amazon-cognito-identity-js": "^6.3.12",
     "hono": "^4.6.0",
     "jose": "^6.1.3",
+    "xxhash-wasm": "^1.1.0",
     "zod": "3"
   },
   "devDependencies": {

@@ -16,6 +16,11 @@ import type { UserRolesDb } from "../db/user-roles.ts"
 import type { AwpPubkeysDb } from "../db/awp-pubkeys.ts"
 import type { AuthContext, Env, Token, UserRole, AgentToken, Ticket } from "../types.ts"
 import type { CognitoConfig } from "../config.ts"
+import {
+  fingerprintFromUser,
+  fingerprintFromToken,
+  fingerprintFromPubkey,
+} from "../util/fingerprint.ts"
 
 // ============================================================================
 // Types
@@ -80,6 +85,7 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
       if (!token || token.type !== "agent") return null
 
       const agentToken = token as AgentToken
+      const fingerprint = await fingerprintFromToken(tokenValue)
       const auth: AuthContext = {
         token,
         userId: agentToken.userId,
@@ -87,6 +93,9 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
         canRead: true,
         canWrite: true,
         canIssueTicket: true,
+        identityType: "agent",
+        fingerprint,
+        isAgent: true,
       }
       return applyUserRole(auth)
     }
@@ -97,6 +106,7 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
       const storedToken = await tokensDb.getToken(tokenValue)
       if (storedToken) {
         if (storedToken.type === "user") {
+          const fingerprint = await fingerprintFromUser(storedToken.userId)
           const auth: AuthContext = {
             token: storedToken,
             userId: storedToken.userId,
@@ -104,11 +114,15 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
             canRead: true,
             canWrite: true,
             canIssueTicket: true,
+            identityType: "user",
+            fingerprint,
+            isAgent: false,
           }
           return applyUserRole(auth)
         }
         if (storedToken.type === "agent") {
           const agentToken = storedToken as AgentToken
+          const fingerprint = await fingerprintFromToken(tokenValue)
           const auth: AuthContext = {
             token: storedToken,
             userId: agentToken.userId,
@@ -116,6 +130,9 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
             canRead: true,
             canWrite: true,
             canIssueTicket: true,
+            identityType: "agent",
+            fingerprint,
+            isAgent: true,
           }
           return applyUserRole(auth)
         }
@@ -131,6 +148,7 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
           const userId = payload.sub
           if (!userId) return null
 
+          const fingerprint = await fingerprintFromUser(userId)
           const syntheticToken: Token = {
             pk: `token#jwt_${userId}`,
             type: "user",
@@ -146,6 +164,9 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
             canRead: true,
             canWrite: true,
             canIssueTicket: true,
+            identityType: "user",
+            fingerprint,
+            isAgent: false,
           }
           return applyUserRole(auth)
         } catch {
@@ -183,10 +204,14 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
     if (!isValid) return null
 
     const userId = authorizedPubkey.userId
+    const fingerprint = await fingerprintFromPubkey(pubkey)
+
+    // AWP Client uses "agent" type token to represent agent-level access
     const syntheticToken: Token = {
       pk: `token#awp_${userId}`,
-      type: "user",
+      type: "agent",
       userId,
+      name: "AWP Client",
       createdAt: Date.now(),
       expiresAt: Date.now() + 3600000,
     }
@@ -198,6 +223,9 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
       canRead: true,
       canWrite: true,
       canIssueTicket: true,
+      identityType: "awp",
+      fingerprint,
+      isAgent: true,
     }
 
     return applyUserRole(auth)
