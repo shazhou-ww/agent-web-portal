@@ -12,6 +12,9 @@ export { createMemoryDepotsDb } from "./depots.ts"
 export { createMemoryAwpPendingDb } from "./awp-pending.ts"
 export { createMemoryAwpPubkeysDb } from "./awp-pubkeys.ts"
 
+// Mock services
+export { createMockAuthService, type MockUser, type MockAuthServiceOptions } from "./auth.ts"
+
 // ============================================================================
 // All DBs type
 // ============================================================================

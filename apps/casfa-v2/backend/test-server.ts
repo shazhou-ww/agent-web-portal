@@ -2,7 +2,7 @@
  * CASFA v2 - Test Server
  *
  * A server with in-memory databases and storage for testing.
- * No DynamoDB or S3 dependencies required.
+ * No DynamoDB, S3, or Cognito dependencies required.
  *
  * Usage:
  *   bun run test-server.ts
@@ -12,10 +12,10 @@
 import type { Hono } from "hono"
 import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory"
 import type { StorageProvider } from "@agent-web-portal/cas-storage-core"
-import { createApp, type DbInstances } from "./src/app.ts"
+import { createApp, createNodeHashProvider, type DbInstances } from "./src/app.ts"
 import type { AppConfig } from "./src/config.ts"
 import type { Env } from "./src/types.ts"
-import { createAllMemoryDbs, type AllDbs } from "./src/db-mock/index.ts"
+import { createAllMemoryDbs, createMockAuthService, type AllDbs } from "./src/db-mock/index.ts"
 import { extractTokenId } from "./src/util/token-id.ts"
 
 // ============================================================================
@@ -25,8 +25,7 @@ import { extractTokenId } from "./src/util/token-id.ts"
 /**
  * Default test configuration
  *
- * Note: Cognito userPoolId is set to empty string to skip CognitoUserPool initialization.
- * For tests that need Cognito, override with a valid userPoolId format (e.g., "us-east-1_XXXXXXXXX").
+ * Note: Cognito userPoolId is set to empty string since we use mock auth.
  */
 export const createTestConfig = (overrides?: Partial<AppConfig>): AppConfig => ({
   server: {
@@ -53,8 +52,7 @@ export const createTestConfig = (overrides?: Partial<AppConfig>): AppConfig => (
     ...overrides?.storage,
   },
   cognito: {
-    // Empty userPoolId skips CognitoUserPool initialization
-    // Tests use direct database operations to create tokens
+    // Empty - we use mock auth
     userPoolId: "",
     clientId: "test-client-id",
     region: "us-east-1",
@@ -105,24 +103,31 @@ export type CreateTestAppOptions = {
  * Create a test app with in-memory databases and storage
  */
 export const createTestApp = (options: CreateTestAppOptions = {}): TestApp => {
+  // Test configuration
   const config = createTestConfig(options.config)
+
+  // Mock DB
   const db = createAllMemoryDbs()
+
+  // Mock Storage
   const storage = createMemoryStorage()
 
+  // Mock AuthService
+  const authService = createMockAuthService({
+    tokensDb: db.tokensDb,
+    userRolesDb: db.userRolesDb,
+  })
+
+  // Hash provider
+  const hashProvider = createNodeHashProvider()
+
+  // Create app with all mock dependencies
   const app = createApp({
     config,
+    db,
     storage,
-    db: {
-      tokensDb: db.tokensDb,
-      ownershipDb: db.ownershipDb,
-      commitsDb: db.commitsDb,
-      depotsDb: db.depotsDb,
-      refCountDb: db.refCountDb,
-      usageDb: db.usageDb,
-      userRolesDb: db.userRolesDb,
-      awpPendingDb: db.awpPendingDb,
-      awpPubkeysDb: db.awpPubkeysDb,
-    },
+    authService,
+    hashProvider,
   })
 
   const reset = () => {
@@ -228,7 +233,7 @@ if (import.meta.main) {
   })
 
   console.log(`🧪 CASFA v2 Test Server running at http://localhost:${server.port}`)
-  console.log("   Using in-memory databases and storage")
+  console.log("   Using in-memory databases, storage, and auth")
   console.log("")
   console.log("   Press Ctrl+C to stop")
 }
