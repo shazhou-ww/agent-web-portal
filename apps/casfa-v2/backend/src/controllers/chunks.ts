@@ -5,6 +5,7 @@
 import type { Context } from "hono"
 import {
   decodeNode,
+  hashToKey,
   validateNode,
   validateNodeStructure,
 } from "@agent-web-portal/cas-core"
@@ -133,15 +134,14 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
       // Add ownership
       const tokenId = extractTokenId(auth.token.pk)
-      // Map cas-core NodeKind to our local NodeKind
-      const nodeKind = validationResult.kind === "dict" ? "dict" as const : "chunk" as const
+      // NodeKind from cas-core matches our local type
       await ownershipDb.addOwnership(
         realm,
         key,
         tokenId,
         "application/octet-stream",
         validationResult.size ?? bytes.length,
-        nodeKind
+        validationResult.kind
       )
 
       // Increment reference count
@@ -227,14 +227,6 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       const queue: string[] = [rootKey]
       let next: string | undefined
 
-      // Helper to convert child hash to key string
-      const hashToKey = (hash: Uint8Array): string => {
-        const hex = Array.from(hash)
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("")
-        return `sha256:${hex}`
-      }
-
       while (queue.length > 0) {
         if (Object.keys(nodes).length >= MAX_NODES) {
           next = queue[0]
@@ -251,6 +243,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
           const node = decodeNode(bytes)
 
           if (node.kind === "dict") {
+            // d-node: directory with sorted children
             const children: Record<string, string> = {}
             if (node.children && node.childNames) {
               for (let i = 0; i < node.childNames.length; i++) {
@@ -271,10 +264,17 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
               children,
             }
           } else if (node.kind === "file") {
+            // f-node: file top-level node
             nodes[key] = {
-              kind: "chunk",
+              kind: "file",
               size: node.size,
               contentType: node.contentType,
+            }
+          } else if (node.kind === "successor") {
+            // s-node: file continuation chunk (typically not exposed in tree)
+            nodes[key] = {
+              kind: "successor",
+              size: node.size,
             }
           }
         } catch {

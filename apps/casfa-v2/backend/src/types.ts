@@ -5,6 +5,10 @@
  */
 
 import type { Context } from "hono"
+import type { NodeKind as CasNodeKind } from "@agent-web-portal/cas-core"
+
+// Re-export NodeKind from cas-core
+export type NodeKind = CasNodeKind
 
 // ============================================================================
 // CAS Content Types and Metadata Keys
@@ -125,9 +129,6 @@ export type AuthContext = {
 // ============================================================================
 // CAS Types
 // ============================================================================
-
-// NodeKind matches cas-core: "chunk" for data, "dict" for collections
-export type NodeKind = "chunk" | "dict"
 
 export type GcStatus = "active" | "pending"
 

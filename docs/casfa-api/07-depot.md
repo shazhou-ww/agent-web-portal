@@ -89,7 +89,7 @@ Depot API 可以通过两种路由访问：
 }
 ```
 
-> 新创建的 Depot 以空 collection 作为初始 root
+> 新创建的 Depot 以空 dict node (d-node) 作为初始 root
 
 ### 错误
 

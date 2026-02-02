@@ -80,7 +80,7 @@ Authorization: Agent {agentToken}
 | 字段 | 描述 |
 |------|------|
 | `physicalBytes` | 物理存储字节数（去重后） |
-| `logicalBytes` | 逻辑存储字节数（仅 chunk 数据） |
+| `logicalBytes` | 逻辑存储字节数（仅 f-node 和 s-node 数据） |
 | `nodeCount` | 唯一节点数 |
 | `quotaLimit` | 配额限制（0 = 无限制） |
 | `updatedAt` | 最后更新时间 |
@@ -228,7 +228,7 @@ Authorization: Agent {agentToken}
 - Magic bytes 和头部结构
 - Hash 验证
 - 子节点存在性验证
-- Collection 节点的 size 验证
+- Dict 节点 (d-node) 的 size 验证
 
 #### 响应
 
@@ -236,7 +236,7 @@ Authorization: Agent {agentToken}
 {
   "key": "sha256:abc123...",
   "size": 12345,
-  "kind": "chunk"
+  "kind": "file"
 }
 ```
 
@@ -244,7 +244,7 @@ Authorization: Agent {agentToken}
 |------|------|
 | `key` | 节点 key |
 | `size` | 逻辑大小 |
-| `kind` | 节点类型：chunk, collection |
+| `kind` | 节点类型：`dict`, `file`, `successor` |
 
 #### 错误
 
@@ -291,7 +291,7 @@ Authorization: Agent {agentToken}
 {
   "nodes": {
     "sha256:root...": {
-      "kind": "collection",
+      "kind": "dict",
       "size": 12345,
       "children": {
         "file1.txt": "sha256:file1...",
@@ -305,7 +305,7 @@ Authorization: Agent {agentToken}
       "chunks": 1
     },
     "sha256:subdir...": {
-      "kind": "collection",
+      "kind": "dict",
       "size": 5678,
       "children": {
         "nested.txt": "sha256:nested..."
@@ -325,9 +325,8 @@ Authorization: Agent {agentToken}
 
 ### 节点类型
 
-| kind | 描述 | 特有字段 |
-|------|------|----------|
-| `collection` | 目录结构 | `children`: name → key 映射 |
-| `file` | 多 chunk 文件 | `contentType`, `chunks` |
-| `inline-file` | 单 chunk 文件 | `contentType` |
-| `chunk` | 原始数据块 | - |
+| kind | 别名 | 描述 | 特有字段 |
+|------|------|------|----------|
+| `dict` | d-node | 目录节点，子节点按名称排序 | `children`: name → key 映射 |
+| `file` | f-node | 文件顶层节点，包含 content-type | `contentType`, `chunks` |
+| `successor` | s-node | 文件后继节点（大文件分块） | - |
