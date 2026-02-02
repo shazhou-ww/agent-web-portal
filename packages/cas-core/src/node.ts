@@ -208,7 +208,7 @@ export async function encodeFileNode(
 
   // Encode sections
   const childrenBytes = concatBytes(...children);
-  const ctBytes = ctSlotSize > 0 ? encodeContentType(contentType!, ctSlotSize) : new Uint8Array(0);
+  const ctBytes = ctSlotSize > 0 ? encodeContentType(contentType!, ctSlotSize as 16 | 32 | 64) : new Uint8Array(0);
 
   // Calculate data offset - already 16-byte aligned because:
   // Header(32) + Children(N*32) + CT(0/16/32/64) are all multiples of 16
@@ -245,7 +245,7 @@ export async function encodeFileNodeWithSize(
 
   // Encode sections
   const childrenBytes = concatBytes(...children);
-  const ctBytes = ctSlotSize > 0 ? encodeContentType(contentType!, ctSlotSize) : new Uint8Array(0);
+  const ctBytes = ctSlotSize > 0 ? encodeContentType(contentType!, ctSlotSize as 16 | 32 | 64) : new Uint8Array(0);
 
   // Calculate data offset
   const dataOffset = HEADER_SIZE + childrenBytes.length + ctBytes.length;
