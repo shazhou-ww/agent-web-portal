@@ -18,7 +18,7 @@ export { CasfaSession } from "./session.ts";
 // Client (full user features)
 export { CasfaClient } from "./client.ts";
 
-// VirtualFS (collection editing)
+// VirtualFS (dict editing)
 export { VirtualFS } from "./vfs.ts";
 export type { FileInfo, WriteFileOptions } from "./vfs.ts";
 

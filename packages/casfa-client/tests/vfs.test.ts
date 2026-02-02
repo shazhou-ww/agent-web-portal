@@ -23,7 +23,7 @@ function createMockEndpoint(nodes: Map<string, CasNode>): CasfaEndpoint {
     },
     readFile: async (key: string): Promise<Uint8Array> => {
       const node = nodes.get(key);
-      if (!node || node.kind === "collection") {
+      if (!node || node.kind === "dict") {
         throw new Error(`Cannot read: ${key}`);
       }
       return node.data ?? new Uint8Array();
@@ -33,7 +33,7 @@ function createMockEndpoint(nodes: Map<string, CasNode>): CasfaEndpoint {
     },
     putFile: async (data: Uint8Array, contentType: string) => {
       const key = `sha256:${Date.now()}_${Math.random()}`;
-      nodes.set(key, { kind: "chunk", size: data.length, data, contentType });
+      nodes.set(key, { kind: "file", size: data.length, data, contentType });
       return { key, size: data.length, nodeCount: 1 };
     },
     makeDict: async (entries: Array<{ name: string; key: string }>) => {
@@ -57,7 +57,7 @@ function createMockEndpoint(nodes: Map<string, CasNode>): CasfaEndpoint {
       }
 
       nodes.set(key, {
-        kind: "collection",
+        kind: "dict",
         size: totalSize,
         children,
         childNames,
@@ -191,49 +191,49 @@ describe("VirtualFS", () => {
     });
   });
 
-  describe("fromCollection", () => {
-    it("should load existing collection", async () => {
+  describe("fromDict", () => {
+    it("should load existing dict", async () => {
       const nodes = new Map<string, CasNode>();
 
       // Create a file node
       const fileKey = "sha256:file123";
       nodes.set(fileKey, {
-        kind: "chunk",
+        kind: "file",
         size: 5,
         data: new TextEncoder().encode("hello"),
         contentType: "text/plain",
       });
 
-      // Create a collection with the file
+      // Create a dict with the file
       const rootKey = "sha256:root123";
       nodes.set(rootKey, {
-        kind: "collection",
+        kind: "dict",
         size: 5,
         children: [createHash(fileKey)],
         childNames: ["hello.txt"],
       });
 
       const endpoint = createMockEndpoint(nodes);
-      const vfs = await VirtualFS.fromCollection(endpoint, rootKey);
+      const vfs = await VirtualFS.fromDict(endpoint, rootKey);
 
       expect(await vfs.exists("hello.txt")).toBe(true);
       expect(await vfs.list("")).toEqual(["hello.txt"]);
     });
 
-    it("should reject non-collection root", async () => {
+    it("should reject non-dict root", async () => {
       const nodes = new Map<string, CasNode>();
 
       const fileKey = "sha256:file123";
       nodes.set(fileKey, {
-        kind: "chunk",
+        kind: "file",
         size: 5,
         data: new TextEncoder().encode("hello"),
       });
 
       const endpoint = createMockEndpoint(nodes);
 
-      await expect(VirtualFS.fromCollection(endpoint, fileKey)).rejects.toThrow(
-        "Root must be a collection node"
+      await expect(VirtualFS.fromDict(endpoint, fileKey)).rejects.toThrow(
+        "Root must be a dict node"
       );
     });
   });
@@ -245,7 +245,7 @@ describe("VirtualFS", () => {
       // Create a node to mount
       const mountKey = "sha256:mountable";
       nodes.set(mountKey, {
-        kind: "chunk",
+        kind: "file",
         size: 10,
         data: new TextEncoder().encode("mount data"),
       });
@@ -282,7 +282,7 @@ describe("VirtualFS", () => {
       expect(key.startsWith("sha256:")).toBe(true);
     });
 
-    it("should build collection with files", async () => {
+    it("should build dict with files", async () => {
       const nodes = new Map<string, CasNode>();
       const endpoint = createMockEndpoint(nodes);
       const vfs = VirtualFS.empty(endpoint);
@@ -293,10 +293,10 @@ describe("VirtualFS", () => {
       const key = await vfs.build();
       expect(key).toBeDefined();
 
-      // Verify the collection was created
+      // Verify the dict was created
       const node = nodes.get(key);
       expect(node).toBeDefined();
-      expect(node?.kind).toBe("collection");
+      expect(node?.kind).toBe("dict");
       expect(node?.childNames?.sort()).toEqual(["a.txt", "b.txt"]);
     });
 

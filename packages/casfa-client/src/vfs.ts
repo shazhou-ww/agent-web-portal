@@ -1,8 +1,8 @@
 /**
- * VirtualFS - Virtual filesystem operations on CAS collections
+ * VirtualFS - Virtual filesystem operations on CAS dicts
  *
  * Provides path-based operations (read, write, delete, move, mount) on a
- * CAS collection tree. All changes are buffered in memory until build()
+ * CAS dict tree. All changes are buffered in memory until build()
  * is called to generate the new root key.
  */
 
@@ -20,7 +20,7 @@ import type { CasfaEndpoint } from "./endpoint.ts";
 interface NodeEntry {
   type: "node";
   key: string;
-  /** Cached node info for collections */
+  /** Cached node info for dicts */
   children?: Map<string, VfsEntry>;
 }
 
@@ -34,7 +34,7 @@ interface PendingEntry {
 }
 
 /**
- * Entry representing a directory (collection)
+ * Entry representing a directory (dict)
  */
 interface DirEntry {
   type: "dir";
@@ -103,7 +103,7 @@ function getSegments(path: string): string[] {
 // ============================================================================
 
 /**
- * Virtual filesystem for editing CAS collections
+ * Virtual filesystem for editing CAS dicts
  */
 export class VirtualFS {
   private endpoint: CasfaEndpoint;
@@ -116,16 +116,16 @@ export class VirtualFS {
   }
 
   /**
-   * Create a VirtualFS from an existing collection
+   * Create a VirtualFS from an existing dict
    */
-  static async fromCollection(
+  static async fromDict(
     endpoint: CasfaEndpoint,
     rootKey: string
   ): Promise<VirtualFS> {
-    // Load the root node to verify it's a collection
+    // Load the root node to verify it's a dict
     const node = await endpoint.getNode(rootKey);
-    if (node.kind !== "collection") {
-      throw new Error("Root must be a collection node");
+    if (node.kind !== "dict") {
+      throw new Error("Root must be a dict node");
     }
 
     // Create root entry with lazy-loaded children
@@ -201,7 +201,7 @@ export class VirtualFS {
 
     // Load from CAS
     const node = await this.endpoint.getNode(entry.key);
-    if (node.kind !== "collection") {
+    if (node.kind !== "dict") {
       return null;
     }
 
@@ -305,11 +305,11 @@ export class VirtualFS {
       };
     }
 
-    // NodeEntry - need to check if file or collection
+    // NodeEntry - need to check if file or dict
     const node = await this.endpoint.getNode(entry.key);
     return {
-      isFile: node.kind !== "collection",
-      isDirectory: node.kind === "collection",
+      isFile: node.kind !== "dict",
+      isDirectory: node.kind === "dict",
       size: node.size,
       key: entry.key,
     };
@@ -491,7 +491,7 @@ export class VirtualFS {
   // ============================================================================
 
   /**
-   * Build the final collection, uploading all pending files
+   * Build the final dict, uploading all pending files
    * Returns the new root key
    */
   async build(): Promise<string> {

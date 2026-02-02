@@ -169,13 +169,13 @@ function validatePascalStringsNoExtract(
  * 3. Hash matches expectedKey
  * 4. Pascal strings are valid (names, contentType)
  * 5. All children exist (if existsChecker provided)
- * 6. For collections: size equals sum of children sizes
+ * 6. For dicts: size equals sum of children sizes
  *
  * @param bytes - Raw node bytes
  * @param expectedKey - Expected hash key (sha256:...)
  * @param hashProvider - Hash provider for verification
  * @param existsChecker - Optional function to check child existence
- * @param getSize - Optional function to get child size for collection validation
+ * @param getSize - Optional function to get child size for dict validation
  */
 export async function validateNode(
   bytes: Uint8Array,

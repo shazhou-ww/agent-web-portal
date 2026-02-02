@@ -67,7 +67,7 @@ export type CasHeader = {
   magic: number;
   /** Flag bits (node type in bits 0-1, content-type length in bits 2-3) */
   flags: number;
-  /** Logical size (file size for chunks, total size for collections) */
+  /** Logical size (file size for files, total size for dicts) */
   size: number;
   /** Number of children */
   count: number;

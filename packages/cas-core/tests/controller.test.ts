@@ -186,7 +186,7 @@ describe("Controller", () => {
 
       const node = await getNode(ctx, outerDict);
       expect(node).not.toBeNull();
-      // Outer size = inner collection size (50) + file2 size (150) = 200
+      // Outer size = inner dict size (50) + file2 size (150) = 200
       expect(node!.size).toBe(200);
     });
   });

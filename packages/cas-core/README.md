@@ -78,20 +78,20 @@ Where `d` is the tree depth:
 
 ```typescript
 import {
-  encodeChunk,
+  encodeFileNode,
   encodeDictNode,
   decodeNode,
   computeDepth,
   computeLayout,
 } from "@agent-web-portal/cas-core";
 
-// Encode a small file (single chunk)
+// Encode a small file
 const data = new Uint8Array([1, 2, 3, 4]);
-const chunk = encodeChunk(data, "application/octet-stream");
+const file = await encodeFileNode({ data, contentType: "application/octet-stream" }, hashProvider);
 
 // Decode any node
-const node = decodeNode(chunk);
-console.log(node.kind); // "chunk"
+const node = decodeNode(file.bytes);
+console.log(node.kind); // "file"
 console.log(node.size); // 4
 
 // Compute tree structure for large file

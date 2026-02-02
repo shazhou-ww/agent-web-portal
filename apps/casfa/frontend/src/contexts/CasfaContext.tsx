@@ -20,13 +20,13 @@ import {
   IndexedDBStorageProvider,
   type TreeNodeInfo,
   type WriteResult,
-  type CollectionEntry,
+  type DictEntry,
 } from "@agent-web-portal/casfa-client-browser";
 import { useAuth } from "./AuthContext";
 import { API_URL } from "../utils/api";
 
 // Re-export types for convenience
-export type { TreeNodeInfo, WriteResult, CollectionEntry };
+export type { TreeNodeInfo, WriteResult, DictEntry };
 
 interface CasfaContextType {
   /** CasfaClient instance (null if not authenticated) */

@@ -73,9 +73,6 @@ export {
   encodeSuccessorNodeWithSize,
   getNodeKind,
   isValidNode,
-  // Legacy aliases
-  encodeChunk,
-  encodeChunkWithSize,
 } from "./node.ts";
 
 // Utility functions

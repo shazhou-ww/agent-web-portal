@@ -370,7 +370,3 @@ export function getNodeKind(buffer: Uint8Array): NodeKind | null {
     return null;
   }
 }
-
-// Legacy aliases for backward compatibility during migration
-export const encodeChunk = encodeFileNode;
-export const encodeChunkWithSize = encodeFileNodeWithSize;

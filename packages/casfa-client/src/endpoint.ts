@@ -174,7 +174,7 @@ export class CasfaEndpoint {
       for (const childHash of node.children) {
         const childKey = hashToKey(childHash);
         const childNode = await this.getNode(childKey);
-        if (childNode.kind === "chunk") {
+        if (childNode.kind === "file" || childNode.kind === "successor") {
           parts.push(await this.readNodeData(childNode));
         }
       }
@@ -200,7 +200,7 @@ export class CasfaEndpoint {
       for (const childHash of node.children) {
         const childKey = hashToKey(childHash);
         const childNode = await this.getNode(childKey);
-        if (childNode.kind === "chunk") {
+        if (childNode.kind === "file" || childNode.kind === "successor") {
           yield* this.streamNodeData(childNode);
         }
       }
@@ -208,7 +208,7 @@ export class CasfaEndpoint {
   }
 
   /**
-   * Resolve a path within a collection to get the target key
+   * Resolve a path within a dict to get the target key
    */
   async resolvePath(rootKey: string, path: string): Promise<string> {
     if (path === "." || path === "/" || path === "") {
@@ -224,14 +224,14 @@ export class CasfaEndpoint {
 
     for (const segment of segments) {
       const node = await this.getNode(currentKey);
-      if (node.kind !== "collection") {
-        throw new Error(`Cannot traverse into non-collection node at "${segment}"`);
+      if (node.kind !== "dict") {
+        throw new Error(`Cannot traverse into non-dict node at "${segment}"`);
       }
 
       // Find child by name
       const childIndex = node.childNames?.indexOf(segment);
       if (childIndex === undefined || childIndex === -1) {
-        throw new Error(`Child "${segment}" not found in collection`);
+        throw new Error(`Child "${segment}" not found in dict`);
       }
 
       const childHash = node.children?.[childIndex];
@@ -360,19 +360,19 @@ export class CasfaEndpoint {
   }
 
   // ============================================================================
-  // Collection Editing
+  // Dict Editing
   // ============================================================================
 
   /**
-   * Edit a collection using virtual filesystem operations
+   * Edit a dict using virtual filesystem operations
    *
-   * @param rootKey - Root collection key to edit (or undefined for empty)
+   * @param rootKey - Root dict key to edit (or undefined for empty)
    * @param editor - Async function that performs edits on the VFS
    * @returns New root key after edits
    *
    * @example
    * ```ts
-   * const newRoot = await endpoint.editCollection(currentRoot, async (vfs) => {
+   * const newRoot = await endpoint.editDict(currentRoot, async (vfs) => {
    *   await vfs.writeFile("docs/readme.md", readmeContent);
    *   await vfs.move("old/path", "new/path");
    *   await vfs.delete("temp/file.txt");
@@ -380,13 +380,13 @@ export class CasfaEndpoint {
    * });
    * ```
    */
-  async editCollection(
+  async editDict(
     rootKey: string | undefined,
     editor: (vfs: VirtualFS) => Promise<void>
   ): Promise<string> {
-    // Create VFS from existing collection or empty
+    // Create VFS from existing dict or empty
     const vfs = rootKey
-      ? await VirtualFS.fromCollection(this, rootKey)
+      ? await VirtualFS.fromDict(this, rootKey)
       : VirtualFS.empty(this);
 
     // Run the editor

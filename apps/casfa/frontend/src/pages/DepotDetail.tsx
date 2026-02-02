@@ -406,7 +406,7 @@ export default function DepotDetail() {
       const endpoint = await session.getEndpoint(realm);
 
       // Create VirtualFS from current depot root
-      const vfs = await VirtualFS.fromCollection(endpoint, depot.root);
+      const vfs = await VirtualFS.fromDict(endpoint, depot.root);
 
       // Apply all pending edits
       for (const edit of pendingEdits) {

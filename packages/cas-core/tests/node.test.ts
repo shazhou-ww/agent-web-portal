@@ -12,9 +12,6 @@ import {
   encodeSuccessorNodeWithSize,
   getNodeKind,
   isValidNode,
-  // Legacy aliases
-  encodeChunk,
-  encodeChunkWithSize,
 } from "../src/node.ts";
 import { getNodeType } from "../src/header.ts";
 import type { HashProvider } from "../src/types.ts";
@@ -393,15 +390,6 @@ describe("Node", () => {
       // After sorting, should be identical
       expect(result1.hash).toEqual(result2.hash);
       expect(result1.bytes).toEqual(result2.bytes);
-    });
-  });
-
-  describe("legacy aliases", () => {
-    it("encodeChunk should work as encodeFileNode", async () => {
-      const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeChunk({ data, contentType: "text/plain" }, mockHashProvider);
-      const decoded = decodeNode(result.bytes);
-      expect(decoded.kind).toBe("file");
     });
   });
 });
