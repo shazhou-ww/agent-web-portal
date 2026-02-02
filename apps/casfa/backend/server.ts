@@ -39,53 +39,12 @@ import {
   MemoryOwnershipDb,
   MemoryTokensDb,
 } from "./src/db/memory/index.ts";
-import type { CasStorageInterface, IAgentTokensDb } from "./src/db/memory/types.ts";
+import type { CasStorageInterface } from "./src/db/memory/types.ts";
+import { createAgentTokensDbAdapter } from "./src/db/tokens.ts";
 import { loadConfig, loadServerConfig } from "./src/types.ts";
 
 function tokenIdFromPk(pk: string): string {
   return pk.replace("token#", "");
-}
-
-function createAgentTokensDbAdapter(
-  tokensDb: TokensDb,
-  serverConfig: ReturnType<typeof loadServerConfig>
-): IAgentTokensDb {
-  return {
-    async listByUser(userId: string) {
-      const list = await tokensDb.listAgentTokensByUser(userId);
-      return list.map((t) => ({
-        id: tokenIdFromPk(t.pk),
-        userId: t.userId,
-        name: t.name,
-        description: t.description,
-        createdAt: t.createdAt,
-        expiresAt: t.expiresAt,
-      }));
-    },
-    async create(
-      userId: string,
-      name: string,
-      options?: { description?: string; expiresIn?: number }
-    ) {
-      const t = await tokensDb.createAgentToken(userId, name, serverConfig, options);
-      return {
-        id: tokenIdFromPk(t.pk),
-        userId: t.userId,
-        name: t.name,
-        description: t.description,
-        createdAt: t.createdAt,
-        expiresAt: t.expiresAt,
-      };
-    },
-    async revoke(userId: string, tokenId: string) {
-      try {
-        await tokensDb.revokeAgentToken(userId, tokenId);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-  };
 }
 
 // ============================================================================

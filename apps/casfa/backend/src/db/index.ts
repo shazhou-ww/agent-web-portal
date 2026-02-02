@@ -16,5 +16,10 @@ export {
   MAIN_DEPOT_NAME,
 } from "./depot.ts";
 export { OwnershipDb } from "./ownership.ts";
-export { generateTicketId, generateUserTokenId, TokensDb } from "./tokens.ts";
+export {
+  createAgentTokensDbAdapter,
+  generateTicketId,
+  generateUserTokenId,
+  TokensDb,
+} from "./tokens.ts";
 export { UserRolesDb } from "./user-roles.ts";

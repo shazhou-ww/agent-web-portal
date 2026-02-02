@@ -345,3 +345,55 @@ export class TokensDb implements ITokensDb {
     return pk.replace("token#", "");
   }
 }
+
+// ============================================================================
+// Agent Tokens Adapter
+// ============================================================================
+
+import type { AgentTokenRecord, IAgentTokensDb } from "./memory/types.ts";
+
+/**
+ * Create an IAgentTokensDb adapter from TokensDb
+ * This allows TokensDb to be used with controllers that expect IAgentTokensDb
+ */
+export function createAgentTokensDbAdapter(
+  tokensDb: TokensDb,
+  serverConfig: CasServerConfig
+): IAgentTokensDb {
+  return {
+    async listByUser(userId: string): Promise<AgentTokenRecord[]> {
+      const list = await tokensDb.listAgentTokensByUser(userId);
+      return list.map((t) => ({
+        id: TokensDb.extractTokenId(t.pk),
+        userId: t.userId,
+        name: t.name,
+        description: t.description,
+        createdAt: t.createdAt,
+        expiresAt: t.expiresAt,
+      }));
+    },
+    async create(
+      userId: string,
+      name: string,
+      options?: { description?: string; expiresIn?: number }
+    ): Promise<AgentTokenRecord> {
+      const t = await tokensDb.createAgentToken(userId, name, serverConfig, options);
+      return {
+        id: TokensDb.extractTokenId(t.pk),
+        userId: t.userId,
+        name: t.name,
+        description: t.description,
+        createdAt: t.createdAt,
+        expiresAt: t.expiresAt,
+      };
+    },
+    async revoke(userId: string, tokenId: string): Promise<boolean> {
+      try {
+        await tokensDb.revokeAgentToken(userId, tokenId);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+}

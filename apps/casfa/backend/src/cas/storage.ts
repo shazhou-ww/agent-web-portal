@@ -10,6 +10,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import type { CasStorageInterface } from "../db/memory/types.ts";
 import type { CasConfig } from "../types.ts";
 
 // ============================================================================
@@ -54,7 +55,7 @@ export interface PutResult {
 // CasStorage Class
 // ============================================================================
 
-export class CasStorage {
+export class CasStorage implements CasStorageInterface {
   private client: S3Client;
   private bucket: string;
 
