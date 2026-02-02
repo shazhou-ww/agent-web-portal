@@ -76,7 +76,6 @@ export {
   // Legacy aliases
   encodeChunk,
   encodeChunkWithSize,
-  encodeCollection,
 } from "./node.ts";
 
 // Utility functions
@@ -100,14 +99,14 @@ export {
   getNodeLimit,
   getTree,
   has,
-  makeCollection,
+  makeDict,
   openFileStream,
   putFileNode,
   readFile,
   writeFile,
   // Types
   type CasContext,
-  type CollectionEntry,
+  type DictEntry,
   type TreeNodeInfo,
   type TreeResponse,
   type WriteResult,
@@ -131,7 +130,7 @@ export {
 
 // Well-known keys and data
 export {
-  EMPTY_COLLECTION_BYTES,
-  EMPTY_COLLECTION_KEY,
+  EMPTY_DICT_BYTES,
+  EMPTY_DICT_KEY,
   WELL_KNOWN_KEYS,
 } from "./well-known.ts";

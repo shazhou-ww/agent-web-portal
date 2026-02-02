@@ -36,7 +36,7 @@ function createMockEndpoint(nodes: Map<string, CasNode>): CasfaEndpoint {
       nodes.set(key, { kind: "chunk", size: data.length, data, contentType });
       return { key, size: data.length, nodeCount: 1 };
     },
-    makeCollection: async (entries: Array<{ name: string; key: string }>) => {
+    makeDict: async (entries: Array<{ name: string; key: string }>) => {
       const key = `sha256:col_${Date.now()}_${Math.random()}`;
       const children: Uint8Array[] = [];
       const childNames: string[] = [];

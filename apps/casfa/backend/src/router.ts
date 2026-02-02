@@ -7,8 +7,8 @@ import {
   validateNode,
   validateNodeStructure,
   hashToKey,
-  EMPTY_COLLECTION_BYTES,
-  EMPTY_COLLECTION_KEY,
+  EMPTY_DICT_BYTES,
+  EMPTY_DICT_KEY,
   type ValidationResult,
 } from "@agent-web-portal/cas-core";
 import { generateVerificationCode } from "@agent-web-portal/auth";
@@ -1602,20 +1602,20 @@ export class Router {
   // ============================================================================
 
   /**
-   * Ensure the empty collection exists in storage
+   * Ensure the empty dict exists in storage
    * This is called lazily when needed
    */
-  private async ensureEmptyCollection(): Promise<void> {
-    const exists = await this.casStorage.exists(EMPTY_COLLECTION_KEY);
+  private async ensureEmptyDict(): Promise<void> {
+    const exists = await this.casStorage.exists(EMPTY_DICT_KEY);
     if (!exists) {
       const result = await this.casStorage.putWithKey(
-        EMPTY_COLLECTION_KEY,
-        Buffer.from(EMPTY_COLLECTION_BYTES),
+        EMPTY_DICT_KEY,
+        Buffer.from(EMPTY_DICT_BYTES),
         CAS_CONTENT_TYPES.COLLECTION
       );
       if ("error" in result) {
         throw new Error(
-          `Empty collection hash mismatch: expected ${result.expected}, got ${result.actual}`
+          `Empty dict hash mismatch: expected ${result.expected}, got ${result.actual}`
         );
       }
     }
@@ -1681,21 +1681,21 @@ export class Router {
       return errorResponse(409, `Depot with name '${name}' already exists`);
     }
 
-    // Ensure empty collection exists
-    await this.ensureEmptyCollection();
+    // Ensure empty dict exists
+    await this.ensureEmptyDict();
 
-    // Increment ref for empty collection
+    // Increment ref for empty dict
     await this.refCountDb.incrementRef(
       realm,
-      EMPTY_COLLECTION_KEY,
-      EMPTY_COLLECTION_BYTES.length,
+      EMPTY_DICT_KEY,
+      EMPTY_DICT_BYTES.length,
       0
     );
 
     // Create the depot
     const depot = await this.depotDb.create(realm, {
       name,
-      root: EMPTY_COLLECTION_KEY,
+      root: EMPTY_DICT_KEY,
       description,
     });
 

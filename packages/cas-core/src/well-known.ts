@@ -20,11 +20,11 @@ import { HEADER_SIZE, MAGIC, NODE_TYPE } from "./constants.ts";
  *
  * All reserved/padding bytes are 0 for hash stability.
  */
-export const EMPTY_COLLECTION_BYTES = new Uint8Array(HEADER_SIZE);
+export const EMPTY_DICT_BYTES = new Uint8Array(HEADER_SIZE);
 
 // Encode the empty dict node header
 (() => {
-  const view = new DataView(EMPTY_COLLECTION_BYTES.buffer);
+  const view = new DataView(EMPTY_DICT_BYTES.buffer);
   view.setUint32(0, MAGIC, true); // magic
   view.setUint32(4, NODE_TYPE.DICT, true); // flags = d-node (0b01)
   // 8-15: size = 0 (already 0)
@@ -34,11 +34,11 @@ export const EMPTY_COLLECTION_BYTES = new Uint8Array(HEADER_SIZE);
 })();
 
 /**
- * SHA-256 hash of EMPTY_COLLECTION_BYTES
+ * SHA-256 hash of EMPTY_DICT_BYTES
  *
  * Computed from: sha256(32-byte header with d-node flags, count=0, size=0, length=32)
  */
-export const EMPTY_COLLECTION_KEY =
+export const EMPTY_DICT_KEY =
   "sha256:04821167d026fa3b24e160b8f9f0ff2a342ca1f96c78c24b23e6a086b71e2391";
 
 /**
@@ -46,5 +46,5 @@ export const EMPTY_COLLECTION_KEY =
  */
 export const WELL_KNOWN_KEYS = {
   /** Empty dict node - used as initial root for new Depots */
-  EMPTY_COLLECTION: EMPTY_COLLECTION_KEY,
+  EMPTY_DICT: EMPTY_DICT_KEY,
 } as const;

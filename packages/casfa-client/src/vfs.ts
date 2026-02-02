@@ -527,8 +527,8 @@ export class VirtualFS {
     // Sort entries by name for consistency
     entries.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Create the collection
-    return this.endpoint.makeCollection(entries);
+    // Create the dict
+    return this.endpoint.makeDict(entries);
   }
 
   /**

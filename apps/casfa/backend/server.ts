@@ -628,27 +628,9 @@ class MemoryCommitsDb {
 // In-Memory Depot Storage
 // ============================================================================
 
-const EMPTY_COLLECTION_KEY = "sha256:a78577c5cfc47ab3e4b116f01902a69e2e015b40cdef52f9b552cfb5104e769a";
-
-// Empty collection is a 32-byte binary header (not JSON!)
-// Structure: magic(4) + flags(4) + count(4) + padding(4) + size(8) + namesOffset(4) + typeOffset(4)
-const HEADER_SIZE = 32;
-const MAGIC = 0x01534143; // "CAS\x01" in little-endian
-const FLAGS_HAS_NAMES = 0x01;
-
-function createEmptyCollectionBytes(): Buffer {
-  const bytes = Buffer.alloc(HEADER_SIZE);
-  bytes.writeUInt32LE(MAGIC, 0);           // magic
-  bytes.writeUInt32LE(FLAGS_HAS_NAMES, 4); // flags
-  bytes.writeUInt32LE(0, 8);               // count = 0
-  bytes.writeUInt32LE(0, 12);              // padding
-  bytes.writeBigUInt64LE(0n, 16);          // size = 0
-  bytes.writeUInt32LE(HEADER_SIZE, 24);    // namesOffset = 32
-  bytes.writeUInt32LE(0, 28);              // typeOffset = 0
-  return bytes;
-}
-
-const EMPTY_COLLECTION_DATA = createEmptyCollectionBytes();
+// Use EMPTY_DICT from cas-core
+import { EMPTY_DICT_KEY, EMPTY_DICT_BYTES } from "@agent-web-portal/cas-core";
+const EMPTY_DICT_DATA = Buffer.from(EMPTY_DICT_BYTES);
 
 interface MemoryDepotRecord {
   realm: string;
@@ -688,7 +670,7 @@ class MemoryDepotDb {
       realm,
       depotId,
       name: options.name,
-      root: options.root || EMPTY_COLLECTION_KEY,
+      root: options.root || EMPTY_DICT_KEY,
       version: 1,
       createdAt: now,
       updatedAt: now,
@@ -936,32 +918,32 @@ const agentTokensDb = useDynamo
 const userRolesDb = useDynamo ? new UserRolesDb(loadConfig()) : null;
 
 /**
- * Ensure empty collection exists in storage and ownership
+ * Ensure empty dict exists in storage and ownership
  */
-async function ensureEmptyCollection(realm: string, tokenId: string): Promise<void> {
-  console.log(`[ensureEmptyCollection] realm=${realm}, tokenId=${tokenId}`);
+async function ensureEmptyDict(realm: string, tokenId: string): Promise<void> {
+  console.log(`[ensureEmptyDict] realm=${realm}, tokenId=${tokenId}`);
   // Check if already exists
-  const exists = await casStorage.get(EMPTY_COLLECTION_KEY);
-  console.log(`[ensureEmptyCollection] exists=${!!exists}`);
+  const exists = await casStorage.get(EMPTY_DICT_KEY);
+  console.log(`[ensureEmptyDict] exists=${!!exists}`);
   if (!exists) {
-    console.log(`[ensureEmptyCollection] storing empty collection`);
+    console.log(`[ensureEmptyDict] storing empty dict`);
     await casStorage.putWithKey(
-      EMPTY_COLLECTION_KEY,
-      EMPTY_COLLECTION_DATA,
+      EMPTY_DICT_KEY,
+      EMPTY_DICT_DATA,
       "application/vnd.cas.collection"
     );
   }
   // Ensure ownership
-  const hasOwnership = await ownershipDb.hasOwnership(realm, EMPTY_COLLECTION_KEY);
-  console.log(`[ensureEmptyCollection] hasOwnership=${hasOwnership}`);
+  const hasOwnership = await ownershipDb.hasOwnership(realm, EMPTY_DICT_KEY);
+  console.log(`[ensureEmptyDict] hasOwnership=${hasOwnership}`);
   if (!hasOwnership) {
-    console.log(`[ensureEmptyCollection] adding ownership`);
+    console.log(`[ensureEmptyDict] adding ownership`);
     await ownershipDb.addOwnership(
       realm,
-      EMPTY_COLLECTION_KEY,
+      EMPTY_DICT_KEY,
       tokenId,
       "application/vnd.cas.collection",
-      EMPTY_COLLECTION_DATA.length
+      EMPTY_DICT_DATA.length
     );
   }
 }
@@ -1746,10 +1728,10 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
     }
     const rootKey = decodeURIComponent(getTreeMatch[1]!);
 
-    // Special case: empty collection - ensure it exists
-    if (rootKey === EMPTY_COLLECTION_KEY) {
-      console.log(`[tree] detected empty collection key, calling ensureEmptyCollection`);
-      await ensureEmptyCollection(realm, auth.tokenId);
+    // Special case: empty dict - ensure it exists
+    if (rootKey === EMPTY_DICT_KEY) {
+      console.log(`[tree] detected empty dict key, calling ensureEmptyDict`);
+      await ensureEmptyDict(realm, auth.tokenId);
     }
 
     const hasAccess = await ownershipDb.hasOwnership(realm, rootKey);
@@ -1759,8 +1741,8 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
 
     // Build tree recursively
     const buildTree = async (key: string): Promise<Record<string, unknown> | null> => {
-      // Special case: empty collection
-      if (key === EMPTY_COLLECTION_KEY) {
+      // Special case: empty dict
+      if (key === EMPTY_DICT_KEY) {
         return {
           kind: "collection",
           key,
@@ -1837,9 +1819,9 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
     if (!auth.canRead) {
       return errorResponse(403, "Read access required");
     }
-    // Ensure empty collection and main depot exist
-    await ensureEmptyCollection(realm, auth.tokenId);
-    await depotDb.ensureMainDepot(realm, EMPTY_COLLECTION_KEY);
+    // Ensure empty dict and main depot exist
+    await ensureEmptyDict(realm, auth.tokenId);
+    await depotDb.ensureMainDepot(realm, EMPTY_DICT_KEY);
     const result = await depotDb.list(realm);
     return jsonResponse(200, {
       depots: result.depots.map((d) => ({
@@ -1871,12 +1853,12 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
       return errorResponse(409, `Depot with name '${body.name}' already exists`);
     }
 
-    // Ensure empty collection exists
-    await ensureEmptyCollection(realm, auth.tokenId);
+    // Ensure empty dict exists
+    await ensureEmptyDict(realm, auth.tokenId);
 
     const depot = await depotDb.create(realm, {
       name: body.name,
-      root: EMPTY_COLLECTION_KEY,
+      root: EMPTY_DICT_KEY,
       description: body.description,
     });
 

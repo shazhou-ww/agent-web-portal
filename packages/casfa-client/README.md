@@ -53,13 +53,13 @@ const myEndpoint = await client.getMyEndpoint();
 // Upload a file
 const result = await myEndpoint.putFile(data, "image/png");
 
-// Create a collection
-const collectionKey = await myEndpoint.makeCollection([
+// Create a dict
+const dictKey = await myEndpoint.makeDict([
   { name: "image.png", key: result.key },
 ]);
 
 // Commit to storage
-await myEndpoint.commit(collectionKey);
+await myEndpoint.commit(dictKey);
 
 // Create a sharing ticket
 const ticket = await client.createTicket({
@@ -102,9 +102,9 @@ const data2 = await endpoint.getRaw("sha256:abc..."); // Cache hit
 | `getNode(key)` | Get decoded CAS node |
 | `readFile(key)` | Read complete file content |
 | `streamFile(key)` | Stream file content |
-| `resolvePath(root, path)` | Resolve path within collection |
+| `resolvePath(root, path)` | Resolve path within dict |
 | `putFile(data, type)` | Upload a file |
-| `makeCollection(entries)` | Create a collection |
+| `makeDict(entries)` | Create a dict |
 | `commit(key)` | Commit root to realm |
 | `createBlobRef(node, path)` | Create blob reference |
 

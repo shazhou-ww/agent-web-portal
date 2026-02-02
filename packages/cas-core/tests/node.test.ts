@@ -15,7 +15,6 @@ import {
   // Legacy aliases
   encodeChunk,
   encodeChunkWithSize,
-  encodeCollection,
 } from "../src/node.ts";
 import { getNodeType } from "../src/header.ts";
 import type { HashProvider } from "../src/types.ts";
@@ -403,16 +402,6 @@ describe("Node", () => {
       const result = await encodeChunk({ data, contentType: "text/plain" }, mockHashProvider);
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("file");
-    });
-
-    it("encodeCollection should work as encodeDictNode", async () => {
-      const child = new Uint8Array(HASH_SIZE).fill(0x11);
-      const result = await encodeCollection(
-        { size: 100, children: [child], childNames: ["test"] },
-        mockHashProvider
-      );
-      const decoded = decodeNode(result.bytes);
-      expect(decoded.kind).toBe("dict");
     });
   });
 });

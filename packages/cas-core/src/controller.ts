@@ -53,9 +53,9 @@ export type TreeResponse = {
 };
 
 /**
- * Collection entry for makeCollection
+ * Dict entry for makeDict
  */
-export type CollectionEntry = {
+export type DictEntry = {
   name: string;
   key: string;
 };
@@ -266,11 +266,11 @@ export const putFileNode = async (
 };
 
 /**
- * Make a collection (directory) from existing nodes
+ * Make a dict (directory) from existing nodes
  */
-export const makeCollection = async (
+export const makeDict = async (
   ctx: CasContext,
-  entries: CollectionEntry[]
+  entries: DictEntry[]
 ): Promise<string> => {
   const children: Uint8Array[] = [];
   const childNames: string[] = [];

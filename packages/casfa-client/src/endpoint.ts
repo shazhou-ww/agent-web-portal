@@ -9,7 +9,7 @@ import {
   createMemoryStorage,
   createWebCryptoHash,
   writeFile,
-  makeCollection as coreMakeCollection,
+  makeDict as coreMakeDict,
   decodeNode,
   hashToKey,
   concatBytes,
@@ -25,7 +25,7 @@ import type {
   EndpointInfo,
   TreeNodeInfo,
   TreeResponse,
-  CollectionEntry,
+  DictEntry,
   WriteResult,
   CasBlobRef,
 } from "./types.ts";
@@ -278,9 +278,9 @@ export class CasfaEndpoint {
   }
 
   /**
-   * Create a collection from existing nodes
+   * Create a dict from existing nodes
    */
-  async makeCollection(entries: CollectionEntry[]): Promise<string> {
+  async makeDict(entries: DictEntry[]): Promise<string> {
     // Get endpoint info for nodeLimit
     const info = await this.getInfo();
 
@@ -298,12 +298,12 @@ export class CasfaEndpoint {
       nodeLimit: info.nodeLimit,
     };
 
-    const key = await coreMakeCollection(ctx, entries);
+    const key = await coreMakeDict(ctx, entries);
 
-    // Upload the collection node
-    const collectionData = await tempStorage.get(key);
-    if (collectionData) {
-      await this.uploadRaw(key, collectionData);
+    // Upload the dict node
+    const dictData = await tempStorage.get(key);
+    if (dictData) {
+      await this.uploadRaw(key, dictData);
     }
 
     return key;

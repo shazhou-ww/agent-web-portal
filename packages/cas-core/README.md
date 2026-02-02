@@ -16,10 +16,10 @@ Chunks use a self-similar B-Tree structure where each node contains:
 
 This design ensures deterministic tree topology: given a file size and node limit, the tree structure is uniquely determined.
 
-### Collection (Directory)
+### Dict (Directory)
 
-Collections contain:
-- **children**: References to child nodes (chunks or collections)
+Dicts contain:
+- **children**: References to child nodes (chunks or dicts)
 - **names**: Names for each child entry
 - **contentType**: Optional MIME type (typically `inode/directory`)
 
@@ -33,7 +33,7 @@ Collections contain:
 └──────────┴──────────┴──────────┴──────────┴─────────────────┘
 │                         CHILDREN (N × 32 bytes)              │
 ├─────────────────────────────────────────────────────────────┤
-│                         NAMES (Pascal strings)               │  ← collection only
+│                         NAMES (Pascal strings)               │  ← dict only
 ├─────────────────────────────────────────────────────────────┤
 │                         CONTENT-TYPE (Pascal string)         │
 ├─────────────────────────────────────────────────────────────┤
@@ -57,7 +57,7 @@ Collections contain:
 
 | Bit | Name | Description |
 |-----|------|-------------|
-| 0 | hasNames | Has NAMES section (collection) |
+| 0 | hasNames | Has NAMES section (dict) |
 | 1 | hasType | Has CONTENT-TYPE section |
 | 2 | hasData | Has DATA section (chunk) |
 
@@ -79,7 +79,7 @@ Where `d` is the tree depth:
 ```typescript
 import {
   encodeChunk,
-  encodeCollection,
+  encodeDictNode,
   decodeNode,
   computeDepth,
   computeLayout,

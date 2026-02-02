@@ -5,7 +5,7 @@ import { describe, expect, it, beforeEach } from "bun:test";
 import {
   writeFile,
   readFile,
-  makeCollection,
+  makeDict,
   getTree,
   getNode,
   openFileStream,
@@ -133,23 +133,23 @@ describe("Controller", () => {
     });
   });
 
-  describe("makeCollection", () => {
-    it("should make a collection with entries", async () => {
+  describe("makeDict", () => {
+    it("should make a dict with entries", async () => {
       // First write some files
       const file1 = await writeFile(ctx, new Uint8Array([1, 2, 3]), "text/plain");
       const file2 = await writeFile(ctx, new Uint8Array([4, 5, 6]), "text/plain");
 
-      const collectionKey = await makeCollection(ctx, [
+      const dictKey = await makeDict(ctx, [
         { name: "file1.txt", key: file1.key },
         { name: "file2.txt", key: file2.key },
       ]);
 
-      expect(collectionKey).toMatch(/^sha256:[a-f0-9]{64}$/);
-      expect(storage.size()).toBe(3); // 2 files + 1 collection
+      expect(dictKey).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(storage.size()).toBe(3); // 2 files + 1 dict
     });
 
-    it("should make empty collection", async () => {
-      const key = await makeCollection(ctx, []);
+    it("should make empty dict", async () => {
+      const key = await makeDict(ctx, []);
       expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
     });
 
@@ -158,33 +158,33 @@ describe("Controller", () => {
       const file1 = await writeFile(ctx, new Uint8Array(100), "text/plain"); // 100 bytes
       const file2 = await writeFile(ctx, new Uint8Array(200), "text/plain"); // 200 bytes
 
-      const collectionKey = await makeCollection(ctx, [
+      const dictKey = await makeDict(ctx, [
         { name: "a.txt", key: file1.key },
         { name: "b.txt", key: file2.key },
       ]);
 
-      const node = await getNode(ctx, collectionKey);
+      const node = await getNode(ctx, dictKey);
       expect(node).not.toBeNull();
       expect(node!.size).toBe(300); // 100 + 200
     });
 
-    it("should compute nested collection size correctly", async () => {
+    it("should compute nested dict size correctly", async () => {
       // Create files
       const file1 = await writeFile(ctx, new Uint8Array(50), "text/plain");
       const file2 = await writeFile(ctx, new Uint8Array(150), "text/plain");
 
-      // Create inner collection with file1
-      const innerCollection = await makeCollection(ctx, [
+      // Create inner dict with file1
+      const innerDict = await makeDict(ctx, [
         { name: "inner.txt", key: file1.key },
       ]);
 
-      // Create outer collection with inner collection and file2
-      const outerCollection = await makeCollection(ctx, [
-        { name: "subdir", key: innerCollection },
+      // Create outer dict with inner dict and file2
+      const outerDict = await makeDict(ctx, [
+        { name: "subdir", key: innerDict },
         { name: "outer.txt", key: file2.key },
       ]);
 
-      const node = await getNode(ctx, outerCollection);
+      const node = await getNode(ctx, outerDict);
       expect(node).not.toBeNull();
       // Outer size = inner collection size (50) + file2 size (150) = 200
       expect(node!.size).toBe(200);
@@ -204,22 +204,22 @@ describe("Controller", () => {
       expect(node!.contentType).toBe("image/png");
     });
 
-    it("should return tree structure for collection", async () => {
+    it("should return tree structure for dict", async () => {
       const file1 = await writeFile(ctx, new Uint8Array([1, 2, 3]), "text/plain");
       const file2 = await writeFile(ctx, new Uint8Array([4, 5, 6]), "text/plain");
-      const collectionKey = await makeCollection(ctx, [
+      const dictKey = await makeDict(ctx, [
         { name: "a.txt", key: file1.key },
         { name: "b.txt", key: file2.key },
       ]);
 
-      const tree = await getTree(ctx, collectionKey);
+      const tree = await getTree(ctx, dictKey);
 
       expect(Object.keys(tree.nodes)).toHaveLength(3);
-      const collectionNode = tree.nodes[collectionKey];
-      expect(collectionNode!.kind).toBe("dict");
-      expect(collectionNode!.childNames).toEqual(["a.txt", "b.txt"]);
-      // Collection size should be sum of children's logical sizes (3 + 3 = 6)
-      expect(collectionNode!.size).toBe(6);
+      const dictNode = tree.nodes[dictKey];
+      expect(dictNode!.kind).toBe("dict");
+      expect(dictNode!.childNames).toEqual(["a.txt", "b.txt"]);
+      // Dict size should be sum of children's logical sizes (3 + 3 = 6)
+      expect(dictNode!.size).toBe(6);
     });
 
     it("should respect limit parameter", async () => {
@@ -230,13 +230,13 @@ describe("Controller", () => {
         )
       );
 
-      const collectionKey = await makeCollection(
+      const dictKey = await makeDict(
         ctx,
         files.map((f, i) => ({ name: `file${i}.txt`, key: f.key }))
       );
 
       // Request only 2 nodes
-      const tree = await getTree(ctx, collectionKey, 2);
+      const tree = await getTree(ctx, dictKey, 2);
       expect(Object.keys(tree.nodes).length).toBeLessThanOrEqual(2);
     });
   });

@@ -52,7 +52,7 @@ export type {
   // CAS types
   TreeNodeInfo,
   TreeResponse,
-  CollectionEntry,
+  DictEntry,
   WriteResult,
   CasBlobRef,
   // Depot types

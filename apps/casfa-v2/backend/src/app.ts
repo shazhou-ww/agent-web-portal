@@ -70,6 +70,32 @@ const createNodeHashProvider = (): HashProvider => ({
 })
 
 // ============================================================================
+// Types
+// ============================================================================
+
+import type { TokensDb } from "./db/tokens.ts"
+import type { OwnershipDb } from "./db/ownership.ts"
+import type { CommitsDb } from "./db/commits.ts"
+import type { DepotsDb } from "./db/depots.ts"
+import type { RefCountDb } from "./db/refcount.ts"
+import type { UsageDb } from "./db/usage.ts"
+import type { UserRolesDb } from "./db/user-roles.ts"
+import type { AwpPendingDb } from "./db/awp-pending.ts"
+import type { AwpPubkeysDb } from "./db/awp-pubkeys.ts"
+
+export type DbInstances = {
+  tokensDb: TokensDb
+  ownershipDb: OwnershipDb
+  commitsDb: CommitsDb
+  depotsDb: DepotsDb
+  refCountDb: RefCountDb
+  usageDb: UsageDb
+  userRolesDb: UserRolesDb
+  awpPendingDb: AwpPendingDb
+  awpPubkeysDb: AwpPubkeysDb
+}
+
+// ============================================================================
 // App Factory
 // ============================================================================
 
@@ -77,6 +103,10 @@ export type AppOptions = {
   config?: AppConfig
   storage?: StorageProvider
   useMemoryStorage?: boolean
+  /**
+   * Inject custom DB instances (for testing with in-memory databases)
+   */
+  db?: Partial<DbInstances>
 }
 
 export const createApp = (options: AppOptions = {}): Hono<Env> => {
@@ -90,16 +120,16 @@ export const createApp = (options: AppOptions = {}): Hono<Env> => {
 
   const hashProvider = createNodeHashProvider()
 
-  // DB layer
-  const tokensDb = createTokensDb({ tableName: config.db.tokensTable })
-  const ownershipDb = createOwnershipDb({ tableName: config.db.casRealmTable })
-  const commitsDb = createCommitsDb({ tableName: config.db.casRealmTable })
-  const depotsDb = createDepotsDb({ tableName: config.db.casRealmTable })
-  const refCountDb = createRefCountDb({ tableName: config.db.refCountTable })
-  const usageDb = createUsageDb({ tableName: config.db.usageTable })
-  const userRolesDb = createUserRolesDb({ tableName: config.db.tokensTable })
-  const awpPendingDb = createAwpPendingDb({ tableName: config.db.tokensTable })
-  const awpPubkeysDb = createAwpPubkeysDb({ tableName: config.db.tokensTable })
+  // DB layer - use injected instances or create from config
+  const tokensDb = options.db?.tokensDb ?? createTokensDb({ tableName: config.db.tokensTable })
+  const ownershipDb = options.db?.ownershipDb ?? createOwnershipDb({ tableName: config.db.casRealmTable })
+  const commitsDb = options.db?.commitsDb ?? createCommitsDb({ tableName: config.db.casRealmTable })
+  const depotsDb = options.db?.depotsDb ?? createDepotsDb({ tableName: config.db.casRealmTable })
+  const refCountDb = options.db?.refCountDb ?? createRefCountDb({ tableName: config.db.refCountTable })
+  const usageDb = options.db?.usageDb ?? createUsageDb({ tableName: config.db.usageTable })
+  const userRolesDb = options.db?.userRolesDb ?? createUserRolesDb({ tableName: config.db.tokensTable })
+  const awpPendingDb = options.db?.awpPendingDb ?? createAwpPendingDb({ tableName: config.db.tokensTable })
+  const awpPubkeysDb = options.db?.awpPubkeysDb ?? createAwpPubkeysDb({ tableName: config.db.tokensTable })
 
   // Services
   const authService = createAuthService({

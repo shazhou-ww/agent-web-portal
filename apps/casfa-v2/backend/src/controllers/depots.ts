@@ -3,7 +3,7 @@
  */
 
 import type { Context } from "hono"
-import { decodeNode, EMPTY_COLLECTION_KEY, EMPTY_COLLECTION_BYTES } from "@agent-web-portal/cas-core"
+import { decodeNode, EMPTY_DICT_KEY, EMPTY_DICT_BYTES } from "@agent-web-portal/cas-core"
 import type { StorageProvider } from "@agent-web-portal/cas-storage-core"
 import type { DepotsDb, MAIN_DEPOT_NAME } from "../db/depots.ts"
 import type { RefCountDb } from "../db/refcount.ts"
@@ -32,10 +32,10 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
     return c.req.param("realmId") ?? c.get("auth").realm
   }
 
-  const ensureEmptyCollection = async (): Promise<void> => {
-    const exists = await storage.has(EMPTY_COLLECTION_KEY)
+  const ensureEmptyDict = async (): Promise<void> => {
+    const exists = await storage.has(EMPTY_DICT_KEY)
     if (!exists) {
-      await storage.put(EMPTY_COLLECTION_KEY, EMPTY_COLLECTION_BYTES)
+      await storage.put(EMPTY_DICT_KEY, EMPTY_DICT_BYTES)
     }
   }
 
@@ -72,16 +72,16 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
         return c.json({ error: `Depot with name '${name}' already exists` }, 409)
       }
 
-      // Ensure empty collection exists
-      await ensureEmptyCollection()
+      // Ensure empty dict exists
+      await ensureEmptyDict()
 
-      // Increment ref for empty collection
-      await refCountDb.incrementRef(realm, EMPTY_COLLECTION_KEY, EMPTY_COLLECTION_BYTES.length, 0)
+      // Increment ref for empty dict
+      await refCountDb.incrementRef(realm, EMPTY_DICT_KEY, EMPTY_DICT_BYTES.length, 0)
 
       // Create depot
       const depot = await depotsDb.create(realm, {
         name,
-        root: EMPTY_COLLECTION_KEY,
+        root: EMPTY_DICT_KEY,
         description,
       })
 

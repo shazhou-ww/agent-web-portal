@@ -309,9 +309,9 @@ export interface TreeResponse {
 }
 
 /**
- * Collection entry for makeCollection
+ * Dict entry for makeDict
  */
-export interface CollectionEntry {
+export interface DictEntry {
   name: string;
   key: string;
 }
