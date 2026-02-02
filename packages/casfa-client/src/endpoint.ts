@@ -6,15 +6,17 @@
  */
 
 import {
-  CasController,
-  MemoryStorageProvider,
-  WebCryptoHashProvider,
+  createMemoryStorage,
+  createWebCryptoHash,
+  writeFile,
+  makeCollection as coreMakeCollection,
   decodeNode,
   hashToKey,
   concatBytes,
   type StorageProvider,
   type HashProvider,
   type CasNode,
+  type CasContext,
 } from "@agent-web-portal/cas-core";
 
 import type {
@@ -43,7 +45,7 @@ export class CasfaEndpoint {
     this.url = config.url.replace(/\/$/, "");
     this.auth = config.auth;
     this.cache = config.cache;
-    this.hash = config.hash ?? new WebCryptoHashProvider();
+    this.hash = config.hash ?? createWebCryptoHash();
     this._info = config.info;
   }
 
@@ -255,14 +257,14 @@ export class CasfaEndpoint {
     const info = await this.getInfo();
 
     // Use cas-core to build the B-Tree locally
-    const tempStorage = new MemoryStorageProvider();
-    const controller = new CasController({
+    const tempStorage = createMemoryStorage();
+    const ctx: CasContext = {
       storage: tempStorage,
       hash: this.hash,
       nodeLimit: info.nodeLimit,
-    });
+    };
 
-    const result = await controller.writeFile(data, contentType);
+    const result = await writeFile(ctx, data, contentType);
 
     // Upload all nodes to server
     for (const key of tempStorage.keys()) {
@@ -283,20 +285,20 @@ export class CasfaEndpoint {
     const info = await this.getInfo();
 
     // Build temporary storage with child nodes
-    const tempStorage = new MemoryStorageProvider();
+    const tempStorage = createMemoryStorage();
 
     for (const entry of entries) {
       const nodeData = await this.getRaw(entry.key);
       await tempStorage.put(entry.key, nodeData);
     }
 
-    const controller = new CasController({
+    const ctx: CasContext = {
       storage: tempStorage,
       hash: this.hash,
       nodeLimit: info.nodeLimit,
-    });
+    };
 
-    const key = await controller.makeCollection(entries);
+    const key = await coreMakeCollection(ctx, entries);
 
     // Upload the collection node
     const collectionData = await tempStorage.get(key);

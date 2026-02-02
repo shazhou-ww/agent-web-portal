@@ -1,28 +1,37 @@
 /**
- * CasController tests
+ * Controller tests (functional API)
  */
 import { describe, expect, it, beforeEach } from "bun:test";
-import { CasController } from "../src/controller.ts";
-import { MemoryStorageProvider, WebCryptoHashProvider } from "../src/providers.ts";
-import { DEFAULT_NODE_LIMIT } from "../src/constants.ts";
+import {
+  writeFile,
+  readFile,
+  makeCollection,
+  getTree,
+  getNode,
+  openFileStream,
+  putFileNode,
+  has,
+  type CasContext,
+} from "../src/controller.ts";
+import { createMemoryStorage, createWebCryptoHash, type MemoryStorage } from "../src/providers.ts";
 import { computeUsableSpace } from "../src/topology.ts";
 
-describe("CasController", () => {
-  let storage: MemoryStorageProvider;
-  let controller: CasController;
+describe("Controller", () => {
+  let storage: MemoryStorage;
+  let ctx: CasContext;
 
   beforeEach(() => {
-    storage = new MemoryStorageProvider();
-    controller = new CasController({
+    storage = createMemoryStorage();
+    ctx = {
       storage,
-      hash: new WebCryptoHashProvider(),
-    });
+      hash: createWebCryptoHash(),
+    };
   });
 
   describe("writeFile - small files", () => {
     it("should write a small file as single node", async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const result = await controller.writeFile(data, "application/octet-stream");
+      const result = await writeFile(ctx, data, "application/octet-stream");
 
       expect(result.key).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(result.size).toBe(5);
@@ -32,7 +41,7 @@ describe("CasController", () => {
 
     it("should write empty file", async () => {
       const data = new Uint8Array([]);
-      const result = await controller.writeFile(data, "text/plain");
+      const result = await writeFile(ctx, data, "text/plain");
 
       expect(result.size).toBe(0);
       expect(result.nodeCount).toBe(1);
@@ -40,8 +49,8 @@ describe("CasController", () => {
 
     it("should produce consistent hashes for same content", async () => {
       const data = new Uint8Array([10, 20, 30, 40, 50]);
-      const result1 = await controller.writeFile(data, "application/octet-stream");
-      const result2 = await controller.writeFile(data, "application/octet-stream");
+      const result1 = await writeFile(ctx, data, "application/octet-stream");
+      const result2 = await writeFile(ctx, data, "application/octet-stream");
 
       expect(result1.key).toBe(result2.key);
     });
@@ -49,12 +58,11 @@ describe("CasController", () => {
 
   describe("writeFile - large files with B-Tree", () => {
     it("should split file larger than node limit", async () => {
-      // Use smaller node limit for testing
-      const smallController = new CasController({
+      const smallCtx: CasContext = {
         storage,
-        hash: new WebCryptoHashProvider(),
+        hash: createWebCryptoHash(),
         nodeLimit: 1024, // 1KB limit
-      });
+      };
 
       // Create 2KB data
       const data = new Uint8Array(2048);
@@ -62,7 +70,7 @@ describe("CasController", () => {
         data[i] = i % 256;
       }
 
-      const result = await smallController.writeFile(data, "application/octet-stream");
+      const result = await writeFile(smallCtx, data, "application/octet-stream");
 
       expect(result.size).toBe(2048);
       expect(result.nodeCount).toBeGreaterThan(1);
@@ -70,12 +78,11 @@ describe("CasController", () => {
     });
 
     it("should create multi-level tree for very large files", async () => {
-      // Use very small node limit to force multi-level tree
-      const tinyController = new CasController({
+      const tinyCtx: CasContext = {
         storage,
-        hash: new WebCryptoHashProvider(),
+        hash: createWebCryptoHash(),
         nodeLimit: 128, // Very small limit
-      });
+      };
 
       // Create data that requires depth > 2
       const L = computeUsableSpace(128);
@@ -85,7 +92,7 @@ describe("CasController", () => {
         data[i] = i % 256;
       }
 
-      const result = await tinyController.writeFile(data, "application/octet-stream");
+      const result = await writeFile(tinyCtx, data, "application/octet-stream");
 
       expect(result.size).toBe(dataSize);
       expect(result.nodeCount).toBeGreaterThan(2);
@@ -95,18 +102,18 @@ describe("CasController", () => {
   describe("readFile", () => {
     it("should read back small file correctly", async () => {
       const original = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-      const result = await controller.writeFile(original, "application/octet-stream");
+      const result = await writeFile(ctx, original, "application/octet-stream");
 
-      const retrieved = await controller.readFile(result.key);
+      const retrieved = await readFile(ctx, result.key);
       expect(retrieved).toEqual(original);
     });
 
     it("should read back large file correctly", async () => {
-      const smallController = new CasController({
+      const smallCtx: CasContext = {
         storage,
-        hash: new WebCryptoHashProvider(),
+        hash: createWebCryptoHash(),
         nodeLimit: 256,
-      });
+      };
 
       // Create data larger than node limit
       const original = new Uint8Array(1000);
@@ -114,14 +121,14 @@ describe("CasController", () => {
         original[i] = i % 256;
       }
 
-      const result = await smallController.writeFile(original, "application/octet-stream");
-      const retrieved = await smallController.readFile(result.key);
+      const result = await writeFile(smallCtx, original, "application/octet-stream");
+      const retrieved = await readFile(smallCtx, result.key);
 
       expect(retrieved).toEqual(original);
     });
 
     it("should return null for non-existent key", async () => {
-      const result = await controller.readFile("sha256:" + "a".repeat(64));
+      const result = await readFile(ctx, "sha256:" + "a".repeat(64));
       expect(result).toBeNull();
     });
   });
@@ -129,10 +136,10 @@ describe("CasController", () => {
   describe("makeCollection", () => {
     it("should make a collection with entries", async () => {
       // First write some files
-      const file1 = await controller.writeFile(new Uint8Array([1, 2, 3]), "text/plain");
-      const file2 = await controller.writeFile(new Uint8Array([4, 5, 6]), "text/plain");
+      const file1 = await writeFile(ctx, new Uint8Array([1, 2, 3]), "text/plain");
+      const file2 = await writeFile(ctx, new Uint8Array([4, 5, 6]), "text/plain");
 
-      const collectionKey = await controller.makeCollection([
+      const collectionKey = await makeCollection(ctx, [
         { name: "file1.txt", key: file1.key },
         { name: "file2.txt", key: file2.key },
       ]);
@@ -142,42 +149,42 @@ describe("CasController", () => {
     });
 
     it("should make empty collection", async () => {
-      const key = await controller.makeCollection([]);
+      const key = await makeCollection(ctx, []);
       expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
     });
 
     it("should compute size as sum of children logical sizes", async () => {
       // Create files with known sizes
-      const file1 = await controller.writeFile(new Uint8Array(100), "text/plain"); // 100 bytes
-      const file2 = await controller.writeFile(new Uint8Array(200), "text/plain"); // 200 bytes
+      const file1 = await writeFile(ctx, new Uint8Array(100), "text/plain"); // 100 bytes
+      const file2 = await writeFile(ctx, new Uint8Array(200), "text/plain"); // 200 bytes
 
-      const collectionKey = await controller.makeCollection([
+      const collectionKey = await makeCollection(ctx, [
         { name: "a.txt", key: file1.key },
         { name: "b.txt", key: file2.key },
       ]);
 
-      const node = await controller.getNode(collectionKey);
+      const node = await getNode(ctx, collectionKey);
       expect(node).not.toBeNull();
       expect(node!.size).toBe(300); // 100 + 200
     });
 
     it("should compute nested collection size correctly", async () => {
       // Create files
-      const file1 = await controller.writeFile(new Uint8Array(50), "text/plain");
-      const file2 = await controller.writeFile(new Uint8Array(150), "text/plain");
+      const file1 = await writeFile(ctx, new Uint8Array(50), "text/plain");
+      const file2 = await writeFile(ctx, new Uint8Array(150), "text/plain");
 
       // Create inner collection with file1
-      const innerCollection = await controller.makeCollection([
+      const innerCollection = await makeCollection(ctx, [
         { name: "inner.txt", key: file1.key },
       ]);
 
       // Create outer collection with inner collection and file2
-      const outerCollection = await controller.makeCollection([
+      const outerCollection = await makeCollection(ctx, [
         { name: "subdir", key: innerCollection },
         { name: "outer.txt", key: file2.key },
       ]);
 
-      const node = await controller.getNode(outerCollection);
+      const node = await getNode(ctx, outerCollection);
       expect(node).not.toBeNull();
       // Outer size = inner collection size (50) + file2 size (150) = 200
       expect(node!.size).toBe(200);
@@ -186,8 +193,8 @@ describe("CasController", () => {
 
   describe("getTree", () => {
     it("should return tree structure for single file", async () => {
-      const result = await controller.writeFile(new Uint8Array([1, 2, 3]), "image/png");
-      const tree = await controller.getTree(result.key);
+      const result = await writeFile(ctx, new Uint8Array([1, 2, 3]), "image/png");
+      const tree = await getTree(ctx, result.key);
 
       expect(Object.keys(tree.nodes)).toHaveLength(1);
       const node = tree.nodes[result.key];
@@ -198,14 +205,14 @@ describe("CasController", () => {
     });
 
     it("should return tree structure for collection", async () => {
-      const file1 = await controller.writeFile(new Uint8Array([1, 2, 3]), "text/plain");
-      const file2 = await controller.writeFile(new Uint8Array([4, 5, 6]), "text/plain");
-      const collectionKey = await controller.makeCollection([
+      const file1 = await writeFile(ctx, new Uint8Array([1, 2, 3]), "text/plain");
+      const file2 = await writeFile(ctx, new Uint8Array([4, 5, 6]), "text/plain");
+      const collectionKey = await makeCollection(ctx, [
         { name: "a.txt", key: file1.key },
         { name: "b.txt", key: file2.key },
       ]);
 
-      const tree = await controller.getTree(collectionKey);
+      const tree = await getTree(ctx, collectionKey);
 
       expect(Object.keys(tree.nodes)).toHaveLength(3);
       const collectionNode = tree.nodes[collectionKey];
@@ -219,24 +226,25 @@ describe("CasController", () => {
       // Create nested structure
       const files = await Promise.all(
         [1, 2, 3, 4, 5].map((i) =>
-          controller.writeFile(new Uint8Array([i]), "text/plain")
+          writeFile(ctx, new Uint8Array([i]), "text/plain")
         )
       );
 
-      const collectionKey = await controller.makeCollection(
+      const collectionKey = await makeCollection(
+        ctx,
         files.map((f, i) => ({ name: `file${i}.txt`, key: f.key }))
       );
 
       // Request only 2 nodes
-      const tree = await controller.getTree(collectionKey, 2);
+      const tree = await getTree(ctx, collectionKey, 2);
       expect(Object.keys(tree.nodes).length).toBeLessThanOrEqual(2);
     });
   });
 
   describe("getNode", () => {
     it("should return decoded node", async () => {
-      const result = await controller.writeFile(new Uint8Array([1, 2, 3]), "image/png");
-      const node = await controller.getNode(result.key);
+      const result = await writeFile(ctx, new Uint8Array([1, 2, 3]), "image/png");
+      const node = await getNode(ctx, result.key);
 
       expect(node).not.toBeNull();
       expect(node!.kind).toBe("file");
@@ -245,7 +253,7 @@ describe("CasController", () => {
     });
 
     it("should return null for missing node", async () => {
-      const node = await controller.getNode("sha256:" + "0".repeat(64));
+      const node = await getNode(ctx, "sha256:" + "0".repeat(64));
       expect(node).toBeNull();
     });
   });
@@ -253,9 +261,9 @@ describe("CasController", () => {
   describe("openFileStream", () => {
     it("should stream file content", async () => {
       const original = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-      const result = await controller.writeFile(original, "application/octet-stream");
+      const result = await writeFile(ctx, original, "application/octet-stream");
 
-      const stream = controller.openFileStream(result.key);
+      const stream = openFileStream(ctx, result.key);
       const reader = stream.getReader();
       const chunks: Uint8Array[] = [];
 
@@ -278,19 +286,19 @@ describe("CasController", () => {
     });
 
     it("should stream large multi-node file", async () => {
-      const smallController = new CasController({
+      const smallCtx: CasContext = {
         storage,
-        hash: new WebCryptoHashProvider(),
+        hash: createWebCryptoHash(),
         nodeLimit: 256,
-      });
+      };
 
       const original = new Uint8Array(1000);
       for (let i = 0; i < original.length; i++) {
         original[i] = i % 256;
       }
 
-      const result = await smallController.writeFile(original, "application/octet-stream");
-      const stream = smallController.openFileStream(result.key);
+      const result = await writeFile(smallCtx, original, "application/octet-stream");
+      const stream = openFileStream(smallCtx, result.key);
       const reader = stream.getReader();
       const chunks: Uint8Array[] = [];
 
@@ -315,21 +323,21 @@ describe("CasController", () => {
   describe("putFileNode", () => {
     it("should put raw file node", async () => {
       const data = new Uint8Array([100, 200, 255]);
-      const key = await controller.putFileNode(data, "application/octet-stream");
+      const key = await putFileNode(ctx, data, "application/octet-stream");
 
       expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
-      expect(await controller.has(key)).toBe(true);
+      expect(await has(ctx, key)).toBe(true);
     });
   });
 
   describe("has", () => {
     it("should return true for existing key", async () => {
-      const result = await controller.writeFile(new Uint8Array([1]), "text/plain");
-      expect(await controller.has(result.key)).toBe(true);
+      const result = await writeFile(ctx, new Uint8Array([1]), "text/plain");
+      expect(await has(ctx, result.key)).toBe(true);
     });
 
     it("should return false for non-existing key", async () => {
-      expect(await controller.has("sha256:" + "f".repeat(64))).toBe(false);
+      expect(await has(ctx, "sha256:" + "f".repeat(64))).toBe(false);
     });
   });
 });

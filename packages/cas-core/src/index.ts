@@ -111,9 +111,6 @@ export {
   type TreeNodeInfo,
   type TreeResponse,
   type WriteResult,
-  // Legacy class wrapper
-  CasController,
-  type CasControllerConfig,
 } from "./controller.ts";
 
 // Providers - Functional API
@@ -122,9 +119,6 @@ export {
   createMemoryStorage,
   createWebCryptoHash,
   type MemoryStorage,
-  // Legacy class wrappers
-  MemoryStorageProvider,
-  WebCryptoHashProvider,
 } from "./providers.ts";
 
 // Validation

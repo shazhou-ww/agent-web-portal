@@ -68,14 +68,15 @@ export type {
 export type {
   StorageProvider,
   HashProvider,
+  MemoryStorage,
   CasNode,
   NodeKind,
 } from "@agent-web-portal/cas-core";
 
 // Re-export useful utilities from cas-core
 export {
-  MemoryStorageProvider,
-  WebCryptoHashProvider,
+  createMemoryStorage,
+  createWebCryptoHash,
   hashToKey,
   keyToHash,
   decodeNode,

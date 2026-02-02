@@ -5,11 +5,11 @@
 import { describe, expect, it } from "bun:test";
 import { MAGIC } from "../src/constants.ts";
 import { encodeDictNode, encodeFileNode } from "../src/node.ts";
-import { MemoryStorageProvider, WebCryptoHashProvider } from "../src/providers.ts";
+import { createMemoryStorage, createWebCryptoHash } from "../src/providers.ts";
 import { validateNode, validateNodeStructure } from "../src/validation.ts";
 import { hashToKey } from "../src/utils.ts";
 
-const hashProvider = new WebCryptoHashProvider();
+const hashProvider = createWebCryptoHash();
 
 describe("Validation", () => {
   describe("validateNodeStructure", () => {
@@ -458,7 +458,7 @@ describe("Validation", () => {
       const child = await encodeFileNode({ data: new Uint8Array([1]) }, hashProvider);
       const childKey = hashToKey(child.hash);
 
-      const storage = new MemoryStorageProvider();
+      const storage = createMemoryStorage();
       await storage.put(childKey, child.bytes);
 
       const dict = await encodeDictNode(
@@ -497,7 +497,7 @@ describe("Validation", () => {
       const child1Key = hashToKey(child1.hash);
       const child2Key = hashToKey(child2.hash);
 
-      const storage = new MemoryStorageProvider();
+      const storage = createMemoryStorage();
       await storage.put(child1Key, child1.bytes);
       await storage.put(child2Key, child2.bytes);
 

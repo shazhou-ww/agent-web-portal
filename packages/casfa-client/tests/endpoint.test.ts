@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { CasfaEndpoint } from "../src/endpoint";
-import { MemoryStorageProvider } from "@agent-web-portal/cas-core";
+import { createMemoryStorage, type MemoryStorage } from "@agent-web-portal/cas-core";
 import type { EndpointInfo } from "../src/types";
 
 // Mock fetch for testing
@@ -34,7 +34,7 @@ describe("CasfaEndpoint", () => {
     });
 
     it("should accept cache provider", () => {
-      const cache = new MemoryStorageProvider();
+      const cache = createMemoryStorage();
       const endpoint = new CasfaEndpoint({
         url: testEndpointUrl,
         auth: testAuth,
@@ -104,7 +104,7 @@ describe("CasfaEndpoint", () => {
 
   describe("resolvePath", () => {
     it("should return root key for empty path", async () => {
-      const cache = new MemoryStorageProvider();
+      const cache = createMemoryStorage();
       const endpoint = new CasfaEndpoint({
         url: testEndpointUrl,
         auth: testAuth,
@@ -116,7 +116,7 @@ describe("CasfaEndpoint", () => {
     });
 
     it("should return root key for dot path", async () => {
-      const cache = new MemoryStorageProvider();
+      const cache = createMemoryStorage();
       const endpoint = new CasfaEndpoint({
         url: testEndpointUrl,
         auth: testAuth,
@@ -128,7 +128,7 @@ describe("CasfaEndpoint", () => {
     });
 
     it("should return root key for slash path", async () => {
-      const cache = new MemoryStorageProvider();
+      const cache = createMemoryStorage();
       const endpoint = new CasfaEndpoint({
         url: testEndpointUrl,
         auth: testAuth,
@@ -141,11 +141,11 @@ describe("CasfaEndpoint", () => {
   });
 });
 
-describe("MemoryStorageProvider", () => {
-  let storage: MemoryStorageProvider;
+describe("createMemoryStorage", () => {
+  let storage: MemoryStorage;
 
   beforeEach(() => {
-    storage = new MemoryStorageProvider();
+    storage = createMemoryStorage();
   });
 
   it("should store and retrieve data", async () => {

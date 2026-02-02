@@ -74,10 +74,10 @@ console.log(`Share URL: https://app.example.com/view?ticket=${ticket.id}`);
 ### With Local Caching
 
 ```typescript
-import { CasfaClient, MemoryStorageProvider } from "@aspect/casfa-client";
+import { CasfaClient, createMemoryStorage } from "@aspect/casfa-client";
 
 // Use memory cache (or provide IndexedDB/FileSystem provider)
-const cache = new MemoryStorageProvider();
+const cache = createMemoryStorage();
 
 const endpoint = await CasfaClient.fromTicket(
   "https://api.example.com",
