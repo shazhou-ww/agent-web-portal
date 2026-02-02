@@ -105,7 +105,7 @@ export interface ListAgentTokensResponse {
 // ============================================================================
 
 export class AuthController {
-  constructor(private deps: Dependencies) {}
+  constructor(private deps: Dependencies) { }
 
   // ==========================================================================
   // AWP Client Management

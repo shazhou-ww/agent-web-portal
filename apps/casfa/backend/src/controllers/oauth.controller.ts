@@ -50,11 +50,11 @@ export interface MeResponse {
 export class OAuthController {
   constructor(
     private deps: Dependencies,
-    private authService?: { 
+    private authService?: {
       login(req: LoginRequest): Promise<unknown>;
       refresh(req: RefreshRequest): Promise<unknown>;
     }
-  ) {}
+  ) { }
 
   /**
    * GET /oauth/config - Public Cognito config for frontend

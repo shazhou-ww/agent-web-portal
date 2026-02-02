@@ -44,7 +44,7 @@ export interface UpdateCommitRequest {
 // ============================================================================
 
 export class CommitsController {
-  constructor(private deps: Dependencies) {}
+  constructor(private deps: Dependencies) { }
 
   /**
    * GET /commits - List commits for realm

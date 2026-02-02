@@ -9,12 +9,12 @@
  *   DYNAMODB_ENDPOINT=http://localhost:8000 bun run scripts/create-local-tables.ts
  *
  * Env:
- *   DYNAMODB_ENDPOINT - default http://localhost:8000
- *   TOKENS_TABLE      - default awp-cas-tokens
- *   CAS_REALM_TABLE   - default awp-cas-cas-realm
- *   CAS_DAG_TABLE     - default awp-cas-cas-dag
- *   CAS_REFCOUNT_TABLE - default awp-cas-refcount
- *   CAS_USAGE_TABLE    - default awp-cas-usage
+ *   DYNAMODB_ENDPOINT  - default http://localhost:8000
+ *   TOKENS_TABLE       - default casfa-tokens
+ *   CAS_REALM_TABLE    - default casfa-cas-realm
+ *   CAS_DAG_TABLE      - default casfa-cas-dag
+ *   CAS_REFCOUNT_TABLE - default casfa-refcount
+ *   CAS_USAGE_TABLE    - default casfa-usage
  */
 
 import {
@@ -24,11 +24,11 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 const endpoint = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8000";
-const tokensTable = process.env.TOKENS_TABLE ?? "awp-cas-tokens";
-const realmTable = process.env.CAS_REALM_TABLE ?? "awp-cas-cas-realm";
-const dagTable = process.env.CAS_DAG_TABLE ?? "awp-cas-cas-dag";
-const refCountTable = process.env.CAS_REFCOUNT_TABLE ?? "awp-cas-refcount";
-const usageTable = process.env.CAS_USAGE_TABLE ?? "awp-cas-usage";
+const tokensTable = process.env.TOKENS_TABLE ?? "casfa-tokens";
+const realmTable = process.env.CAS_REALM_TABLE ?? "casfa-cas-realm";
+const dagTable = process.env.CAS_DAG_TABLE ?? "casfa-cas-dag";
+const refCountTable = process.env.CAS_REFCOUNT_TABLE ?? "casfa-refcount";
+const usageTable = process.env.CAS_USAGE_TABLE ?? "casfa-usage";
 
 const client = new DynamoDBClient({
   region: process.env.AWS_REGION ?? "us-east-1",

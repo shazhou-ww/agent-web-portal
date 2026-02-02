@@ -67,15 +67,15 @@ export interface Dependencies {
   commitsDb: ICommitsDb;
   depotDb: IDepotDb;
   casStorage: CasStorageInterface;
-  
+
   // Auth stores
   agentTokensDb: IAgentTokensDb;
   pendingAuthStore: IPendingAuthStore;
   pubkeyStore: IPubkeyStore;
-  
+
   // Optional: User roles (only available with DynamoDB)
   userRolesDb?: IUserRolesDb;
-  
+
   // Config
   serverConfig: ServerConfig;
   cognitoConfig?: CognitoConfig;

@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { type Subprocess, spawn } from "bun";
+import { type Subprocess, spawn, spawnSync } from "bun";
 
 const ROOT_DIR = join(import.meta.dir, "..");
 const REPO_ROOT = join(ROOT_DIR, "../..");
@@ -131,11 +131,35 @@ async function cleanup(): Promise<void> {
   process.exit(0);
 }
 
+async function ensureLocalTables(): Promise<void> {
+  const endpoint = process.env.DYNAMODB_ENDPOINT || "http://localhost:8000";
+  console.log(colorize(`[setup] Checking DynamoDB at ${endpoint}...`, "yellow"));
+
+  // Try to create tables (script handles "already exists" gracefully)
+  const result = spawnSync({
+    cmd: ["bun", "run", "create-local-tables"],
+    cwd: ROOT_DIR,
+    stdout: "inherit",
+    stderr: "inherit",
+    env: process.env,
+  });
+
+  if (result.exitCode !== 0) {
+    console.log(colorize("[setup] Warning: Could not create tables. Is DynamoDB running?", "yellow"));
+    console.log(colorize("[setup] Run 'bun run setup:local' to start DynamoDB Local", "yellow"));
+  }
+}
+
 async function main(): Promise<void> {
   console.log();
   console.log("╔════════════════════════════════════════════════════════════╗");
   console.log("║         CASFA - Development Environment                    ║");
   console.log("╚════════════════════════════════════════════════════════════╝");
+  console.log();
+
+  // Ensure local DynamoDB tables exist
+  await ensureLocalTables();
+
   console.log();
   console.log(colorize("Starting development servers...", "green"));
   console.log();

@@ -75,7 +75,7 @@ const MAIN_DEPOT_NAME = "main";
 // ============================================================================
 
 export class DepotController {
-  constructor(private deps: Dependencies) {}
+  constructor(private deps: Dependencies) { }
 
   /**
    * Ensure the empty collection exists in storage
@@ -97,7 +97,7 @@ export class DepotController {
         );
       }
     }
-    
+
     // Ensure ownership
     const hasOwnership = await this.deps.ownershipDb.hasOwnership(
       realm,

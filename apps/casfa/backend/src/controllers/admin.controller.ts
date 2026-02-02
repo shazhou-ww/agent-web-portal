@@ -53,7 +53,7 @@ export class AdminController {
       userPoolId: string,
       region: string
     ) => Promise<Map<string, { email?: string; name?: string }>>
-  ) {}
+  ) { }
 
   /**
    * GET /admin/users - List all users with roles
