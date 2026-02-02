@@ -3,13 +3,17 @@
  *
  * Strict validation for server-side use:
  * - Magic and header structure
+ * - Header.length matches actual buffer length
+ * - Reserved bytes are all zero
  * - Hash matches content
  * - All children exist
- * - Pascal strings are valid
- * - Size is correct for dict nodes
+ * - Pascal strings are valid (names, contentType)
+ * - Content-type and data sections are within bounds
+ * - d-node children are sorted by name (UTF-8 byte order)
+ * - Size is correct for dict nodes (sum of children sizes)
  */
 
-import { FLAGS, HASH_SIZE, HEADER_SIZE, MAGIC_BYTES, NODE_TYPE } from "./constants.ts";
+import { DATA_ALIGNMENT, FLAGS, HASH_SIZE, HEADER_SIZE, MAGIC_BYTES, NODE_TYPE } from "./constants.ts";
 import { decodeHeader, getContentTypeLength, getNodeType } from "./header.ts";
 import type { HashProvider, NodeKind } from "./types.ts";
 import { hashToKey } from "./utils.ts";
@@ -67,6 +71,76 @@ function validatePascalString(
  * Validate multiple Pascal strings starting at offset
  */
 function validatePascalStrings(
+  buffer: Uint8Array,
+  offset: number,
+  count: number
+): [valid: boolean, error?: string] {
+  let currentOffset = offset;
+
+  for (let i = 0; i < count; i++) {
+    const [valid, bytesConsumed, error] = validatePascalString(buffer, currentOffset);
+    if (!valid) {
+      return [false, `Name ${i}: ${error}`];
+    }
+
+    // Move to next string
+    currentOffset += bytesConsumed;
+  }
+
+  return [true];
+}
+
+/**
+ * Validate multiple Pascal strings and return the decoded names
+ */
+function validatePascalStringsWithNames(
+  buffer: Uint8Array,
+  offset: number,
+  count: number
+): [valid: boolean, error?: string, names?: string[]] {
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const names: string[] = [];
+  let currentOffset = offset;
+
+  for (let i = 0; i < count; i++) {
+    const [valid, bytesConsumed, error] = validatePascalString(buffer, currentOffset);
+    if (!valid) {
+      return [false, `Name ${i}: ${error}`];
+    }
+
+    // Decode the name
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const length = view.getUint16(currentOffset, true);
+    try {
+      const name = decoder.decode(buffer.slice(currentOffset + 2, currentOffset + 2 + length));
+      names.push(name);
+    } catch {
+      return [false, `Name ${i}: Invalid UTF-8`];
+    }
+
+    // Move to next string
+    currentOffset += bytesConsumed;
+  }
+
+  return [true, undefined, names];
+}
+
+/**
+ * Compare two byte arrays lexicographically
+ * Returns negative if a < b, 0 if equal, positive if a > b
+ */
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const minLen = Math.min(a.length, b.length);
+  for (let i = 0; i < minLen; i++) {
+    if (a[i]! !== b[i]!) return a[i]! - b[i]!;
+  }
+  return a.length - b.length;
+}
+
+/**
+ * Validate multiple Pascal strings starting at offset (no name extraction)
+ */
+function validatePascalStringsNoExtract(
   buffer: Uint8Array,
   offset: number,
   count: number
@@ -150,8 +224,29 @@ export async function validateNode(
   }
 
   const isDict = nodeType === NODE_TYPE.DICT;
+  const isFile = nodeType === NODE_TYPE.FILE;
+  const isSuccessor = nodeType === NODE_TYPE.SUCCESSOR;
 
-  // 4. Validate children section is within bounds
+  // 4. Validate header.length matches actual buffer length
+  if (header.length !== bytes.length) {
+    return {
+      valid: false,
+      error: `Length mismatch: header.length=${header.length}, actual=${bytes.length}`,
+    };
+  }
+
+  // 5. Validate reserved bytes are zero (bytes 24-31)
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const reserved1 = view.getUint32(24, true);
+  const reserved2 = view.getUint32(28, true);
+  if (reserved1 !== 0 || reserved2 !== 0) {
+    return {
+      valid: false,
+      error: `Reserved bytes not zero: [${reserved1}, ${reserved2}]`,
+    };
+  }
+
+  // 6. Validate children section is within bounds
   const childrenEnd = HEADER_SIZE + header.count * HASH_SIZE;
   if (childrenEnd > bytes.length) {
     return {
@@ -160,7 +255,7 @@ export async function validateNode(
     };
   }
 
-  // 5. Extract child keys
+  // 7. Extract child keys
   const childKeys: string[] = [];
   for (let i = 0; i < header.count; i++) {
     const offset = HEADER_SIZE + i * HASH_SIZE;
@@ -168,17 +263,89 @@ export async function validateNode(
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 6. Validate Pascal strings for d-node names
-  if (isDict && header.count > 0) {
-    // Names section starts right after children
-    const namesOffset = childrenEnd;
-    const [valid, error] = validatePascalStrings(bytes, namesOffset, header.count);
-    if (!valid) {
-      return { valid: false, error: `Invalid names: ${error}` };
+  // 8. Validate CT_LENGTH field
+  const ctLength = getContentTypeLength(header.flags);
+
+  // 8a. For non-f-node (d-node, s-node), CT_LENGTH must be 0
+  if (!isFile && ctLength !== 0) {
+    return {
+      valid: false,
+      error: `Non-file node must have CT_LENGTH=0, got ${ctLength}`,
+    };
+  }
+
+  // 8b. For f-node, validate content-type section and minimal slot requirement
+  if (isFile && ctLength > 0) {
+    const ctEnd = childrenEnd + ctLength;
+    if (ctEnd > bytes.length) {
+      return {
+        valid: false,
+        error: `Content-type section exceeds buffer (need ${ctEnd}, have ${bytes.length})`,
+      };
+    }
+
+    // Read actual content-type to verify minimal slot (no over-allocation)
+    const ctSlice = bytes.subarray(childrenEnd, ctEnd);
+    // Find actual length (null-terminated or full slot)
+    let actualCtLen = ctSlice.indexOf(0);
+    if (actualCtLen === -1) actualCtLen = ctLength;
+
+    // Check minimal slot requirement for hash uniqueness
+    const minimalSlot = actualCtLen === 0 ? 0 : actualCtLen <= 16 ? 16 : actualCtLen <= 32 ? 32 : 64;
+    if (ctLength !== minimalSlot) {
+      return {
+        valid: false,
+        error: `Content-type slot over-allocated: length ${actualCtLen} requires slot ${minimalSlot}, got ${ctLength}`,
+      };
     }
   }
 
-  // 7. Verify hash
+  // 9. Validate data section for f-node and s-node
+  if (isFile || isSuccessor) {
+    let dataOffset: number;
+    if (isFile) {
+      dataOffset = childrenEnd + ctLength;
+    } else {
+      // s-node: 16-byte aligned
+      dataOffset = Math.ceil(childrenEnd / DATA_ALIGNMENT) * DATA_ALIGNMENT;
+    }
+    if (dataOffset > bytes.length) {
+      return {
+        valid: false,
+        error: `Data offset exceeds buffer (offset=${dataOffset}, length=${bytes.length})`,
+      };
+    }
+  }
+
+  // 10. Validate Pascal strings for d-node names
+  let childNames: string[] = [];
+  if (isDict && header.count > 0) {
+    // Names section starts right after children
+    const namesOffset = childrenEnd;
+    const [valid, error, names] = validatePascalStringsWithNames(bytes, namesOffset, header.count);
+    if (!valid) {
+      return { valid: false, error: `Invalid names: ${error}` };
+    }
+    childNames = names!;
+  }
+
+  // 11. Validate d-node children are sorted by name (UTF-8 byte order)
+  if (isDict && childNames.length > 1) {
+    const textEncoder = new TextEncoder();
+    for (let i = 0; i < childNames.length - 1; i++) {
+      const current = textEncoder.encode(childNames[i]!);
+      const next = textEncoder.encode(childNames[i + 1]!);
+      const cmp = compareBytes(current, next);
+      if (cmp >= 0) {
+        return {
+          valid: false,
+          error: `Dict children not sorted: "${childNames[i]}" should come before "${childNames[i + 1]}"`,
+        };
+      }
+    }
+  }
+
+  // 12. Verify hash
   const actualHash = await hashProvider.sha256(bytes);
   const actualKey = hashToKey(actualHash);
   if (actualKey !== expectedKey) {
@@ -188,7 +355,7 @@ export async function validateNode(
     };
   }
 
-  // 8. Check children exist (if checker provided)
+  // 13. Check children exist (if checker provided)
   if (existsChecker && childKeys.length > 0) {
     const missing: string[] = [];
     for (const key of childKeys) {
@@ -208,7 +375,7 @@ export async function validateNode(
     }
   }
 
-  // 9. Validate dict node size (sum of children sizes)
+  // 14. Validate dict node size (sum of children sizes)
   if (isDict && getSize && childKeys.length > 0) {
     let expectedSize = 0;
     for (const key of childKeys) {
@@ -288,14 +455,35 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
   }
 
   const isDict = nodeType === NODE_TYPE.DICT;
+  const isFile = nodeType === NODE_TYPE.FILE;
+  const isSuccessor = nodeType === NODE_TYPE.SUCCESSOR;
 
-  // 4. Validate children section
+  // 4. Validate header.length matches actual buffer length
+  if (header.length !== bytes.length) {
+    return {
+      valid: false,
+      error: `Length mismatch: header.length=${header.length}, actual=${bytes.length}`,
+    };
+  }
+
+  // 5. Validate reserved bytes are zero (bytes 24-31)
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const reserved1 = view.getUint32(24, true);
+  const reserved2 = view.getUint32(28, true);
+  if (reserved1 !== 0 || reserved2 !== 0) {
+    return {
+      valid: false,
+      error: `Reserved bytes not zero: [${reserved1}, ${reserved2}]`,
+    };
+  }
+
+  // 6. Validate children section
   const childrenEnd = HEADER_SIZE + header.count * HASH_SIZE;
   if (childrenEnd > bytes.length) {
     return { valid: false, error: "Children section exceeds buffer" };
   }
 
-  // 5. Extract child keys
+  // 7. Extract child keys
   const childKeys: string[] = [];
   for (let i = 0; i < header.count; i++) {
     const offset = HEADER_SIZE + i * HASH_SIZE;
@@ -303,12 +491,82 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 6. Validate Pascal strings for d-node names
+  // 8. Validate CT_LENGTH field
+  const ctLength = getContentTypeLength(header.flags);
+
+  // 8a. For non-f-node (d-node, s-node), CT_LENGTH must be 0
+  if (!isFile && ctLength !== 0) {
+    return {
+      valid: false,
+      error: `Non-file node must have CT_LENGTH=0, got ${ctLength}`,
+    };
+  }
+
+  // 8b. For f-node, validate content-type section and minimal slot requirement
+  if (isFile && ctLength > 0) {
+    const ctEnd = childrenEnd + ctLength;
+    if (ctEnd > bytes.length) {
+      return {
+        valid: false,
+        error: `Content-type section exceeds buffer (need ${ctEnd}, have ${bytes.length})`,
+      };
+    }
+
+    // Read actual content-type to verify minimal slot (no over-allocation)
+    const ctSlice = bytes.subarray(childrenEnd, ctEnd);
+    // Find actual length (null-terminated or full slot)
+    let actualCtLen = ctSlice.indexOf(0);
+    if (actualCtLen === -1) actualCtLen = ctLength;
+
+    // Check minimal slot requirement for hash uniqueness
+    const minimalSlot = actualCtLen === 0 ? 0 : actualCtLen <= 16 ? 16 : actualCtLen <= 32 ? 32 : 64;
+    if (ctLength !== minimalSlot) {
+      return {
+        valid: false,
+        error: `Content-type slot over-allocated: length ${actualCtLen} requires slot ${minimalSlot}, got ${ctLength}`,
+      };
+    }
+  }
+
+  // 9. Validate data section for f-node and s-node
+  if (isFile || isSuccessor) {
+    let dataOffset: number;
+    if (isFile) {
+      dataOffset = childrenEnd + ctLength;
+    } else {
+      // s-node: 16-byte aligned
+      dataOffset = Math.ceil(childrenEnd / DATA_ALIGNMENT) * DATA_ALIGNMENT;
+    }
+    if (dataOffset > bytes.length) {
+      return {
+        valid: false,
+        error: `Data offset exceeds buffer (offset=${dataOffset}, length=${bytes.length})`,
+      };
+    }
+  }
+
+  // 10. Validate Pascal strings for d-node names and check sorting
   if (isDict && header.count > 0) {
     const namesOffset = childrenEnd;
-    const [valid, error] = validatePascalStrings(bytes, namesOffset, header.count);
+    const [valid, error, names] = validatePascalStringsWithNames(bytes, namesOffset, header.count);
     if (!valid) {
       return { valid: false, error: `Invalid names: ${error}` };
+    }
+
+    // 11. Validate d-node children are sorted by name (UTF-8 byte order)
+    if (names!.length > 1) {
+      const textEncoder = new TextEncoder();
+      for (let i = 0; i < names!.length - 1; i++) {
+        const current = textEncoder.encode(names![i]!);
+        const next = textEncoder.encode(names![i + 1]!);
+        const cmp = compareBytes(current, next);
+        if (cmp >= 0) {
+          return {
+            valid: false,
+            error: `Dict children not sorted: "${names![i]}" should come before "${names![i + 1]}"`,
+          };
+        }
+      }
     }
   }
 
