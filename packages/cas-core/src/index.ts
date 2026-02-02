@@ -1,11 +1,19 @@
 /**
  * @agent-web-portal/cas-core
  *
- * CAS binary format encoding/decoding library
+ * CAS binary format encoding/decoding library (v2)
+ *
+ * Node types:
+ * - d-node (dict): directory with sorted children by name
+ * - s-node (successor): file continuation chunk
+ * - f-node (file): file top-level node with content-type
  */
 
 // Constants
 export {
+  CONTENT_TYPE_LENGTH,
+  CONTENT_TYPE_LENGTH_VALUES,
+  DATA_ALIGNMENT,
   DEFAULT_NODE_LIMIT,
   FLAGS,
   HASH_SIZE,
@@ -13,27 +21,35 @@ export {
   MAGIC,
   MAGIC_BYTES,
   MAX_SAFE_SIZE,
+  NODE_TYPE,
 } from "./constants.ts";
 
 // Types
 export type {
   CasHeader,
   CasNode,
-  ChunkInput,
-  CollectionInput,
+  DictNodeInput,
   EncodedNode,
+  FileNodeInput,
   HashProvider,
   LayoutNode,
   NodeKind,
   StorageProvider,
+  SuccessorNodeInput,
 } from "./types.ts";
 
 // Header encoding/decoding
 export {
-  createChunkHeader,
-  createCollectionHeader,
+  buildDictFlags,
+  buildFileFlags,
+  buildSuccessorFlags,
+  createDictHeader,
+  createFileHeader,
+  createSuccessorHeader,
   decodeHeader,
   encodeHeader,
+  getContentTypeLength,
+  getNodeType,
 } from "./header.ts";
 
 // Topology algorithms
@@ -50,11 +66,17 @@ export {
 // Node encoding/decoding
 export {
   decodeNode,
+  encodeDictNode,
+  encodeFileNode,
+  encodeFileNodeWithSize,
+  encodeSuccessorNode,
+  encodeSuccessorNodeWithSize,
+  getNodeKind,
+  isValidNode,
+  // Legacy aliases
   encodeChunk,
   encodeChunkWithSize,
   encodeCollection,
-  getNodeKind,
-  isValidNode,
 } from "./node.ts";
 
 // Utility functions

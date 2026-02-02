@@ -192,7 +192,7 @@ describe("CasController", () => {
       expect(Object.keys(tree.nodes)).toHaveLength(1);
       const node = tree.nodes[result.key];
       expect(node).toBeDefined();
-      expect(node!.kind).toBe("chunk");
+      expect(node!.kind).toBe("file");
       expect(node!.size).toBe(3);
       expect(node!.contentType).toBe("image/png");
     });
@@ -209,7 +209,7 @@ describe("CasController", () => {
 
       expect(Object.keys(tree.nodes)).toHaveLength(3);
       const collectionNode = tree.nodes[collectionKey];
-      expect(collectionNode!.kind).toBe("collection");
+      expect(collectionNode!.kind).toBe("dict");
       expect(collectionNode!.childNames).toEqual(["a.txt", "b.txt"]);
       // Collection size should be sum of children's logical sizes (3 + 3 = 6)
       expect(collectionNode!.size).toBe(6);
@@ -239,7 +239,7 @@ describe("CasController", () => {
       const node = await controller.getNode(result.key);
 
       expect(node).not.toBeNull();
-      expect(node!.kind).toBe("chunk");
+      expect(node!.kind).toBe("file");
       expect(node!.data).toEqual(new Uint8Array([1, 2, 3]));
       expect(node!.contentType).toBe("image/png");
     });
@@ -312,10 +312,10 @@ describe("CasController", () => {
     });
   });
 
-  describe("putChunk", () => {
-    it("should put raw chunk", async () => {
+  describe("putFileNode", () => {
+    it("should put raw file node", async () => {
       const data = new Uint8Array([100, 200, 255]);
-      const key = await controller.putChunk(data, "application/octet-stream");
+      const key = await controller.putFileNode(data, "application/octet-stream");
 
       expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(await controller.has(key)).toBe(true);

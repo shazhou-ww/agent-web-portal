@@ -1,11 +1,16 @@
 /**
- * CAS Binary Format Types
+ * CAS Binary Format Types (v2)
+ *
+ * Node types:
+ * - d-node (dict node): directory with sorted children by name
+ * - s-node (successor node): file continuation chunk
+ * - f-node (file node): file top-level node with content-type
  */
 
 /**
  * Node kind discriminator
  */
-export type NodeKind = "chunk" | "collection";
+export type NodeKind = "dict" | "file" | "successor";
 
 /**
  * Hash provider interface - injected by platform-specific implementations
@@ -48,47 +53,51 @@ export interface StorageProvider {
 
 /**
  * Parsed CAS node header (32 bytes)
+ *
+ * Layout:
+ * - 0-3:   magic (u32 LE) - 0x01534143
+ * - 4-7:   flags (u32 LE) - node type and content-type length
+ * - 8-15:  size (u64 LE) - logical size
+ * - 16-19: count (u32 LE) - number of children
+ * - 20-23: length (u32 LE) - total block length for validation
+ * - 24-31: reserved
  */
 export interface CasHeader {
   /** Magic number (0x01534143) */
   magic: number;
-  /** Flag bits */
+  /** Flag bits (node type in bits 0-1, content-type length in bits 2-3) */
   flags: number;
-  /** Number of children */
-  count: number;
   /** Logical size (file size for chunks, total size for collections) */
   size: number;
-  /** Offset to NAMES section (0 if none) */
-  namesOffset: number;
-  /** Offset to CONTENT-TYPE section (0 if none) */
-  typeOffset: number;
-  /** Offset to DATA section (0 if none) */
-  dataOffset: number;
+  /** Number of children */
+  count: number;
+  /** Total block length (for validation) */
+  length: number;
 }
 
 /**
  * Decoded CAS node
  */
 export interface CasNode {
-  /** Node type */
+  /** Node type: dict, file, or successor */
   kind: NodeKind;
   /** Logical size */
   size: number;
-  /** MIME type (optional) */
+  /** MIME type (f-node only) */
   contentType?: string;
   /** Child hashes (32 bytes each) */
   children?: Uint8Array[];
-  /** Child names (collection only, same order as children) */
+  /** Child names (d-node only, sorted by UTF-8 bytes) */
   childNames?: string[];
-  /** Raw data (chunk only) */
+  /** Raw data (f-node and s-node only) */
   data?: Uint8Array;
 }
 
 /**
- * Chunk node for encoding
+ * File node input for encoding (f-node)
  */
-export interface ChunkInput {
-  /** File content type */
+export interface FileNodeInput {
+  /** File content type (MIME type) */
   contentType?: string;
   /** Raw data bytes */
   data: Uint8Array;
@@ -97,16 +106,24 @@ export interface ChunkInput {
 }
 
 /**
- * Collection node for encoding
+ * Successor node input for encoding (s-node)
  */
-export interface CollectionInput {
-  /** Content type (typically "inode/directory" or omitted) */
-  contentType?: string;
+export interface SuccessorNodeInput {
+  /** Raw data bytes */
+  data: Uint8Array;
+  /** Child chunk hashes (for B-Tree internal nodes) */
+  children?: Uint8Array[];
+}
+
+/**
+ * Dict node input for encoding (d-node)
+ */
+export interface DictNodeInput {
   /** Total size of all descendants */
   size: number;
   /** Child hashes (32 bytes each) */
   children: Uint8Array[];
-  /** Child names (same order as children) */
+  /** Child names (will be sorted by UTF-8 bytes) */
   childNames: string[];
 }
 

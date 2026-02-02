@@ -1,17 +1,16 @@
 /**
- * CAS Node Header Encoding/Decoding
+ * CAS Node Header Encoding/Decoding (v2)
  *
  * Header layout (32 bytes):
- * - magic:       4 bytes (u32 LE) - 0x01534143 ("CAS\x01")
- * - flags:       4 bytes (u32 LE) - bit flags
- * - count:       4 bytes (u32 LE) - number of children
- * - size:        8 bytes (u64 LE) - logical size (stored as two u32s for JS compat)
- * - namesOffset: 4 bytes (u32 LE) - offset to NAMES section
- * - typeOffset:  4 bytes (u32 LE) - offset to CONTENT-TYPE section
- * - dataOffset:  4 bytes (u32 LE) - offset to DATA section
+ * - 0-3:   magic (u32 LE) - 0x01534143 ("CAS\x01")
+ * - 4-7:   flags (u32 LE) - node type (bits 0-1), content-type length (bits 2-3)
+ * - 8-15:  size (u64 LE) - logical size
+ * - 16-19: count (u32 LE) - number of children
+ * - 20-23: length (u32 LE) - total block length for validation
+ * - 24-31: reserved (must be 0)
  */
 
-import { FLAGS, HEADER_SIZE, MAGIC } from "./constants.ts";
+import { CONTENT_TYPE_LENGTH_VALUES, FLAGS, HEADER_SIZE, MAGIC, NODE_TYPE } from "./constants.ts";
 import type { CasHeader } from "./types.ts";
 
 /**
@@ -23,18 +22,17 @@ export function encodeHeader(header: CasHeader): Uint8Array {
 
   view.setUint32(0, header.magic, true); // LE
   view.setUint32(4, header.flags, true);
-  view.setUint32(8, header.count, true);
 
   // Size as u64 LE (split into low and high u32)
-  // For sizes up to 2^53-1, high bits will be small
-  const sizeLow = header.size >>> 0; // Low 32 bits
-  const sizeHigh = Math.floor(header.size / 0x100000000) >>> 0; // High 32 bits
-  view.setUint32(12, sizeLow, true);
-  view.setUint32(16, sizeHigh, true);
+  const sizeLow = header.size >>> 0;
+  const sizeHigh = Math.floor(header.size / 0x100000000) >>> 0;
+  view.setUint32(8, sizeLow, true);
+  view.setUint32(12, sizeHigh, true);
 
-  view.setUint32(20, header.namesOffset, true);
-  view.setUint32(24, header.typeOffset, true);
-  view.setUint32(28, header.dataOffset, true);
+  view.setUint32(16, header.count, true);
+  view.setUint32(20, header.length, true);
+
+  // Bytes 24-31 are reserved (already 0)
 
   return new Uint8Array(buffer);
 }
@@ -56,74 +54,104 @@ export function decodeHeader(buffer: Uint8Array): CasHeader {
   }
 
   const flags = view.getUint32(4, true);
-  const count = view.getUint32(8, true);
 
   // Size as u64 LE
-  const sizeLow = view.getUint32(12, true);
-  const sizeHigh = view.getUint32(16, true);
+  const sizeLow = view.getUint32(8, true);
+  const sizeHigh = view.getUint32(12, true);
   const size = sizeLow + sizeHigh * 0x100000000;
 
-  const namesOffset = view.getUint32(20, true);
-  const typeOffset = view.getUint32(24, true);
-  const dataOffset = view.getUint32(28, true);
+  const count = view.getUint32(16, true);
+  const length = view.getUint32(20, true);
 
   return {
     magic,
     flags,
+    size,
     count,
-    size,
-    namesOffset,
-    typeOffset,
-    dataOffset,
+    length,
   };
 }
 
 /**
- * Create a header for a chunk node
+ * Get node type from flags
  */
-export function createChunkHeader(
-  size: number,
-  childCount: number,
-  typeOffset: number,
-  dataOffset: number
-): CasHeader {
-  let flags = FLAGS.HAS_DATA;
-  if (typeOffset > 0) {
-    flags |= FLAGS.HAS_TYPE;
-  }
+export function getNodeType(flags: number): number {
+  return flags & FLAGS.TYPE_MASK;
+}
 
+/**
+ * Get content-type length from flags (only valid for f-node)
+ */
+export function getContentTypeLength(flags: number): number {
+  const index = (flags & FLAGS.CT_LENGTH_MASK) >> FLAGS.CT_LENGTH_SHIFT;
+  return CONTENT_TYPE_LENGTH_VALUES[index] ?? 0;
+}
+
+/**
+ * Build flags for a dict node (d-node)
+ */
+export function buildDictFlags(): number {
+  return NODE_TYPE.DICT;
+}
+
+/**
+ * Build flags for a successor node (s-node)
+ */
+export function buildSuccessorFlags(): number {
+  return NODE_TYPE.SUCCESSOR;
+}
+
+/**
+ * Build flags for a file node (f-node) with content-type length
+ */
+export function buildFileFlags(contentTypeLength: 0 | 16 | 32 | 64): number {
+  const lengthIndex = CONTENT_TYPE_LENGTH_VALUES.indexOf(contentTypeLength);
+  if (lengthIndex === -1) {
+    throw new Error(`Invalid content-type length: ${contentTypeLength}`);
+  }
+  return NODE_TYPE.FILE | (lengthIndex << FLAGS.CT_LENGTH_SHIFT);
+}
+
+/**
+ * Create a header for a dict node (d-node)
+ */
+export function createDictHeader(size: number, count: number, totalLength: number): CasHeader {
   return {
     magic: MAGIC,
-    flags,
-    count: childCount,
+    flags: buildDictFlags(),
     size,
-    namesOffset: 0,
-    typeOffset,
-    dataOffset,
+    count,
+    length: totalLength,
   };
 }
 
 /**
- * Create a header for a collection node
+ * Create a header for a successor node (s-node)
  */
-export function createCollectionHeader(
-  size: number,
-  childCount: number,
-  namesOffset: number,
-  typeOffset: number
-): CasHeader {
-  let flags = FLAGS.HAS_NAMES;
-  if (typeOffset > 0) {
-    flags |= FLAGS.HAS_TYPE;
-  }
-
+export function createSuccessorHeader(size: number, count: number, totalLength: number): CasHeader {
   return {
     magic: MAGIC,
-    flags,
-    count: childCount,
+    flags: buildSuccessorFlags(),
     size,
-    namesOffset,
-    typeOffset,
-    dataOffset: 0,
+    count,
+    length: totalLength,
+  };
+}
+
+/**
+ * Create a header for a file node (f-node)
+ */
+export function createFileHeader(
+  size: number,
+  count: number,
+  totalLength: number,
+  contentTypeLength: 0 | 16 | 32 | 64
+): CasHeader {
+  return {
+    magic: MAGIC,
+    flags: buildFileFlags(contentTypeLength),
+    size,
+    count,
+    length: totalLength,
   };
 }

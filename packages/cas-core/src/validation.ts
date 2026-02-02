@@ -1,16 +1,16 @@
 /**
- * CAS Node Validation
+ * CAS Node Validation (v2)
  *
  * Strict validation for server-side use:
  * - Magic and header structure
  * - Hash matches content
  * - All children exist
  * - Pascal strings are valid
- * - Size is correct for collections
+ * - Size is correct for dict nodes
  */
 
-import { FLAGS, HASH_SIZE, HEADER_SIZE, MAGIC_BYTES } from "./constants.ts";
-import { decodeHeader } from "./header.ts";
+import { FLAGS, HASH_SIZE, HEADER_SIZE, MAGIC_BYTES, NODE_TYPE } from "./constants.ts";
+import { decodeHeader, getContentTypeLength, getNodeType } from "./header.ts";
 import type { HashProvider, NodeKind } from "./types.ts";
 import { hashToKey } from "./utils.ts";
 
@@ -133,42 +133,31 @@ export async function validateNode(
     return { valid: false, error: `Header decode failed: ${e.message}` };
   }
 
-  const isCollection = (header.flags & FLAGS.HAS_NAMES) !== 0;
-  const hasType = (header.flags & FLAGS.HAS_TYPE) !== 0;
-  const hasData = (header.flags & FLAGS.HAS_DATA) !== 0;
-  const kind: NodeKind = isCollection ? "collection" : "chunk";
+  const nodeType = getNodeType(header.flags);
+  let kind: NodeKind;
+  switch (nodeType) {
+    case NODE_TYPE.DICT:
+      kind = "dict";
+      break;
+    case NODE_TYPE.SUCCESSOR:
+      kind = "successor";
+      break;
+    case NODE_TYPE.FILE:
+      kind = "file";
+      break;
+    default:
+      return { valid: false, error: `Unknown node type: ${nodeType}` };
+  }
 
-  // 4. Validate offsets are within bounds
+  const isDict = nodeType === NODE_TYPE.DICT;
+
+  // 4. Validate children section is within bounds
   const childrenEnd = HEADER_SIZE + header.count * HASH_SIZE;
   if (childrenEnd > bytes.length) {
     return {
       valid: false,
       error: `Children section exceeds buffer (need ${childrenEnd}, have ${bytes.length})`,
     };
-  }
-
-  if (isCollection && header.namesOffset > 0) {
-    if (header.namesOffset < childrenEnd) {
-      return {
-        valid: false,
-        error: `Names offset ${header.namesOffset} overlaps with children section`,
-      };
-    }
-    if (header.namesOffset >= bytes.length) {
-      return { valid: false, error: `Names offset ${header.namesOffset} out of bounds` };
-    }
-  }
-
-  if (hasType && header.typeOffset > 0) {
-    if (header.typeOffset >= bytes.length) {
-      return { valid: false, error: `Type offset ${header.typeOffset} out of bounds` };
-    }
-  }
-
-  if (hasData && header.dataOffset > 0) {
-    if (header.dataOffset > bytes.length) {
-      return { valid: false, error: `Data offset ${header.dataOffset} out of bounds` };
-    }
   }
 
   // 5. Extract child keys
@@ -179,18 +168,13 @@ export async function validateNode(
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 6. Validate Pascal strings
-  if (isCollection && header.count > 0) {
-    const [valid, error] = validatePascalStrings(bytes, header.namesOffset, header.count);
+  // 6. Validate Pascal strings for d-node names
+  if (isDict && header.count > 0) {
+    // Names section starts right after children
+    const namesOffset = childrenEnd;
+    const [valid, error] = validatePascalStrings(bytes, namesOffset, header.count);
     if (!valid) {
       return { valid: false, error: `Invalid names: ${error}` };
-    }
-  }
-
-  if (hasType && header.typeOffset > 0) {
-    const [valid, , error] = validatePascalString(bytes, header.typeOffset);
-    if (!valid) {
-      return { valid: false, error: `Invalid content-type: ${error}` };
     }
   }
 
@@ -224,8 +208,8 @@ export async function validateNode(
     }
   }
 
-  // 9. Validate collection size (sum of children sizes)
-  if (isCollection && getSize && childKeys.length > 0) {
+  // 9. Validate dict node size (sum of children sizes)
+  if (isDict && getSize && childKeys.length > 0) {
     let expectedSize = 0;
     for (const key of childKeys) {
       const childSize = await getSize(key);
@@ -243,7 +227,7 @@ export async function validateNode(
     if (header.size !== expectedSize) {
       return {
         valid: false,
-        error: `Collection size mismatch: header=${header.size}, computed=${expectedSize}`,
+        error: `Dict size mismatch: header=${header.size}, computed=${expectedSize}`,
         kind,
         size: header.size,
         childKeys,
@@ -287,12 +271,25 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     return { valid: false, error: `Header decode failed: ${e.message}` };
   }
 
-  const isCollection = (header.flags & FLAGS.HAS_NAMES) !== 0;
-  const hasType = (header.flags & FLAGS.HAS_TYPE) !== 0;
-  const hasData = (header.flags & FLAGS.HAS_DATA) !== 0;
-  const kind: NodeKind = isCollection ? "collection" : "chunk";
+  const nodeType = getNodeType(header.flags);
+  let kind: NodeKind;
+  switch (nodeType) {
+    case NODE_TYPE.DICT:
+      kind = "dict";
+      break;
+    case NODE_TYPE.SUCCESSOR:
+      kind = "successor";
+      break;
+    case NODE_TYPE.FILE:
+      kind = "file";
+      break;
+    default:
+      return { valid: false, error: `Unknown node type: ${nodeType}` };
+  }
 
-  // 4. Validate offsets
+  const isDict = nodeType === NODE_TYPE.DICT;
+
+  // 4. Validate children section
   const childrenEnd = HEADER_SIZE + header.count * HASH_SIZE;
   if (childrenEnd > bytes.length) {
     return { valid: false, error: "Children section exceeds buffer" };
@@ -306,18 +303,12 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 6. Validate Pascal strings
-  if (isCollection && header.count > 0 && header.namesOffset > 0) {
-    const [valid, error] = validatePascalStrings(bytes, header.namesOffset, header.count);
+  // 6. Validate Pascal strings for d-node names
+  if (isDict && header.count > 0) {
+    const namesOffset = childrenEnd;
+    const [valid, error] = validatePascalStrings(bytes, namesOffset, header.count);
     if (!valid) {
       return { valid: false, error: `Invalid names: ${error}` };
-    }
-  }
-
-  if (hasType && header.typeOffset > 0) {
-    const [valid, , error] = validatePascalString(bytes, header.typeOffset);
-    if (!valid) {
-      return { valid: false, error: `Invalid content-type: ${error}` };
     }
   }
 

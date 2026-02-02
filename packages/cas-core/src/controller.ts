@@ -6,11 +6,11 @@
  */
 
 import { DEFAULT_NODE_LIMIT, HASH_SIZE, HEADER_SIZE } from "./constants.ts";
-import { decodeNode, encodeChunk, encodeChunkWithSize, encodeCollection } from "./node.ts";
+import { decodeNode, encodeDictNode, encodeFileNode, encodeFileNodeWithSize, encodeSuccessorNodeWithSize } from "./node.ts";
 import { computeDepth, computeLayout, computeUsableSpace } from "./topology.ts";
 import type {
   CasNode,
-  CollectionInput,
+  DictNodeInput,
   EncodedNode,
   HashProvider,
   LayoutNode,
@@ -106,25 +106,39 @@ export class CasController {
 
   /**
    * Recursively upload a file node according to layout
+   * Uses f-node for root (with contentType), s-node for children
    */
   private async uploadFileNode(
     data: Uint8Array,
     offset: number,
     contentType: string,
-    layout: LayoutNode
+    layout: LayoutNode,
+    isRoot: boolean = true
   ): Promise<Uint8Array> {
     // Extract this node's data portion
     const nodeData = data.slice(offset, offset + layout.dataSize);
 
     if (layout.children.length === 0) {
-      // Leaf node: just data, no children
-      const encoded = await encodeChunkWithSize(
-        { data: nodeData, contentType },
-        layout.dataSize,
-        this.hash
-      );
-      await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
-      return encoded.hash;
+      // Leaf node: no children
+      if (isRoot) {
+        // Root leaf: use f-node with contentType
+        const encoded = await encodeFileNodeWithSize(
+          { data: nodeData, contentType },
+          layout.dataSize,
+          this.hash
+        );
+        await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
+        return encoded.hash;
+      } else {
+        // Non-root leaf: use s-node (no contentType)
+        const encoded = await encodeSuccessorNodeWithSize(
+          { data: nodeData },
+          layout.dataSize,
+          this.hash
+        );
+        await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
+        return encoded.hash;
+      }
     }
 
     // Internal node: upload children first, then this node
@@ -132,7 +146,8 @@ export class CasController {
     let childOffset = offset + layout.dataSize;
 
     for (const childLayout of layout.children) {
-      const childHash = await this.uploadFileNode(data, childOffset, contentType, childLayout);
+      // Children are always s-nodes (not root)
+      const childHash = await this.uploadFileNode(data, childOffset, contentType, childLayout, false);
       childHashes.push(childHash);
       childOffset += this.computeLayoutTotalSize(childLayout);
     }
@@ -140,22 +155,32 @@ export class CasController {
     // Compute total size for this subtree
     const totalSize = this.computeLayoutTotalSize(layout);
 
-    // Encode this node with children
-    const encoded = await encodeChunkWithSize(
-      { data: nodeData, contentType, children: childHashes },
-      totalSize,
-      this.hash
-    );
-    await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
-
-    return encoded.hash;
+    if (isRoot) {
+      // Root internal: use f-node with children and contentType
+      const encoded = await encodeFileNodeWithSize(
+        { data: nodeData, contentType, children: childHashes },
+        totalSize,
+        this.hash
+      );
+      await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
+      return encoded.hash;
+    } else {
+      // Non-root internal: use s-node with children
+      const encoded = await encodeSuccessorNodeWithSize(
+        { data: nodeData, children: childHashes },
+        totalSize,
+        this.hash
+      );
+      await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
+      return encoded.hash;
+    }
   }
 
   /**
-   * Put a raw chunk (for cases where caller handles splitting)
+   * Put a raw file node (for cases where caller handles splitting)
    */
-  async putChunk(data: Uint8Array, contentType?: string): Promise<string> {
-    const encoded = await encodeChunk({ data, contentType }, this.hash);
+  async putFileNode(data: Uint8Array, contentType?: string): Promise<string> {
+    const encoded = await encodeFileNode({ data, contentType }, this.hash);
     await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
     return hashToKey(encoded.hash);
   }
@@ -167,8 +192,9 @@ export class CasController {
   /**
    * Make a collection (directory) from existing nodes
    * Size is automatically computed from children
+   * Children are automatically sorted by name (UTF-8 byte order)
    * @param entries - Array of {name, key} entries
-   * @returns Collection key
+   * @returns Collection key (d-node)
    */
   async makeCollection(entries: CollectionEntry[]): Promise<string> {
     // Convert keys to hashes and compute total size
@@ -186,13 +212,13 @@ export class CasController {
       }
     }
 
-    const input: CollectionInput = {
+    const input: DictNodeInput = {
       size: totalSize,
       children,
       childNames,
     };
 
-    const encoded = await encodeCollection(input, this.hash);
+    const encoded = await encodeDictNode(input, this.hash);
     await this.storage.put(hashToKey(encoded.hash), encoded.bytes);
 
     return hashToKey(encoded.hash);
@@ -278,20 +304,22 @@ export class CasController {
 
   /**
    * Read file content by traversing B-Tree
-   * @param key - Root chunk key
+   * @param key - Root file node key (f-node)
    * @returns Complete file data
    */
   async readFile(key: string): Promise<Uint8Array | null> {
     const node = await this.getNode(key);
-    if (!node || node.kind !== "chunk") return null;
+    if (!node) return null;
+    // Accept both f-node and s-node for reading
+    if (node.kind !== "file" && node.kind !== "successor") return null;
 
-    return this.readChunkNode(node);
+    return this.readFileNode(node);
   }
 
   /**
-   * Recursively read chunk node data
+   * Recursively read file/successor node data
    */
-  private async readChunkNode(node: CasNode): Promise<Uint8Array> {
+  private async readFileNode(node: CasNode): Promise<Uint8Array> {
     // Collect this node's data
     const parts: Uint8Array[] = [];
 
@@ -304,8 +332,8 @@ export class CasController {
       for (const childHash of node.children) {
         const childKey = hashToKey(childHash);
         const childNode = await this.getNode(childKey);
-        if (childNode && childNode.kind === "chunk") {
-          const childData = await this.readChunkNode(childNode);
+        if (childNode && (childNode.kind === "file" || childNode.kind === "successor")) {
+          const childData = await this.readFileNode(childNode);
           parts.push(childData);
         }
       }
@@ -316,7 +344,7 @@ export class CasController {
 
   /**
    * Open file as readable stream (for large files)
-   * @param key - Root chunk key
+   * @param key - Root file node key (f-node)
    * @returns ReadableStream of file content
    */
   openFileStream(key: string): ReadableStream<Uint8Array> {
@@ -325,21 +353,25 @@ export class CasController {
     return new ReadableStream({
       async start(streamController) {
         const node = await controller.getNode(key);
-        if (!node || node.kind !== "chunk") {
+        if (!node) {
+          streamController.close();
+          return;
+        }
+        if (node.kind !== "file" && node.kind !== "successor") {
           streamController.close();
           return;
         }
 
-        await controller.streamChunkNode(node, streamController);
+        await controller.streamFileNode(node, streamController);
         streamController.close();
       },
     });
   }
 
   /**
-   * Recursively stream chunk node data
+   * Recursively stream file/successor node data
    */
-  private async streamChunkNode(
+  private async streamFileNode(
     node: CasNode,
     streamController: ReadableStreamDefaultController<Uint8Array>
   ): Promise<void> {
@@ -353,8 +385,8 @@ export class CasController {
       for (const childHash of node.children) {
         const childKey = hashToKey(childHash);
         const childNode = await this.getNode(childKey);
-        if (childNode && childNode.kind === "chunk") {
-          await this.streamChunkNode(childNode, streamController);
+        if (childNode && (childNode.kind === "file" || childNode.kind === "successor")) {
+          await this.streamFileNode(childNode, streamController);
         }
       }
     }
