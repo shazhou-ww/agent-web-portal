@@ -81,6 +81,8 @@ export const FLAGS = {
   CT_LENGTH_MASK: 0b1100,
   /** Content-type length shift */
   CT_LENGTH_SHIFT: 2,
+  /** Used bits mask (bits 0-3), all other bits must be 0 */
+  USED_MASK: 0b1111,
 } as const;
 
 /**

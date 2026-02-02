@@ -227,7 +227,15 @@ export async function validateNode(
   const isFile = nodeType === NODE_TYPE.FILE;
   const isSuccessor = nodeType === NODE_TYPE.SUCCESSOR;
 
-  // 4. Validate header.length matches actual buffer length
+  // 4. Validate flags unused bits are zero (bits 4-31)
+  if ((header.flags & ~FLAGS.USED_MASK) !== 0) {
+    return {
+      valid: false,
+      error: `Flags has unused bits set: 0x${header.flags.toString(16)}`,
+    };
+  }
+
+  // 5. Validate header.length matches actual buffer length
   if (header.length !== bytes.length) {
     return {
       valid: false,
@@ -235,7 +243,7 @@ export async function validateNode(
     };
   }
 
-  // 5. Validate reserved bytes are zero (bytes 24-31)
+  // 6. Validate reserved bytes are zero (bytes 24-31)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const reserved1 = view.getUint32(24, true);
   const reserved2 = view.getUint32(28, true);
@@ -246,7 +254,7 @@ export async function validateNode(
     };
   }
 
-  // 6. Validate children section is within bounds
+  // 7. Validate children section is within bounds
   const childrenEnd = HEADER_SIZE + header.count * HASH_SIZE;
   if (childrenEnd > bytes.length) {
     return {
@@ -255,7 +263,7 @@ export async function validateNode(
     };
   }
 
-  // 7. Extract child keys
+  // 8. Extract child keys
   const childKeys: string[] = [];
   for (let i = 0; i < header.count; i++) {
     const offset = HEADER_SIZE + i * HASH_SIZE;
@@ -263,7 +271,7 @@ export async function validateNode(
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 8. Validate CT_LENGTH field
+  // 9. Validate CT_LENGTH field
   const ctLength = getContentTypeLength(header.flags);
 
   // 8a. For non-f-node (d-node, s-node), CT_LENGTH must be 0
@@ -311,7 +319,7 @@ export async function validateNode(
       }
     }
 
-    // 8d. Validate all padding bytes are zero (from actualCtLen to ctLength)
+    // 9d. Validate all padding bytes are zero (from actualCtLen to ctLength)
     for (let i = actualCtLen; i < ctLength; i++) {
       if (ctSlice[i] !== 0) {
         return {
@@ -322,7 +330,7 @@ export async function validateNode(
     }
   }
 
-  // 9. Validate data section for f-node and s-node
+  // 10. Validate data section for f-node and s-node
   if (isFile || isSuccessor) {
     let dataOffset: number;
     if (isFile) {
@@ -356,7 +364,7 @@ export async function validateNode(
     }
   }
 
-  // 10. Validate Pascal strings for d-node names
+  // 11. Validate Pascal strings for d-node names
   let childNames: string[] = [];
   if (isDict && header.count > 0) {
     // Names section starts right after children
@@ -368,7 +376,7 @@ export async function validateNode(
     childNames = names!;
   }
 
-  // 11. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
+  // 12. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
   if (isDict && childNames.length > 1) {
     const textEncoder = new TextEncoder();
     for (let i = 0; i < childNames.length - 1; i++) {
@@ -390,7 +398,7 @@ export async function validateNode(
     }
   }
 
-  // 12. Verify hash
+  // 13. Verify hash
   const actualHash = await hashProvider.sha256(bytes);
   const actualKey = hashToKey(actualHash);
   if (actualKey !== expectedKey) {
@@ -400,7 +408,7 @@ export async function validateNode(
     };
   }
 
-  // 13. Check children exist (if checker provided)
+  // 14. Check children exist (if checker provided)
   if (existsChecker && childKeys.length > 0) {
     const missing: string[] = [];
     for (const key of childKeys) {
@@ -420,7 +428,7 @@ export async function validateNode(
     }
   }
 
-  // 14. Validate dict node size (sum of children sizes)
+  // 15. Validate dict node size (sum of children sizes)
   if (isDict && getSize && childKeys.length > 0) {
     let expectedSize = 0;
     for (const key of childKeys) {
@@ -503,7 +511,15 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
   const isFile = nodeType === NODE_TYPE.FILE;
   const isSuccessor = nodeType === NODE_TYPE.SUCCESSOR;
 
-  // 4. Validate header.length matches actual buffer length
+  // 4. Validate flags unused bits are zero (bits 4-31)
+  if ((header.flags & ~FLAGS.USED_MASK) !== 0) {
+    return {
+      valid: false,
+      error: `Flags has unused bits set: 0x${header.flags.toString(16)}`,
+    };
+  }
+
+  // 5. Validate header.length matches actual buffer length
   if (header.length !== bytes.length) {
     return {
       valid: false,
@@ -511,7 +527,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     };
   }
 
-  // 5. Validate reserved bytes are zero (bytes 24-31)
+  // 6. Validate reserved bytes are zero (bytes 24-31)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const reserved1 = view.getUint32(24, true);
   const reserved2 = view.getUint32(28, true);
@@ -522,13 +538,13 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     };
   }
 
-  // 6. Validate children section
+  // 7. Validate children section
   const childrenEnd = HEADER_SIZE + header.count * HASH_SIZE;
   if (childrenEnd > bytes.length) {
     return { valid: false, error: "Children section exceeds buffer" };
   }
 
-  // 7. Extract child keys
+  // 8. Extract child keys
   const childKeys: string[] = [];
   for (let i = 0; i < header.count; i++) {
     const offset = HEADER_SIZE + i * HASH_SIZE;
@@ -536,7 +552,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 8. Validate CT_LENGTH field
+  // 9. Validate CT_LENGTH field
   const ctLength = getContentTypeLength(header.flags);
 
   // 8a. For non-f-node (d-node, s-node), CT_LENGTH must be 0
@@ -595,7 +611,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     }
   }
 
-  // 9. Validate data section for f-node and s-node
+  // 10. Validate data section for f-node and s-node
   if (isFile || isSuccessor) {
     let dataOffset: number;
     if (isFile) {
@@ -629,7 +645,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     }
   }
 
-  // 10. Validate Pascal strings for d-node names and check sorting
+  // 11. Validate Pascal strings for d-node names and check sorting
   if (isDict && header.count > 0) {
     const namesOffset = childrenEnd;
     const [valid, error, names] = validatePascalStringsWithNames(bytes, namesOffset, header.count);
@@ -637,7 +653,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
       return { valid: false, error: `Invalid names: ${error}` };
     }
 
-    // 11. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
+    // 12. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
     if (names!.length > 1) {
       const textEncoder = new TextEncoder();
       for (let i = 0; i < names!.length - 1; i++) {

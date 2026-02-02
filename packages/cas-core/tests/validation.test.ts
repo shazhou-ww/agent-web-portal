@@ -255,6 +255,30 @@ describe("Validation", () => {
       expect(result.error).toContain("Non-file node must have CT_LENGTH=0");
     });
 
+    it("should reject flags with unused bits set", () => {
+      // Create a valid-looking f-node but with unused flag bits set
+      const bytes = new Uint8Array(35); // 32 header + 3 data
+      // Magic: "CAS\x01"
+      bytes[0] = 0x43;
+      bytes[1] = 0x41;
+      bytes[2] = 0x53;
+      bytes[3] = 0x01;
+      // Flags = 0b00010011 (f-node with bit 4 set, which should be 0)
+      bytes[4] = 0b00010011;
+      // size = 3, count = 0, length = 35
+      const view = new DataView(bytes.buffer);
+      view.setUint32(8, 3, true); // size = 3
+      view.setUint32(20, 35, true); // length = 35
+      // Data at offset 32
+      bytes[32] = 1;
+      bytes[33] = 2;
+      bytes[34] = 3;
+
+      const result = validateNodeStructure(bytes);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("unused bits set");
+    });
+
     it("should reject f-node with over-allocated content-type slot", async () => {
       // Create a valid f-node that fills the 16-byte slot completely
       // Then change the slot to 32 bytes to test over-allocation
