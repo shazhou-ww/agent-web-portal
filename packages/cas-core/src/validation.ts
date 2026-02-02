@@ -284,9 +284,10 @@ export async function validateNode(
       };
     }
 
-    // Read actual content-type to verify minimal slot (no over-allocation)
+    // Read content-type slot
     const ctSlice = bytes.subarray(childrenEnd, ctEnd);
-    // Find actual length (null-terminated or full slot)
+
+    // Find actual content-type length (first null or slot end)
     let actualCtLen = ctSlice.indexOf(0);
     if (actualCtLen === -1) actualCtLen = ctLength;
 
@@ -298,6 +299,27 @@ export async function validateNode(
         error: `Content-type slot over-allocated: length ${actualCtLen} requires slot ${minimalSlot}, got ${ctLength}`,
       };
     }
+
+    // 8c. Validate content-type contains only printable ASCII (0x20-0x7E)
+    for (let i = 0; i < actualCtLen; i++) {
+      const b = ctSlice[i]!;
+      if (b < 0x20 || b > 0x7e) {
+        return {
+          valid: false,
+          error: `Content-type contains invalid character at offset ${i} (value=${b})`,
+        };
+      }
+    }
+
+    // 8d. Validate all padding bytes are zero (from actualCtLen to ctLength)
+    for (let i = actualCtLen; i < ctLength; i++) {
+      if (ctSlice[i] !== 0) {
+        return {
+          valid: false,
+          error: `Content-type padding not zero at offset ${i} (value=${ctSlice[i]})`,
+        };
+      }
+    }
   }
 
   // 9. Validate data section for f-node and s-node
@@ -306,13 +328,30 @@ export async function validateNode(
     if (isFile) {
       dataOffset = childrenEnd + ctLength;
     } else {
-      // s-node: 16-byte aligned
+      // s-node: 16-byte aligned, validate padding is all zeros
       dataOffset = Math.ceil(childrenEnd / DATA_ALIGNMENT) * DATA_ALIGNMENT;
+      for (let i = childrenEnd; i < dataOffset; i++) {
+        if (bytes[i] !== 0) {
+          return {
+            valid: false,
+            error: `Alignment padding not zero at offset ${i} (value=${bytes[i]})`,
+          };
+        }
+      }
     }
     if (dataOffset > bytes.length) {
       return {
         valid: false,
         error: `Data offset exceeds buffer (offset=${dataOffset}, length=${bytes.length})`,
+      };
+    }
+
+    // 9b. Validate leaf node size equals data length
+    const dataLength = bytes.length - dataOffset;
+    if (header.count === 0 && header.size !== dataLength) {
+      return {
+        valid: false,
+        error: `Leaf node size mismatch: header.size=${header.size}, data.length=${dataLength}`,
       };
     }
   }
@@ -329,14 +368,20 @@ export async function validateNode(
     childNames = names!;
   }
 
-  // 11. Validate d-node children are sorted by name (UTF-8 byte order)
+  // 11. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
   if (isDict && childNames.length > 1) {
     const textEncoder = new TextEncoder();
     for (let i = 0; i < childNames.length - 1; i++) {
       const current = textEncoder.encode(childNames[i]!);
       const next = textEncoder.encode(childNames[i + 1]!);
       const cmp = compareBytes(current, next);
-      if (cmp >= 0) {
+      if (cmp === 0) {
+        return {
+          valid: false,
+          error: `Duplicate child name: "${childNames[i]}"`,
+        };
+      }
+      if (cmp > 0) {
         return {
           valid: false,
           error: `Dict children not sorted: "${childNames[i]}" should come before "${childNames[i + 1]}"`,
@@ -512,9 +557,10 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
       };
     }
 
-    // Read actual content-type to verify minimal slot (no over-allocation)
+    // Read content-type slot
     const ctSlice = bytes.subarray(childrenEnd, ctEnd);
-    // Find actual length (null-terminated or full slot)
+
+    // Find actual content-type length (first null or slot end)
     let actualCtLen = ctSlice.indexOf(0);
     if (actualCtLen === -1) actualCtLen = ctLength;
 
@@ -526,6 +572,27 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
         error: `Content-type slot over-allocated: length ${actualCtLen} requires slot ${minimalSlot}, got ${ctLength}`,
       };
     }
+
+    // 8c. Validate content-type contains only printable ASCII (0x20-0x7E)
+    for (let i = 0; i < actualCtLen; i++) {
+      const b = ctSlice[i]!;
+      if (b < 0x20 || b > 0x7e) {
+        return {
+          valid: false,
+          error: `Content-type contains invalid character at offset ${i} (value=${b})`,
+        };
+      }
+    }
+
+    // 8d. Validate all padding bytes are zero (from actualCtLen to ctLength)
+    for (let i = actualCtLen; i < ctLength; i++) {
+      if (ctSlice[i] !== 0) {
+        return {
+          valid: false,
+          error: `Content-type padding not zero at offset ${i} (value=${ctSlice[i]})`,
+        };
+      }
+    }
   }
 
   // 9. Validate data section for f-node and s-node
@@ -534,13 +601,30 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     if (isFile) {
       dataOffset = childrenEnd + ctLength;
     } else {
-      // s-node: 16-byte aligned
+      // s-node: 16-byte aligned, validate padding is all zeros
       dataOffset = Math.ceil(childrenEnd / DATA_ALIGNMENT) * DATA_ALIGNMENT;
+      for (let i = childrenEnd; i < dataOffset; i++) {
+        if (bytes[i] !== 0) {
+          return {
+            valid: false,
+            error: `Alignment padding not zero at offset ${i} (value=${bytes[i]})`,
+          };
+        }
+      }
     }
     if (dataOffset > bytes.length) {
       return {
         valid: false,
         error: `Data offset exceeds buffer (offset=${dataOffset}, length=${bytes.length})`,
+      };
+    }
+
+    // 9b. Validate leaf node size equals data length
+    const dataLength = bytes.length - dataOffset;
+    if (header.count === 0 && header.size !== dataLength) {
+      return {
+        valid: false,
+        error: `Leaf node size mismatch: header.size=${header.size}, data.length=${dataLength}`,
       };
     }
   }
@@ -553,14 +637,20 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
       return { valid: false, error: `Invalid names: ${error}` };
     }
 
-    // 11. Validate d-node children are sorted by name (UTF-8 byte order)
+    // 11. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
     if (names!.length > 1) {
       const textEncoder = new TextEncoder();
       for (let i = 0; i < names!.length - 1; i++) {
         const current = textEncoder.encode(names![i]!);
         const next = textEncoder.encode(names![i + 1]!);
         const cmp = compareBytes(current, next);
-        if (cmp >= 0) {
+        if (cmp === 0) {
+          return {
+            valid: false,
+            error: `Duplicate child name: "${names![i]}"`,
+          };
+        }
+        if (cmp > 0) {
           return {
             valid: false,
             error: `Dict children not sorted: "${names![i]}" should come before "${names![i + 1]}"`,
