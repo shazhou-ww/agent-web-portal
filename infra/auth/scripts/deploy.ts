@@ -17,7 +17,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { $ } from "bun";
+import { spawnSync } from "node:child_process";
 
 const SCRIPT_DIR = import.meta.dir;
 const ROOT_DIR = join(SCRIPT_DIR, "..");
@@ -97,11 +97,20 @@ async function main(): Promise<void> {
   console.log("Deploying with SAM...");
   console.log();
 
+  const samArgs = ["deploy", "--no-fail-on-empty-changeset"];
   if (overrides.length > 0) {
-    const overridesStr = overrides.join(" ");
-    await $`sam deploy --parameter-overrides ${overridesStr}`.cwd(ROOT_DIR);
-  } else {
-    await $`sam deploy`.cwd(ROOT_DIR);
+    samArgs.push("--parameter-overrides", ...overrides);
+  }
+
+  const result = spawnSync("sam", samArgs, {
+    cwd: ROOT_DIR,
+    stdio: "inherit",
+    shell: true,
+  });
+
+  if (result.status !== 0) {
+    console.error("SAM deploy failed");
+    process.exit(result.status || 1);
   }
 
   console.log();

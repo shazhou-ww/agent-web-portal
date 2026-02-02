@@ -25,6 +25,7 @@
     "deploy:backend": "bun run sam:build && bun run sam:deploy",
     "deploy:frontend": "bun run build:frontend && bun run scripts/deploy-frontend.ts",
     "deploy:idp": "bun run sam:build && bun run scripts/deploy-with-idp.ts",
+    "setup:local": "bun run scripts/setup-local.ts",
     "test": "bun test",
     "create-local-tables": "bun run scripts/create-local-tables.ts",
     "set-admin-users": "bun run scripts/set-admin-users.ts",
