@@ -7,13 +7,13 @@
  */
 
 import { createHash } from "node:crypto";
+import type { HashProvider, StorageProvider } from "@agent-web-portal/cas-core";
 import {
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import type { HashProvider, StorageProvider } from "@agent-web-portal/cas-core";
 
 /**
  * Simple LRU cache for key existence
@@ -142,10 +142,10 @@ export class S3StorageProvider implements StorageProvider {
       );
 
       const bytes = await result.Body!.transformToByteArray();
-      
+
       // Mark as existing in cache
       this.existsCache.set(key, true);
-      
+
       return new Uint8Array(bytes);
     } catch (error: any) {
       if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {

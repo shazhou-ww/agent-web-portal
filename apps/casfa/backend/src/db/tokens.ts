@@ -10,15 +10,7 @@ import {
   QueryCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type {
-  AgentToken,
-  CasConfig,
-  CasServerConfig,
-  CommitConfig,
-  Ticket,
-  Token,
-  UserToken,
-} from "../types.ts";
+import type { AgentToken, CasConfig, CasServerConfig, Ticket, Token, UserToken } from "../types.ts";
 import { loadServerConfig } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
 

@@ -5,11 +5,7 @@
  * Used for quota enforcement and usage statistics.
  */
 
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { CasConfig, RealmUsage } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
 

@@ -2,21 +2,19 @@
  * CAS Stack - HTTP Router
  */
 
+import { generateVerificationCode } from "@agent-web-portal/auth";
 import {
   decodeNode,
-  validateNode,
-  validateNodeStructure,
-  hashToKey,
   EMPTY_COLLECTION_BYTES,
   EMPTY_COLLECTION_KEY,
-  type ValidationResult,
+  validateNode,
+  validateNodeStructure,
 } from "@agent-web-portal/cas-core";
-import { generateVerificationCode } from "@agent-web-portal/auth";
 import { z } from "zod";
 import { getCognitoUserMap } from "./auth/cognito-users.ts";
 import { AuthService } from "./auth/service.ts";
-import { CasStorage } from "./cas/storage.ts";
 import { NodeHashProvider, S3StorageProvider } from "./cas/providers.ts";
+import { CasStorage } from "./cas/storage.ts";
 import {
   AwpPendingAuthStore,
   AwpPubkeyStore,
@@ -40,7 +38,7 @@ import type {
   TreeNodeInfo,
   TreeResponse,
 } from "./types.ts";
-import { CAS_CONTENT_TYPES, CAS_HEADERS, loadServerConfig } from "./types.ts";
+import { CAS_CONTENT_TYPES, loadServerConfig } from "./types.ts";
 
 // ============================================================================
 // Request Validation Schemas
@@ -70,10 +68,12 @@ const CreateTicketSchema = z.object({
   // Readable scope - undefined means full read access
   scope: z.array(z.string()).optional(),
   // Commit permission - undefined means read-only
-  commit: z.object({
-    quota: z.number().positive().optional(),
-    accept: z.array(z.string()).optional(),
-  }).optional(),
+  commit: z
+    .object({
+      quota: z.number().positive().optional(),
+      accept: z.array(z.string()).optional(),
+    })
+    .optional(),
   expiresIn: z.number().positive().optional(),
 });
 
@@ -138,7 +138,7 @@ function jsonResponse(status: number, body: unknown): HttpResponse {
   };
 }
 
-function binaryResponse(content: Buffer, contentType: string, casKey?: string): HttpResponse {
+function _binaryResponse(content: Buffer, contentType: string, casKey?: string): HttpResponse {
   return {
     statusCode: 200,
     headers: {
@@ -956,10 +956,7 @@ export class Router {
   /**
    * GET /usage - Return realm usage statistics
    */
-  private async handleGetUsage(
-    auth: AuthContext,
-    realm: string
-  ): Promise<HttpResponse> {
+  private async handleGetUsage(auth: AuthContext, realm: string): Promise<HttpResponse> {
     const usage = await this.usageDb.getUsage(realm);
 
     return jsonResponse(200, {
@@ -1051,12 +1048,7 @@ export class Router {
     // Increment reference count for root (commit references root)
     const rootRef = await this.refCountDb.getRefCount(realm, root);
     if (rootRef) {
-      await this.refCountDb.incrementRef(
-        realm,
-        root,
-        rootRef.physicalSize,
-        rootRef.logicalSize
-      );
+      await this.refCountDb.incrementRef(realm, root, rootRef.physicalSize, rootRef.logicalSize);
     }
 
     // Record commit
@@ -1075,54 +1067,6 @@ export class Router {
       success: true,
       root,
     });
-  }
-
-  /**
-   * @deprecated Legacy topological sort - no longer needed with simplified commit
-   * Topological sort collections by their dependencies
-   * Returns collection keys in order that respects child dependencies
-   */
-  private topologicalSortCollections(
-    collections: Record<string, { children: Record<string, string>; size: number }>
-  ): string[] {
-    const collectionKeys = new Set(Object.keys(collections));
-    const result: string[] = [];
-    const visited = new Set<string>();
-    const visiting = new Set<string>();
-
-    const visit = (key: string): boolean => {
-      if (visited.has(key)) return true;
-      if (visiting.has(key)) {
-        // Cycle detected - shouldn't happen in valid DAG
-        console.warn(`[Commit] Cycle detected at collection: ${key}`);
-        return false;
-      }
-
-      visiting.add(key);
-
-      const collection = collections[key];
-      if (collection) {
-        // Visit dependencies that are also collections in this commit
-        for (const childKey of Object.values(collection.children)) {
-          if (collectionKeys.has(childKey)) {
-            if (!visit(childKey)) return false;
-          }
-        }
-      }
-
-      visiting.delete(key);
-      visited.add(key);
-      result.push(key);
-      return true;
-    };
-
-    for (const key of collectionKeys) {
-      if (!visited.has(key)) {
-        visit(key);
-      }
-    }
-
-    return result;
   }
 
   /**
@@ -1203,7 +1147,7 @@ export class Router {
 
   /**
    * DELETE /commits/:root - Delete commit record
-   * 
+   *
    * Decrements reference count for the root node.
    * Does NOT recursively delete children - that's handled by GC.
    */
@@ -1236,13 +1180,13 @@ export class Router {
 
   /**
    * PUT /chunks/:key - Upload CAS node (binary format)
-   * 
+   *
    * Validates:
    * - Magic bytes and header structure
    * - Hash matches expected key
    * - All children exist in storage
    * - For collections: size equals sum of children sizes
-   * 
+   *
    * Tracks references and usage:
    * - Increments ref count for this node and its children
    * - Updates realm usage statistics
@@ -1308,9 +1252,9 @@ export class Router {
         return jsonResponse(200, {
           success: false,
           error: "missing_nodes",
-          missing: validationResult.childKeys?.filter(async (k) => 
-            !(await this.storageProvider.has(k))
-          ) ?? [],
+          missing:
+            validationResult.childKeys?.filter(async (k) => !(await this.storageProvider.has(k))) ??
+            [],
         });
       }
       return errorResponse(400, "Node validation failed", { error: validationResult.error });
@@ -1319,14 +1263,15 @@ export class Router {
     // Calculate sizes for reference counting
     const physicalSize = bytes.length;
     // logicalSize is only for chunks (actual data), 0 for collections
-    const logicalSize = structureResult.kind === "chunk" ? (validationResult.size ?? bytes.length) : 0;
+    const logicalSize =
+      structureResult.kind === "chunk" ? (validationResult.size ?? bytes.length) : 0;
     const childKeys = validationResult.childKeys ?? [];
 
     // Check realm quota before storing
     // Estimate new physical bytes (only count if this is new to realm)
     const existingRef = await this.refCountDb.getRefCount(realm, key);
     const estimatedNewBytes = existingRef ? 0 : physicalSize;
-    
+
     if (estimatedNewBytes > 0) {
       const { allowed, usage } = await this.usageDb.checkQuota(realm, estimatedNewBytes);
       if (!allowed) {
@@ -1427,7 +1372,7 @@ export class Router {
       }
 
       const key = queue.shift()!;
-      
+
       // Skip if already processed
       if (nodes[key]) continue;
 
@@ -1542,57 +1487,6 @@ export class Router {
       statusCode: 200,
       headers,
       body: Buffer.from(bytes).toString("base64"),
-      isBase64Encoded: true,
-    };
-  }
-
-  /**
-   * GET /{realm}/raw/:key - Get raw node data
-   * @deprecated Use GET /chunks/:key instead
-   * Returns binary data with appropriate Content-Type and CAS headers.
-   * - chunk/inline-file/file: returns binary body
-   * - collection: returns JSON body
-   */
-  private async handleGetRaw(
-    auth: AuthContext,
-    realm: string,
-    key: string
-  ): Promise<HttpResponse> {
-    if (!this.authMiddleware.checkReadAccess(auth, key)) {
-      return errorResponse(403, "Read access denied");
-    }
-
-    // Check ownership
-    const hasAccess = await this.ownershipDb.hasOwnership(realm, key);
-    if (!hasAccess) {
-      return errorResponse(404, "Not found");
-    }
-
-    // Get content from S3
-    const result = await this.casStorage.get(key);
-    if (!result) {
-      return errorResponse(404, "Content not found in storage");
-    }
-
-    const { content, contentType, metadata } = result;
-
-    // Build response headers with CAS metadata
-    const headers: Record<string, string> = {
-      "Content-Type": contentType,
-      "Content-Length": String(content.length),
-    };
-
-    if (metadata.casContentType) {
-      headers[CAS_HEADERS.CONTENT_TYPE] = metadata.casContentType;
-    }
-    if (metadata.casSize !== undefined) {
-      headers[CAS_HEADERS.SIZE] = String(metadata.casSize);
-    }
-
-    return {
-      statusCode: 200,
-      headers,
-      body: content.toString("base64"),
       isBase64Encoded: true,
     };
   }
@@ -1790,12 +1684,7 @@ export class Router {
     await this.refCountDb.decrementRef(realm, oldRoot);
 
     // Update depot
-    const { depot: updatedDepot } = await this.depotDb.updateRoot(
-      realm,
-      depotId,
-      newRoot,
-      message
-    );
+    const { depot: updatedDepot } = await this.depotDb.updateRoot(realm, depotId, newRoot, message);
 
     return jsonResponse(200, {
       depotId: updatedDepot.depotId,

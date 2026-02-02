@@ -107,7 +107,9 @@ async function startBackend(): Promise<Subprocess> {
 }
 
 async function startFrontend(): Promise<Subprocess> {
-  console.log(colorize(`[frontend] Starting Vite development server on port ${PORT_WEBUI}...`, "magenta"));
+  console.log(
+    colorize(`[frontend] Starting Vite development server on port ${PORT_WEBUI}...`, "magenta")
+  );
 
   const proc = spawn({
     cmd: ["bun", "run", "vite", "--config", "frontend/vite.config.ts", "--port", PORT_WEBUI],
@@ -145,7 +147,9 @@ async function ensureLocalTables(): Promise<void> {
   });
 
   if (result.exitCode !== 0) {
-    console.log(colorize("[setup] Warning: Could not create tables. Is DynamoDB running?", "yellow"));
+    console.log(
+      colorize("[setup] Warning: Could not create tables. Is DynamoDB running?", "yellow")
+    );
     console.log(colorize("[setup] Run 'bun run setup:local' to start DynamoDB Local", "yellow"));
   }
 }

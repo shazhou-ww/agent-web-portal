@@ -25,8 +25,8 @@ export const CAS_CONTENT_TYPES = {
 
 // S3 metadata keys (x-amz-meta- prefix is added automatically by SDK)
 export const CAS_METADATA_KEYS = {
-  CONTENT_TYPE: "cas-content-type",  // Original file content type
-  SIZE: "cas-size",                   // Total file size
+  CONTENT_TYPE: "cas-content-type", // Original file content type
+  SIZE: "cas-size", // Total file size
 } as const;
 
 // ============================================================================
@@ -34,8 +34,8 @@ export const CAS_METADATA_KEYS = {
 // ============================================================================
 
 export interface CasMetadata {
-  casContentType?: string;  // Original file content type (for file/inline-file)
-  casSize?: number;         // Total file size
+  casContentType?: string; // Original file content type (for file/inline-file)
+  casSize?: number; // Total file size
 }
 
 export interface GetResult {
@@ -190,10 +190,7 @@ export class CasStorage {
     content: Buffer,
     contentType: string = "application/octet-stream",
     metadata?: CasMetadata
-  ): Promise<
-    | PutResult
-    | { error: "hash_mismatch"; expected: string; actual: string }
-  > {
+  ): Promise<PutResult | { error: "hash_mismatch"; expected: string; actual: string }> {
     const actualKey = CasStorage.computeHash(content);
 
     if (actualKey !== expectedKey) {

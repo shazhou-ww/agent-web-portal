@@ -285,9 +285,12 @@ export class McpHandler {
     }
 
     // Normalize scope to string[] | undefined
-    const normalizedScope = parsed.data.scope === undefined
-      ? undefined
-      : Array.isArray(parsed.data.scope) ? parsed.data.scope : [parsed.data.scope];
+    const normalizedScope =
+      parsed.data.scope === undefined
+        ? undefined
+        : Array.isArray(parsed.data.scope)
+          ? parsed.data.scope
+          : [parsed.data.scope];
 
     // writable from MCP schema -> commit for internal API (true becomes {})
     const ticket = await this.tokensDb.createTicket(

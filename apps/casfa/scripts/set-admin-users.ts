@@ -136,11 +136,11 @@ async function listUsers(
 
 async function main(): Promise<void> {
   const { list, setAdmin, local } = parseArgs();
-  
+
   const config = loadConfig();
   const poolId = config.cognitoUserPoolId;
   const region = config.cognitoRegion;
-  
+
   // Create DynamoDB client - use local credentials if --local flag is set
   let userRolesDb: UserRolesDb;
   if (local) {
@@ -196,11 +196,11 @@ async function main(): Promise<void> {
 
   // In --local mode with sub-like IDs, skip Cognito lookup
   const allLookLikeSubs = setAdmin.every((id) => isLikelySub(id.trim()));
-  
+
   let users: { sub: string; email: string; name?: string }[] = [];
   let bySub = new Map<string, { sub: string; email: string; name?: string }>();
   let byEmail = new Map<string, { sub: string; email: string; name?: string }>();
-  
+
   if (!allLookLikeSubs || !local) {
     // Need to fetch Cognito users for email lookup
     users = await listUsers(poolId, region);

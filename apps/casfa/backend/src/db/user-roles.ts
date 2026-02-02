@@ -3,7 +3,13 @@
  * Reuses tokens table with pk = user#${userId}.
  */
 
-import { DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DeleteCommand,
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  ScanCommand,
+} from "@aws-sdk/lib-dynamodb";
 import type { CasConfig, UserRole } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
 

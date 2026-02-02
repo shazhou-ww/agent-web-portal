@@ -93,14 +93,6 @@ export class CommitsDb {
   }
 
   /**
-   * Extract root from sort key
-   */
-  private parseKey(key: string): string | null {
-    if (!key.startsWith(COMMIT_KEY_PREFIX)) return null;
-    return key.slice(COMMIT_KEY_PREFIX.length);
-  }
-
-  /**
    * Create a new commit record
    */
   async create(

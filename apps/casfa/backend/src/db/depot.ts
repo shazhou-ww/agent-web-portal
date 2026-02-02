@@ -162,14 +162,6 @@ export class DepotDb {
   }
 
   /**
-   * Parse a depot key to extract depotId
-   */
-  private parseDepotKey(key: string): string | null {
-    if (!key.startsWith(DEPOT_KEY_PREFIX)) return null;
-    return key.slice(DEPOT_KEY_PREFIX.length);
-  }
-
-  /**
    * Generate a new depot ID
    */
   private generateDepotId(): string {
@@ -292,9 +284,7 @@ export class DepotDb {
           ":prefix": DEPOT_KEY_PREFIX,
         },
         Limit: limit,
-        ExclusiveStartKey: startKey
-          ? { realm, key: startKey }
-          : undefined,
+        ExclusiveStartKey: startKey ? { realm, key: startKey } : undefined,
       })
     );
 
@@ -328,8 +318,7 @@ export class DepotDb {
       new UpdateCommand({
         TableName: this.tableName,
         Key: { realm, key: this.buildDepotKey(depotId) },
-        UpdateExpression:
-          "SET #root = :root, #version = :version, #updatedAt = :updatedAt",
+        UpdateExpression: "SET #root = :root, #version = :version, #updatedAt = :updatedAt",
         ExpressionAttributeNames: {
           "#root": "root",
           "#version": "version",
@@ -438,9 +427,7 @@ export class DepotDb {
         },
         Limit: limit,
         ScanIndexForward: ascending,
-        ExclusiveStartKey: startKey
-          ? { realm, key: startKey }
-          : undefined,
+        ExclusiveStartKey: startKey ? { realm, key: startKey } : undefined,
       })
     );
 

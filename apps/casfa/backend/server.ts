@@ -5,24 +5,17 @@
  * Supports Cognito JWT authentication for cas-webui integration.
  */
 
-import { createHash, createHash as cryptoCreateHash } from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { decodeNode, type CasNode } from "@agent-web-portal/cas-core";
-import type {
-  AuthorizedPubkey,
-  PendingAuth,
-  PendingAuthStore,
-  PubkeyStore,
-} from "@agent-web-portal/auth";
+import { createHash as cryptoCreateHash } from "node:crypto";
 import {
   AWP_AUTH_HEADERS,
   generateVerificationCode,
   validateTimestamp,
   verifySignature,
 } from "@agent-web-portal/auth";
+import { decodeNode } from "@agent-web-portal/cas-core";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { getCognitoUserMap } from "./src/auth/cognito-users.ts";
+import { EMPTY_COLLECTION_DATA, EMPTY_COLLECTION_KEY } from "./src/controllers/types.ts";
 import {
   AwpPendingAuthStore,
   AwpPubkeyStore,
@@ -34,801 +27,29 @@ import {
   TokensDb,
   UserRolesDb,
 } from "./src/db/index.ts";
-import type { DepotRecord, DepotHistoryRecord } from "./src/db/index.ts";
-import type { CasDagNode, CasOwnership, Ticket, Token, UserToken } from "./src/types.ts";
+import {
+  FileCasStorage,
+  MemoryAgentTokensDb,
+  MemoryAwpPendingAuthStore,
+  MemoryAwpPubkeyStore,
+  MemoryCasStorage,
+  MemoryCommitsDb,
+  MemoryDagDb,
+  MemoryDepotDb,
+  MemoryOwnershipDb,
+  MemoryTokensDb,
+} from "./src/db/memory/index.ts";
+import type { CasStorageInterface, IAgentTokensDb } from "./src/db/memory/types.ts";
 import { loadConfig, loadServerConfig } from "./src/types.ts";
 
 function tokenIdFromPk(pk: string): string {
   return pk.replace("token#", "");
 }
 
-// ============================================================================
-// In-Memory Storage
-// ============================================================================
-
-class MemoryTokensDb {
-  private tokens = new Map<string, Token>();
-
-  async getToken(tokenId: string): Promise<Token | null> {
-    const token = this.tokens.get(`token#${tokenId}`);
-    if (!token) return null;
-    if (token.expiresAt < Date.now()) {
-      this.tokens.delete(`token#${tokenId}`);
-      return null;
-    }
-    return token;
-  }
-
-  async createUserToken(
-    userId: string,
-    refreshToken: string,
-    expiresIn: number = 3600
-  ): Promise<UserToken> {
-    const tokenId = `usr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const token: UserToken = {
-      pk: `token#${tokenId}`,
-      type: "user",
-      userId,
-      refreshToken,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + expiresIn * 1000,
-    };
-    this.tokens.set(token.pk, token);
-    return token;
-  }
-
-  async createTicket(
-    realm: string,
-    issuerId: string,
-    scope?: string | string[],
-    commit?: boolean | { quota?: number; accept?: string[] },
-    expiresIn?: number
-  ): Promise<Ticket> {
-    const ticketId = `tkt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const defaultExpiry = commit ? 300 : 3600;
-    const serverConfig = loadServerConfig();
-
-    // Convert scope to array or undefined
-    const scopeArr = scope === undefined ? undefined : Array.isArray(scope) ? scope : [scope];
-
-    // Convert commit to CommitConfig or undefined
-    const commitConfig =
-      commit === false || commit === undefined
-        ? undefined
-        : commit === true
-          ? {}
-          : { quota: commit.quota, accept: commit.accept };
-
-    const ticket: Ticket = {
-      pk: `token#${ticketId}`,
-      type: "ticket",
-      realm,
-      issuerId,
-      scope: scopeArr,
-      commit: commitConfig,
-      config: {
-        nodeLimit: serverConfig.nodeLimit,
-        maxNameBytes: serverConfig.maxNameBytes,
-      },
-      createdAt: Date.now(),
-      expiresAt: Date.now() + (expiresIn ?? defaultExpiry) * 1000,
-    };
-    this.tokens.set(ticket.pk, ticket);
-    return ticket;
-  }
-
-  async deleteToken(tokenId: string): Promise<void> {
-    this.tokens.delete(`token#${tokenId}`);
-  }
-
-  async verifyTokenOwnership(tokenId: string, userId: string): Promise<boolean> {
-    const token = await this.getToken(tokenId);
-    if (!token) return false;
-    if (token.type === "user") {
-      return token.userId === userId;
-    }
-    if (token.type === "ticket") {
-      const issuer = await this.getToken(token.issuerId);
-      if (!issuer) return false;
-      if (issuer.type === "user") {
-        return issuer.userId === userId;
-      }
-    }
-    return false;
-  }
-
-  static extractTokenId(pk: string): string {
-    return pk.replace("token#", "");
-  }
-}
-
-class MemoryOwnershipDb {
-  private ownership = new Map<string, CasOwnership>();
-
-  private key(realm: string, casKey: string): string {
-    return `${realm}#${casKey}`;
-  }
-
-  async hasOwnership(realm: string, casKey: string): Promise<boolean> {
-    return this.ownership.has(this.key(realm, casKey));
-  }
-
-  async getOwnership(realm: string, casKey: string): Promise<CasOwnership | null> {
-    return this.ownership.get(this.key(realm, casKey)) ?? null;
-  }
-
-  async checkOwnership(
-    realm: string,
-    keys: string[]
-  ): Promise<{ found: string[]; missing: string[] }> {
-    const found: string[] = [];
-    const missing: string[] = [];
-    for (const k of keys) {
-      if (this.ownership.has(this.key(realm, k))) {
-        found.push(k);
-      } else {
-        missing.push(k);
-      }
-    }
-    return { found, missing };
-  }
-
-  async addOwnership(
-    realm: string,
-    casKey: string,
-    createdBy: string,
-    contentType: string,
-    size: number
-  ): Promise<CasOwnership> {
-    const record: CasOwnership = {
-      realm,
-      key: casKey,
-      createdAt: Date.now(),
-      createdBy,
-      contentType,
-      size,
-    };
-    this.ownership.set(this.key(realm, casKey), record);
-    return record;
-  }
-
-  async listNodes(
-    realm: string,
-    limit: number = 10,
-    startKey?: string
-  ): Promise<{ nodes: CasOwnership[]; nextKey?: string; total: number }> {
-    // Get all nodes for this realm
-    const allNodes: CasOwnership[] = [];
-    for (const record of this.ownership.values()) {
-      if (record.realm === realm) {
-        allNodes.push(record);
-      }
-    }
-
-    // Sort by createdAt descending (newest first)
-    allNodes.sort((a, b) => b.createdAt - a.createdAt);
-
-    // Find start position
-    let startIndex = 0;
-    if (startKey) {
-      const idx = allNodes.findIndex((n) => n.key === startKey);
-      if (idx !== -1) {
-        startIndex = idx + 1;
-      }
-    }
-
-    // Paginate
-    const nodes = allNodes.slice(startIndex, startIndex + limit);
-    const nextKey =
-      nodes.length === limit && startIndex + limit < allNodes.length
-        ? nodes[nodes.length - 1]?.key
-        : undefined;
-
-    return { nodes, nextKey, total: allNodes.length };
-  }
-
-  async deleteOwnership(realm: string, casKey: string): Promise<boolean> {
-    return this.ownership.delete(this.key(realm, casKey));
-  }
-}
-
-class MemoryDagDb {
-  private nodes = new Map<string, CasDagNode>();
-
-  async getNode(key: string): Promise<CasDagNode | null> {
-    return this.nodes.get(key) ?? null;
-  }
-
-  async putNode(
-    key: string,
-    children: string[],
-    contentType: string,
-    size: number
-  ): Promise<CasDagNode> {
-    const node: CasDagNode = {
-      key,
-      children,
-      contentType,
-      size,
-      createdAt: Date.now(),
-    };
-    this.nodes.set(key, node);
-    return node;
-  }
-
-  async collectDagKeys(rootKey: string): Promise<string[]> {
-    const visited = new Set<string>();
-    const queue = [rootKey];
-    while (queue.length > 0) {
-      const key = queue.shift()!;
-      if (visited.has(key)) continue;
-      visited.add(key);
-      const node = this.nodes.get(key);
-      if (node?.children) {
-        for (const child of node.children) {
-          if (!visited.has(child)) queue.push(child);
-        }
-      }
-    }
-    return Array.from(visited);
-  }
-}
-
-interface CasMetadata {
-  casContentType?: string;
-  casSize?: number;
-}
-
-interface CasStorageEntry {
-  content: Buffer;
-  contentType: string;
-  metadata: CasMetadata;
-}
-
-interface CasStorageInterface {
-  exists(casKey: string): Promise<boolean>;
-  get(casKey: string): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null>;
-  put(content: Buffer, contentType?: string, metadata?: CasMetadata): Promise<{ key: string; size: number; isNew: boolean }>;
-  putWithKey(expectedKey: string, content: Buffer, contentType?: string, metadata?: CasMetadata): Promise<
-    | { key: string; size: number; isNew: boolean }
-    | { error: "hash_mismatch"; expected: string; actual: string }
-  >;
-}
-
-function computeCasHash(content: Buffer): string {
-  const hash = createHash("sha256").update(content).digest("hex");
-  return `sha256:${hash}`;
-}
-
-class MemoryCasStorage implements CasStorageInterface {
-  private blobs = new Map<string, CasStorageEntry>();
-
-  async exists(casKey: string): Promise<boolean> {
-    return this.blobs.has(casKey);
-  }
-
-  async get(casKey: string): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null> {
-    const entry = this.blobs.get(casKey);
-    if (!entry) return null;
-    return { content: entry.content, contentType: entry.contentType, metadata: entry.metadata };
-  }
-
-  async put(
-    content: Buffer,
-    contentType: string = "application/octet-stream",
-    metadata?: CasMetadata
-  ): Promise<{ key: string; size: number; isNew: boolean }> {
-    const key = computeCasHash(content);
-    const isNew = !this.blobs.has(key);
-    if (isNew) {
-      this.blobs.set(key, { content, contentType, metadata: metadata ?? {} });
-    }
-    return { key, size: content.length, isNew };
-  }
-
-  async putWithKey(
-    expectedKey: string,
-    content: Buffer,
-    contentType: string = "application/octet-stream",
-    metadata?: CasMetadata
-  ): Promise<
-    | { key: string; size: number; isNew: boolean }
-    | { error: "hash_mismatch"; expected: string; actual: string }
-  > {
-    const actualKey = computeCasHash(content);
-    if (actualKey !== expectedKey) {
-      return { error: "hash_mismatch", expected: expectedKey, actual: actualKey };
-    }
-    return this.put(content, contentType, metadata);
-  }
-}
-
-// File-based CAS storage for local development with persistence
-class FileCasStorage implements CasStorageInterface {
-  private baseDir: string;
-
-  constructor(baseDir: string) {
-    this.baseDir = baseDir;
-    // Ensure base directory exists
-    if (!fs.existsSync(this.baseDir)) {
-      fs.mkdirSync(this.baseDir, { recursive: true });
-    }
-  }
-
-  private getFilePath(casKey: string): string {
-    // casKey format: "sha256:abcd1234..."
-    // Store in subdirectories based on first 2 chars of hash for better file system performance
-    const hashPart = casKey.replace("sha256:", "");
-    const subDir = hashPart.substring(0, 2);
-    return path.join(this.baseDir, subDir, hashPart);
-  }
-
-  private getMetaPath(casKey: string): string {
-    return this.getFilePath(casKey) + ".meta.json";
-  }
-
-  async exists(casKey: string): Promise<boolean> {
-    return fs.existsSync(this.getFilePath(casKey));
-  }
-
-  async get(casKey: string): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null> {
-    const filePath = this.getFilePath(casKey);
-    const metaPath = this.getMetaPath(casKey);
-
-    if (!fs.existsSync(filePath)) {
-      return null;
-    }
-
-    const content = fs.readFileSync(filePath);
-    let contentType = "application/octet-stream";
-    let metadata: CasMetadata = {};
-
-    if (fs.existsSync(metaPath)) {
-      try {
-        const metaData = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-        contentType = metaData.contentType || contentType;
-        metadata = metaData.metadata || metadata;
-      } catch {
-        // Ignore meta read errors, use defaults
-      }
-    }
-
-    return { content, contentType, metadata };
-  }
-
-  async put(
-    content: Buffer,
-    contentType: string = "application/octet-stream",
-    metadata?: CasMetadata
-  ): Promise<{ key: string; size: number; isNew: boolean }> {
-    const key = computeCasHash(content);
-    const filePath = this.getFilePath(key);
-    const metaPath = this.getMetaPath(key);
-    const isNew = !fs.existsSync(filePath);
-
-    if (isNew) {
-      // Ensure subdirectory exists
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      // Write content file
-      fs.writeFileSync(filePath, content);
-
-      // Write metadata file
-      fs.writeFileSync(metaPath, JSON.stringify({
-        contentType,
-        metadata: metadata ?? {},
-        createdAt: new Date().toISOString()
-      }, null, 2));
-    }
-
-    return { key, size: content.length, isNew };
-  }
-
-  async putWithKey(
-    expectedKey: string,
-    content: Buffer,
-    contentType: string = "application/octet-stream",
-    metadata?: CasMetadata
-  ): Promise<
-    | { key: string; size: number; isNew: boolean }
-    | { error: "hash_mismatch"; expected: string; actual: string }
-  > {
-    const actualKey = computeCasHash(content);
-    if (actualKey !== expectedKey) {
-      return { error: "hash_mismatch", expected: expectedKey, actual: actualKey };
-    }
-    return this.put(content, contentType, metadata);
-  }
-}
-
-// ============================================================================
-// AWP Auth Stores (In-Memory for development)
-// ============================================================================
-
-class MemoryAwpPendingAuthStore implements PendingAuthStore {
-  private pending = new Map<string, PendingAuth>();
-
-  async create(auth: PendingAuth): Promise<void> {
-    this.pending.set(auth.pubkey, auth);
-  }
-
-  async get(pubkey: string): Promise<PendingAuth | null> {
-    const auth = this.pending.get(pubkey);
-    if (!auth) return null;
-    if (auth.expiresAt < Date.now()) {
-      this.pending.delete(pubkey);
-      return null;
-    }
-    return auth;
-  }
-
-  async delete(pubkey: string): Promise<void> {
-    this.pending.delete(pubkey);
-  }
-
-  async validateCode(pubkey: string, code: string): Promise<boolean> {
-    const auth = await this.get(pubkey);
-    if (!auth) return false;
-    return auth.verificationCode === code;
-  }
-}
-
-class MemoryAwpPubkeyStore implements PubkeyStore {
-  private pubkeys = new Map<string, AuthorizedPubkey>();
-
-  async lookup(pubkey: string): Promise<AuthorizedPubkey | null> {
-    const auth = this.pubkeys.get(pubkey);
-    if (!auth) return null;
-    if (auth.expiresAt && auth.expiresAt < Date.now()) {
-      this.pubkeys.delete(pubkey);
-      return null;
-    }
-    return auth;
-  }
-
-  async store(auth: AuthorizedPubkey): Promise<void> {
-    this.pubkeys.set(auth.pubkey, auth);
-  }
-
-  async revoke(pubkey: string): Promise<void> {
-    this.pubkeys.delete(pubkey);
-  }
-
-  async listByUser(userId: string): Promise<AuthorizedPubkey[]> {
-    const now = Date.now();
-    return Array.from(this.pubkeys.values()).filter(
-      (a) => a.userId === userId && (!a.expiresAt || a.expiresAt > now)
-    );
-  }
-}
-
-// ============================================================================
-// In-Memory Agent Token Storage (for WebUI token management)
-// ============================================================================
-
-interface AgentTokenRecord {
-  id: string;
-  userId: string;
-  name: string;
-  description?: string;
-  createdAt: number;
-  expiresAt: number;
-}
-
-class MemoryAgentTokensDb {
-  private tokens = new Map<string, AgentTokenRecord>();
-
-  async create(
-    userId: string,
-    name: string,
-    options?: { description?: string; expiresIn?: number }
-  ): Promise<AgentTokenRecord> {
-    const id = `agt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const expiresIn = options?.expiresIn ?? 30 * 24 * 60 * 60; // 30 days default
-    const token: AgentTokenRecord = {
-      id,
-      userId,
-      name,
-      description: options?.description,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + expiresIn * 1000,
-    };
-    this.tokens.set(id, token);
-    return token;
-  }
-
-  async listByUser(userId: string): Promise<AgentTokenRecord[]> {
-    const now = Date.now();
-    return Array.from(this.tokens.values()).filter((t) => t.userId === userId && t.expiresAt > now);
-  }
-
-  async revoke(userId: string, tokenId: string): Promise<boolean> {
-    const token = this.tokens.get(tokenId);
-    if (!token || token.userId !== userId) {
-      return false;
-    }
-    this.tokens.delete(tokenId);
-    return true;
-  }
-}
-
-// Commit record for memory storage
-interface MemoryCommitRecord {
-  realm: string;
-  root: string;
-  title?: string;
-  createdAt: number;
-  createdBy: string;
-}
-
-class MemoryCommitsDb {
-  private commits = new Map<string, MemoryCommitRecord>();
-
-  private buildKey(realm: string, root: string): string {
-    return `${realm}#${root}`;
-  }
-
-  async create(
-    realm: string,
-    root: string,
-    createdBy: string,
-    title?: string
-  ): Promise<MemoryCommitRecord> {
-    const commit: MemoryCommitRecord = {
-      realm,
-      root,
-      title,
-      createdAt: Date.now(),
-      createdBy,
-    };
-    this.commits.set(this.buildKey(realm, root), commit);
-    return commit;
-  }
-
-  async get(realm: string, root: string): Promise<MemoryCommitRecord | null> {
-    return this.commits.get(this.buildKey(realm, root)) ?? null;
-  }
-
-  async list(
-    realm: string,
-    options?: { limit?: number }
-  ): Promise<{ commits: MemoryCommitRecord[]; nextKey?: string }> {
-    const limit = options?.limit ?? 100;
-    const realmCommits = Array.from(this.commits.values())
-      .filter((c) => c.realm === realm)
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, limit);
-    return { commits: realmCommits };
-  }
-
-  // Alias for compatibility with CommitsDb
-  async listByScan(
-    realm: string,
-    options?: { limit?: number; startKey?: string }
-  ): Promise<{ commits: MemoryCommitRecord[]; nextKey?: string }> {
-    return this.list(realm, options);
-  }
-
-  async updateTitle(realm: string, root: string, title?: string): Promise<boolean> {
-    const commit = this.commits.get(this.buildKey(realm, root));
-    if (!commit) return false;
-    commit.title = title;
-    return true;
-  }
-
-  async delete(realm: string, root: string): Promise<boolean> {
-    return this.commits.delete(this.buildKey(realm, root));
-  }
-}
-
-// ============================================================================
-// In-Memory Depot Storage
-// ============================================================================
-
-const EMPTY_COLLECTION_KEY = "sha256:a78577c5cfc47ab3e4b116f01902a69e2e015b40cdef52f9b552cfb5104e769a";
-
-// Empty collection is a 32-byte binary header (not JSON!)
-// Structure: magic(4) + flags(4) + count(4) + padding(4) + size(8) + namesOffset(4) + typeOffset(4)
-const HEADER_SIZE = 32;
-const MAGIC = 0x01534143; // "CAS\x01" in little-endian
-const FLAGS_HAS_NAMES = 0x01;
-
-function createEmptyCollectionBytes(): Buffer {
-  const bytes = Buffer.alloc(HEADER_SIZE);
-  bytes.writeUInt32LE(MAGIC, 0);           // magic
-  bytes.writeUInt32LE(FLAGS_HAS_NAMES, 4); // flags
-  bytes.writeUInt32LE(0, 8);               // count = 0
-  bytes.writeUInt32LE(0, 12);              // padding
-  bytes.writeBigUInt64LE(0n, 16);          // size = 0
-  bytes.writeUInt32LE(HEADER_SIZE, 24);    // namesOffset = 32
-  bytes.writeUInt32LE(0, 28);              // typeOffset = 0
-  return bytes;
-}
-
-const EMPTY_COLLECTION_DATA = createEmptyCollectionBytes();
-
-interface MemoryDepotRecord {
-  realm: string;
-  depotId: string;
-  name: string;
-  root: string;
-  version: number;
-  createdAt: number;
-  updatedAt: number;
-  description?: string;
-}
-
-interface MemoryDepotHistory {
-  realm: string;
-  depotId: string;
-  version: number;
-  root: string;
-  createdAt: number;
-  message?: string;
-}
-
-class MemoryDepotDb {
-  private depots = new Map<string, MemoryDepotRecord>();
-  private history = new Map<string, MemoryDepotHistory[]>();
-
-  private buildKey(realm: string, depotId: string): string {
-    return `${realm}#${depotId}`;
-  }
-
-  async create(
-    realm: string,
-    options: { name: string; root?: string; description?: string }
-  ): Promise<MemoryDepotRecord> {
-    const depotId = `dpt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const now = Date.now();
-    const depot: MemoryDepotRecord = {
-      realm,
-      depotId,
-      name: options.name,
-      root: options.root || EMPTY_COLLECTION_KEY,
-      version: 1,
-      createdAt: now,
-      updatedAt: now,
-      description: options.description,
-    };
-    this.depots.set(this.buildKey(realm, depotId), depot);
-
-    // Add initial history
-    const historyKey = this.buildKey(realm, depotId);
-    this.history.set(historyKey, [
-      {
-        realm,
-        depotId,
-        version: 1,
-        root: depot.root,
-        createdAt: now,
-        message: "Initial version",
-      },
-    ]);
-
-    return depot;
-  }
-
-  async get(realm: string, depotId: string): Promise<MemoryDepotRecord | null> {
-    return this.depots.get(this.buildKey(realm, depotId)) ?? null;
-  }
-
-  async getByName(realm: string, name: string): Promise<MemoryDepotRecord | null> {
-    for (const depot of this.depots.values()) {
-      if (depot.realm === realm && depot.name === name) {
-        return depot;
-      }
-    }
-    return null;
-  }
-
-  async list(
-    realm: string,
-    options?: { limit?: number; startKey?: string }
-  ): Promise<{ depots: MemoryDepotRecord[]; nextKey?: string }> {
-    const limit = options?.limit ?? 100;
-    const realmDepots = Array.from(this.depots.values())
-      .filter((d) => d.realm === realm)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(0, limit);
-    return { depots: realmDepots };
-  }
-
-  async updateRoot(
-    realm: string,
-    depotId: string,
-    newRoot: string,
-    message?: string
-  ): Promise<{ depot: MemoryDepotRecord; history: MemoryDepotHistory }> {
-    const depot = this.depots.get(this.buildKey(realm, depotId));
-    if (!depot) {
-      throw new Error("Depot not found");
-    }
-
-    const now = Date.now();
-    depot.root = newRoot;
-    depot.version += 1;
-    depot.updatedAt = now;
-
-    const historyRecord: MemoryDepotHistory = {
-      realm,
-      depotId,
-      version: depot.version,
-      root: newRoot,
-      createdAt: now,
-      message,
-    };
-
-    const historyKey = this.buildKey(realm, depotId);
-    const historyList = this.history.get(historyKey) ?? [];
-    historyList.push(historyRecord);
-    this.history.set(historyKey, historyList);
-
-    return { depot, history: historyRecord };
-  }
-
-  async delete(realm: string, depotId: string): Promise<boolean> {
-    const key = this.buildKey(realm, depotId);
-    this.history.delete(key);
-    return this.depots.delete(key);
-  }
-
-  async listHistory(
-    realm: string,
-    depotId: string,
-    options?: { limit?: number; startKey?: string }
-  ): Promise<{ history: MemoryDepotHistory[]; nextKey?: string }> {
-    const limit = options?.limit ?? 50;
-    const historyKey = this.buildKey(realm, depotId);
-    const historyList = this.history.get(historyKey) ?? [];
-    const sorted = [...historyList].sort((a, b) => b.version - a.version).slice(0, limit);
-    return { history: sorted };
-  }
-
-  async getHistory(realm: string, depotId: string, version: number): Promise<MemoryDepotHistory | null> {
-    const historyKey = this.buildKey(realm, depotId);
-    const historyList = this.history.get(historyKey) ?? [];
-    return historyList.find((h) => h.version === version) ?? null;
-  }
-
-  async ensureMainDepot(realm: string, emptyCollectionKey: string): Promise<MemoryDepotRecord> {
-    const existing = await this.getByName(realm, MAIN_DEPOT_NAME);
-    if (existing) {
-      return existing;
-    }
-    return await this.create(realm, {
-      name: MAIN_DEPOT_NAME,
-      root: emptyCollectionKey,
-      description: "Default depot",
-    });
-  }
-}
-
-/** Adapter: TokensDb agent-token API → same shape as MemoryAgentTokensDb for server routes */
-interface AgentTokenRecord {
-  id: string;
-  userId: string;
-  name: string;
-  description?: string;
-  createdAt: number;
-  expiresAt: number;
-}
-
 function createAgentTokensDbAdapter(
   tokensDb: TokensDb,
   serverConfig: ReturnType<typeof loadServerConfig>
-): {
-  listByUser(userId: string): Promise<AgentTokenRecord[]>;
-  create(
-    userId: string,
-    name: string,
-    options?: { description?: string; expiresIn?: number }
-  ): Promise<AgentTokenRecord>;
-  revoke(userId: string, tokenId: string): Promise<boolean>;
-} {
+): IAgentTokensDb {
   return {
     async listByUser(userId: string) {
       const list = await tokensDb.listAgentTokensByUser(userId);
@@ -916,9 +137,9 @@ async function verifyCognitoToken(token: string): Promise<CognitoTokenPayload | 
 
 const useDynamo = !!process.env.DYNAMODB_ENDPOINT;
 
-const tokensDb = useDynamo ? new TokensDb(loadConfig()) : new MemoryTokensDb();
+const tokensDb = useDynamo ? new TokensDb(loadConfig()) : new MemoryTokensDb(loadServerConfig());
 const ownershipDb = useDynamo ? new OwnershipDb(loadConfig()) : new MemoryOwnershipDb();
-const dagDb = useDynamo ? new DagDb(loadConfig()) : new MemoryDagDb();
+const _dagDb = useDynamo ? new DagDb(loadConfig()) : new MemoryDagDb();
 const commitsDb = useDynamo ? new CommitsDb(loadConfig()) : new MemoryCommitsDb();
 const depotDb = useDynamo ? new DepotDb(loadConfig()) : new MemoryDepotDb();
 // Use FileCasStorage when CAS_STORAGE_DIR is set, otherwise MemoryCasStorage
@@ -1146,7 +367,8 @@ async function authenticateAwp(req: Request): Promise<AuthContext | null> {
 // ============================================================================
 
 const COGNITO_HOSTED_UI_URL = process.env.COGNITO_HOSTED_UI_URL ?? "";
-const COGNITO_CLIENT_ID = process.env.CASFA_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? "";
+const COGNITO_CLIENT_ID =
+  process.env.CASFA_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? "";
 
 async function handleOAuth(req: Request, path: string): Promise<Response> {
   // GET /oauth/config - Public Cognito config for frontend (no auth)
@@ -1383,15 +605,15 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
       expiresIn?: number;
     };
     // Normalize scope to string[] | undefined
-    const normalizedScope = body.scope === undefined
-      ? undefined
-      : Array.isArray(body.scope) ? body.scope : [body.scope];
+    const normalizedScope =
+      body.scope === undefined ? undefined : Array.isArray(body.scope) ? body.scope : [body.scope];
     // Normalize commit: true -> {}, false/undefined -> undefined
-    const normalizedCommit = body.commit === true
-      ? {}
-      : body.commit === false || body.commit === undefined
-        ? undefined
-        : body.commit;
+    const normalizedCommit =
+      body.commit === true
+        ? {}
+        : body.commit === false || body.commit === undefined
+          ? undefined
+          : body.commit;
     const ticket = await tokensDb.createTicket(
       auth.scope,
       auth.tokenId,
@@ -1660,13 +882,19 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
         const collectionKey = `sha256:${hash}`;
 
         await casStorage.putWithKey(collectionKey, content, "application/vnd.cas.collection");
-        await ownershipDb.addOwnership(realm, collectionKey, auth.tokenId, "application/vnd.cas.collection", content.length);
+        await ownershipDb.addOwnership(
+          realm,
+          collectionKey,
+          auth.tokenId,
+          "application/vnd.cas.collection",
+          content.length
+        );
 
         return { key: collectionKey, size: totalSize };
       };
 
       const rootCollection = await buildCollection(body.tree);
-      
+
       // Create commit record
       await commitsDb.create(realm, rootCollection.key, auth.tokenId, body.title);
 
@@ -1781,7 +1009,9 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
       try {
         // Parse binary CAS format
         const node = decodeNode(new Uint8Array(content));
-        console.log(`[tree] decoded node kind=${node.kind}, childNames=${node.childNames?.length ?? 0}`);
+        console.log(
+          `[tree] decoded node kind=${node.kind}, childNames=${node.childNames?.length ?? 0}`
+        );
 
         if (node.kind === "collection" && node.childNames && node.children) {
           const { childNames, children } = node;
@@ -1930,7 +1160,12 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
       return errorResponse(404, "Depot not found");
     }
 
-    const { depot: updatedDepot } = await depotDb.updateRoot(realm, depotId, body.root, body.message);
+    const { depot: updatedDepot } = await depotDb.updateRoot(
+      realm,
+      depotId,
+      body.root,
+      body.message
+    );
     return jsonResponse(200, {
       depotId: updatedDepot.depotId,
       name: updatedDepot.name,
