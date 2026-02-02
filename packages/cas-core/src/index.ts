@@ -92,18 +92,37 @@ export {
   keyToHash,
 } from "./utils.ts";
 
-// Controller
+// Controller - Functional API
 export {
-  CasController,
-  type CasControllerConfig,
+  // Functions
+  getChunk,
+  getNode,
+  getNodeLimit,
+  getTree,
+  has,
+  makeCollection,
+  openFileStream,
+  putFileNode,
+  readFile,
+  writeFile,
+  // Types
+  type CasContext,
   type CollectionEntry,
   type TreeNodeInfo,
   type TreeResponse,
   type WriteResult,
+  // Legacy class wrapper
+  CasController,
+  type CasControllerConfig,
 } from "./controller.ts";
 
-// Providers
+// Providers - Functional API
 export {
+  // Functional factories
+  createMemoryStorage,
+  createWebCryptoHash,
+  type MemoryStorage,
+  // Legacy class wrappers
   MemoryStorageProvider,
   WebCryptoHashProvider,
 } from "./providers.ts";

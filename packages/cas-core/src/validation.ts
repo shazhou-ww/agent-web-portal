@@ -21,13 +21,13 @@ import { hashToKey } from "./utils.ts";
 /**
  * Validation result
  */
-export interface ValidationResult {
+export type ValidationResult = {
   valid: boolean;
   error?: string;
   kind?: NodeKind;
   size?: number;
   childKeys?: string[];
-}
+};
 
 /**
  * Function to check if a key exists
