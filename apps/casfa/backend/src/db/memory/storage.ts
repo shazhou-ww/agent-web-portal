@@ -7,11 +7,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type {
-  CasMetadata,
-  CasStorageEntry,
-  CasStorageInterface,
-} from "./types.ts";
+import type { CasMetadata, CasStorageEntry, CasStorageInterface } from "./types.ts";
 
 function computeCasHash(content: Buffer): string {
   const hash = createHash("sha256").update(content).digest("hex");
@@ -93,7 +89,7 @@ export class FileCasStorage implements CasStorageInterface {
   }
 
   private getMetaPath(casKey: string): string {
-    return this.getFilePath(casKey) + ".meta.json";
+    return `${this.getFilePath(casKey)}.meta.json`;
   }
 
   async exists(casKey: string): Promise<boolean> {

@@ -5,13 +5,8 @@
  * Platform-agnostic - no HTTP concerns.
  */
 
-import type {
-  AuthContext,
-  ControllerResult,
-  Dependencies,
-  UserRole,
-} from "./types.ts";
-import { ok, err } from "./types.ts";
+import type { AuthContext, ControllerResult, Dependencies, UserRole } from "./types.ts";
+import { err, ok } from "./types.ts";
 
 // ============================================================================
 // Request/Response Types
@@ -53,15 +48,13 @@ export class AdminController {
       userPoolId: string,
       region: string
     ) => Promise<Map<string, { email?: string; name?: string }>>
-  ) { }
+  ) {}
 
   /**
    * GET /admin/users - List all users with roles
    * Requires admin auth
    */
-  async listUsers(
-    auth: AuthContext
-  ): Promise<ControllerResult<ListUsersResponse>> {
+  async listUsers(auth: AuthContext): Promise<ControllerResult<ListUsersResponse>> {
     if (!auth.canManageUsers) {
       return err(403, "Admin access required");
     }

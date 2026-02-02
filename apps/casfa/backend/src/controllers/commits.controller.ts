@@ -7,12 +7,8 @@
  * Platform-agnostic - no HTTP concerns.
  */
 
-import type {
-  AuthContext,
-  ControllerResult,
-  Dependencies,
-} from "./types.ts";
-import { ok, err } from "./types.ts";
+import type { AuthContext, ControllerResult, Dependencies } from "./types.ts";
+import { err, ok } from "./types.ts";
 
 // ============================================================================
 // Request/Response Types
@@ -44,7 +40,7 @@ export interface UpdateCommitRequest {
 // ============================================================================
 
 export class CommitsController {
-  constructor(private deps: Dependencies) { }
+  constructor(private deps: Dependencies) {}
 
   /**
    * GET /commits - List commits for realm
@@ -76,10 +72,7 @@ export class CommitsController {
   /**
    * GET /commits/:root - Get commit details
    */
-  async getCommit(
-    auth: AuthContext,
-    root: string
-  ): Promise<ControllerResult<CommitInfo>> {
+  async getCommit(auth: AuthContext, root: string): Promise<ControllerResult<CommitInfo>> {
     if (!auth.canRead) {
       return err(403, "Read access required");
     }
@@ -114,11 +107,7 @@ export class CommitsController {
       return err(404, "Commit not found");
     }
 
-    const updated = await this.deps.commitsDb.updateTitle(
-      auth.realm,
-      root,
-      request.title
-    );
+    const updated = await this.deps.commitsDb.updateTitle(auth.realm, root, request.title);
     if (!updated) {
       return err(404, "Commit not found");
     }

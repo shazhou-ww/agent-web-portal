@@ -6,13 +6,8 @@
  */
 
 import { generateVerificationCode } from "@agent-web-portal/auth";
-import type {
-  AuthContext,
-  ControllerResult,
-  Dependencies,
-  ServerConfig,
-} from "./types.ts";
-import { ok, err } from "./types.ts";
+import type { AuthContext, ControllerResult, Dependencies } from "./types.ts";
+import { err, ok } from "./types.ts";
 
 // ============================================================================
 // Request/Response Types
@@ -105,7 +100,7 @@ export interface ListAgentTokensResponse {
 // ============================================================================
 
 export class AuthController {
-  constructor(private deps: Dependencies) { }
+  constructor(private deps: Dependencies) {}
 
   // ==========================================================================
   // AWP Client Management
@@ -150,9 +145,7 @@ export class AuthController {
    * GET /auth/clients/status - Poll for auth completion
    * No auth required
    */
-  async getAwpClientStatus(
-    pubkey: string
-  ): Promise<ControllerResult<AwpClientStatusResponse>> {
+  async getAwpClientStatus(pubkey: string): Promise<ControllerResult<AwpClientStatusResponse>> {
     const authorized = await this.deps.pubkeyStore.lookup(pubkey);
     if (authorized) {
       return ok({
@@ -218,9 +211,7 @@ export class AuthController {
    * GET /auth/clients - List authorized AWP clients
    * Requires user auth
    */
-  async listAwpClients(
-    auth: AuthContext
-  ): Promise<ControllerResult<ListAwpClientsResponse>> {
+  async listAwpClients(auth: AuthContext): Promise<ControllerResult<ListAwpClientsResponse>> {
     const clients = await this.deps.pubkeyStore.listByUser(auth.userId);
     return ok({
       clients: clients.map((c) => ({
@@ -300,10 +291,7 @@ export class AuthController {
     auth: AuthContext,
     ticketId: string
   ): Promise<ControllerResult<{ success: boolean }>> {
-    const isOwner = await this.deps.tokensDb.verifyTokenOwnership(
-      ticketId,
-      auth.userId
-    );
+    const isOwner = await this.deps.tokensDb.verifyTokenOwnership(ticketId, auth.userId);
     if (!isOwner) {
       return err(404, "Ticket not found");
     }
@@ -346,9 +334,7 @@ export class AuthController {
    * GET /auth/tokens - List agent tokens
    * Requires user auth
    */
-  async listAgentTokens(
-    auth: AuthContext
-  ): Promise<ControllerResult<ListAgentTokensResponse>> {
+  async listAgentTokens(auth: AuthContext): Promise<ControllerResult<ListAgentTokensResponse>> {
     const tokens = await this.deps.agentTokensDb.listByUser(auth.userId);
     return ok({
       tokens: tokens.map((t) => ({

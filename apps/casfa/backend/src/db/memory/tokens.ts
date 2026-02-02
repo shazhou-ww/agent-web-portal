@@ -4,7 +4,7 @@
  * In-memory implementation of TokensDb for local development.
  */
 
-import type { Token, Ticket, UserToken, CommitConfig } from "../../types.ts";
+import type { CommitConfig, Ticket, Token, UserToken } from "../../types.ts";
 import type { ITokensDb } from "./types.ts";
 
 export interface ServerConfig {
@@ -59,8 +59,7 @@ export class MemoryTokensDb implements ITokensDb {
     const defaultExpiry = commit ? 300 : 3600;
 
     // Convert scope to array or undefined
-    const scopeArr =
-      scope === undefined ? undefined : Array.isArray(scope) ? scope : [scope];
+    const scopeArr = scope === undefined ? undefined : Array.isArray(scope) ? scope : [scope];
 
     // Convert commit to CommitConfig or undefined
     const commitConfig: CommitConfig | undefined =

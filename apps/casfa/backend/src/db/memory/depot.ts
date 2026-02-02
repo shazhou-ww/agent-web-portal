@@ -4,7 +4,7 @@
  * In-memory implementation of DepotDb for local development.
  */
 
-import type { DepotRecord, DepotHistoryRecord, IDepotDb } from "./types.ts";
+import type { DepotHistoryRecord, DepotRecord, IDepotDb } from "./types.ts";
 
 // Default empty collection key
 const EMPTY_COLLECTION_KEY =
@@ -127,9 +127,7 @@ export class MemoryDepotDb implements IDepotDb {
     const limit = options?.limit ?? 50;
     const historyKey = this.buildKey(realm, depotId);
     const historyList = this.history.get(historyKey) ?? [];
-    const sorted = [...historyList]
-      .sort((a, b) => b.version - a.version)
-      .slice(0, limit);
+    const sorted = [...historyList].sort((a, b) => b.version - a.version).slice(0, limit);
     return { history: sorted };
   }
 
@@ -143,10 +141,7 @@ export class MemoryDepotDb implements IDepotDb {
     return historyList.find((h) => h.version === version) ?? null;
   }
 
-  async ensureMainDepot(
-    realm: string,
-    emptyCollectionKey: string
-  ): Promise<DepotRecord> {
+  async ensureMainDepot(realm: string, emptyCollectionKey: string): Promise<DepotRecord> {
     const existing = await this.getByName(realm, MAIN_DEPOT_NAME);
     if (existing) {
       return existing;

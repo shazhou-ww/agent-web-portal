@@ -5,13 +5,8 @@
  * Platform-agnostic - no HTTP concerns.
  */
 
-import type {
-  AuthContext,
-  CognitoConfig,
-  ControllerResult,
-  Dependencies,
-} from "./types.ts";
-import { ok, err } from "./types.ts";
+import type { AuthContext, ControllerResult, Dependencies } from "./types.ts";
+import { err, ok } from "./types.ts";
 
 // ============================================================================
 // Request/Response Types
@@ -54,7 +49,7 @@ export class OAuthController {
       login(req: LoginRequest): Promise<unknown>;
       refresh(req: RefreshRequest): Promise<unknown>;
     }
-  ) { }
+  ) {}
 
   /**
    * GET /oauth/config - Public Cognito config for frontend
@@ -73,15 +68,10 @@ export class OAuthController {
    * POST /oauth/token - Exchange authorization code for tokens
    * No auth required
    */
-  async exchangeToken(
-    request: TokenExchangeRequest
-  ): Promise<ControllerResult<unknown>> {
+  async exchangeToken(request: TokenExchangeRequest): Promise<ControllerResult<unknown>> {
     const config = this.deps.cognitoConfig;
     if (!config?.hostedUiUrl || !config?.clientId) {
-      return err(
-        503,
-        "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)"
-      );
+      return err(503, "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)");
     }
 
     const tokenBody = new URLSearchParams({

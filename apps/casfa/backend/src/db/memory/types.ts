@@ -5,7 +5,7 @@
  */
 
 import type { AuthorizedPubkey, PendingAuth } from "@agent-web-portal/auth";
-import type { CommitConfig, Token, Ticket, UserToken } from "../../types.ts";
+import type { Ticket, Token, UserToken } from "../../types.ts";
 
 // ============================================================================
 // CAS Storage Interface
@@ -126,11 +126,7 @@ export interface AgentTokenRecord {
  */
 export interface ITokensDb {
   getToken(tokenId: string): Promise<Token | null>;
-  createUserToken(
-    userId: string,
-    refreshToken: string,
-    expiresIn?: number
-  ): Promise<UserToken>;
+  createUserToken(userId: string, refreshToken: string, expiresIn?: number): Promise<UserToken>;
   createTicket(
     realm: string,
     issuerId: string,
@@ -148,10 +144,7 @@ export interface ITokensDb {
 export interface IOwnershipDb {
   hasOwnership(realm: string, casKey: string): Promise<boolean>;
   getOwnership(realm: string, casKey: string): Promise<CasOwnership | null>;
-  checkOwnership(
-    realm: string,
-    keys: string[]
-  ): Promise<{ found: string[]; missing: string[] }>;
+  checkOwnership(realm: string, keys: string[]): Promise<{ found: string[]; missing: string[] }>;
   addOwnership(
     realm: string,
     casKey: string,
@@ -172,12 +165,7 @@ export interface IOwnershipDb {
  */
 export interface IDagDb {
   getNode(key: string): Promise<CasDagNode | null>;
-  putNode(
-    key: string,
-    children: string[],
-    contentType: string,
-    size: number
-  ): Promise<CasDagNode>;
+  putNode(key: string, children: string[], contentType: string, size: number): Promise<CasDagNode>;
   collectDagKeys(rootKey: string): Promise<string[]>;
 }
 
@@ -185,12 +173,7 @@ export interface IDagDb {
  * CommitsDb interface - abstracts commit storage
  */
 export interface ICommitsDb {
-  create(
-    realm: string,
-    root: string,
-    createdBy: string,
-    title?: string
-  ): Promise<CommitRecord>;
+  create(realm: string, root: string, createdBy: string, title?: string): Promise<CommitRecord>;
   get(realm: string, root: string): Promise<CommitRecord | null>;
   list(
     realm: string,
@@ -230,11 +213,7 @@ export interface IDepotDb {
     depotId: string,
     options?: { limit?: number; startKey?: string }
   ): Promise<{ history: DepotHistoryRecord[]; nextKey?: string }>;
-  getHistory(
-    realm: string,
-    depotId: string,
-    version: number
-  ): Promise<DepotHistoryRecord | null>;
+  getHistory(realm: string, depotId: string, version: number): Promise<DepotHistoryRecord | null>;
   ensureMainDepot(realm: string, emptyCollectionKey: string): Promise<DepotRecord>;
 }
 

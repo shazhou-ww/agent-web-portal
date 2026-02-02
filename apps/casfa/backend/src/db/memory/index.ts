@@ -4,47 +4,40 @@
  * Re-exports all in-memory storage implementations and interfaces.
  */
 
-// Types and interfaces
-export type {
-  CasMetadata,
-  CasStorageEntry,
-  CasStorageInterface,
-  CasOwnership,
-  CasDagNode,
-  CommitRecord,
-  DepotRecord,
-  DepotHistoryRecord,
-  AgentTokenRecord,
-  ITokensDb,
-  IOwnershipDb,
-  IDagDb,
-  ICommitsDb,
-  IDepotDb,
-  IAgentTokensDb,
-  IPendingAuthStore,
-  IPubkeyStore,
-} from "./types.ts";
-
-// Token storage
-export { MemoryTokensDb, type ServerConfig } from "./tokens.ts";
-
-// Ownership storage
-export { MemoryOwnershipDb } from "./ownership.ts";
-
-// DAG storage
-export { MemoryDagDb } from "./dag.ts";
-
-// CAS blob storage
-export { MemoryCasStorage, FileCasStorage } from "./storage.ts";
-
+// Agent tokens storage
+export { MemoryAgentTokensDb } from "./agent-tokens.ts";
+// AWP Auth stores
+export { MemoryAwpPendingAuthStore, MemoryAwpPubkeyStore } from "./awp-auth.ts";
 // Commits storage
 export { MemoryCommitsDb } from "./commits.ts";
 
+// DAG storage
+export { MemoryDagDb } from "./dag.ts";
 // Depot storage
 export { MemoryDepotDb } from "./depot.ts";
-
-// AWP Auth stores
-export { MemoryAwpPendingAuthStore, MemoryAwpPubkeyStore } from "./awp-auth.ts";
-
-// Agent tokens storage
-export { MemoryAgentTokensDb } from "./agent-tokens.ts";
+// Ownership storage
+export { MemoryOwnershipDb } from "./ownership.ts";
+// CAS blob storage
+export { FileCasStorage, MemoryCasStorage } from "./storage.ts";
+// Token storage
+export { MemoryTokensDb, type ServerConfig } from "./tokens.ts";
+// Types and interfaces
+export type {
+  AgentTokenRecord,
+  CasDagNode,
+  CasMetadata,
+  CasOwnership,
+  CasStorageEntry,
+  CasStorageInterface,
+  CommitRecord,
+  DepotHistoryRecord,
+  DepotRecord,
+  IAgentTokensDb,
+  ICommitsDb,
+  IDagDb,
+  IDepotDb,
+  IOwnershipDb,
+  IPendingAuthStore,
+  IPubkeyStore,
+  ITokensDb,
+} from "./types.ts";

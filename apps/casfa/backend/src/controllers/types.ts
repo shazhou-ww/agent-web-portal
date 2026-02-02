@@ -6,14 +6,14 @@
 
 import type {
   CasStorageInterface,
-  ITokensDb,
-  IOwnershipDb,
-  IDagDb,
-  ICommitsDb,
-  IDepotDb,
   IAgentTokensDb,
+  ICommitsDb,
+  IDagDb,
+  IDepotDb,
+  IOwnershipDb,
   IPendingAuthStore,
   IPubkeyStore,
+  ITokensDb,
 } from "../db/memory/types.ts";
 
 // ============================================================================
@@ -132,11 +132,7 @@ export function ok<T>(data: T): ControllerResult<T> {
 /**
  * Helper to create error results
  */
-export function err<T>(
-  status: number,
-  error: string,
-  details?: unknown
-): ControllerResult<T> {
+export function err<T>(status: number, error: string, details?: unknown): ControllerResult<T> {
   return { success: false, error, status, details };
 }
 

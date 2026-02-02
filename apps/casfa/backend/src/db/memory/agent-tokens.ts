@@ -30,9 +30,7 @@ export class MemoryAgentTokensDb implements IAgentTokensDb {
 
   async listByUser(userId: string): Promise<AgentTokenRecord[]> {
     const now = Date.now();
-    return Array.from(this.tokens.values()).filter(
-      (t) => t.userId === userId && t.expiresAt > now
-    );
+    return Array.from(this.tokens.values()).filter((t) => t.userId === userId && t.expiresAt > now);
   }
 
   async revoke(userId: string, tokenId: string): Promise<boolean> {

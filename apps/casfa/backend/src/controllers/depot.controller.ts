@@ -5,12 +5,8 @@
  * Platform-agnostic - no HTTP concerns.
  */
 
-import type {
-  AuthContext,
-  ControllerResult,
-  Dependencies,
-} from "./types.ts";
-import { ok, err, EMPTY_COLLECTION_KEY, EMPTY_COLLECTION_DATA } from "./types.ts";
+import type { AuthContext, ControllerResult, Dependencies } from "./types.ts";
+import { EMPTY_COLLECTION_DATA, EMPTY_COLLECTION_KEY, err, ok } from "./types.ts";
 
 // ============================================================================
 // Request/Response Types
@@ -75,15 +71,12 @@ const MAIN_DEPOT_NAME = "main";
 // ============================================================================
 
 export class DepotController {
-  constructor(private deps: Dependencies) { }
+  constructor(private deps: Dependencies) {}
 
   /**
    * Ensure the empty collection exists in storage
    */
-  private async ensureEmptyCollection(
-    realm: string,
-    tokenId: string
-  ): Promise<void> {
+  private async ensureEmptyCollection(realm: string, tokenId: string): Promise<void> {
     const exists = await this.deps.casStorage.exists(EMPTY_COLLECTION_KEY);
     if (!exists) {
       const result = await this.deps.casStorage.putWithKey(
@@ -99,10 +92,7 @@ export class DepotController {
     }
 
     // Ensure ownership
-    const hasOwnership = await this.deps.ownershipDb.hasOwnership(
-      realm,
-      EMPTY_COLLECTION_KEY
-    );
+    const hasOwnership = await this.deps.ownershipDb.hasOwnership(realm, EMPTY_COLLECTION_KEY);
     if (!hasOwnership) {
       await this.deps.ownershipDb.addOwnership(
         realm,
@@ -185,10 +175,7 @@ export class DepotController {
   /**
    * GET /depots/:depotId - Get depot by ID
    */
-  async getDepot(
-    auth: AuthContext,
-    depotId: string
-  ): Promise<ControllerResult<DepotInfo>> {
+  async getDepot(auth: AuthContext, depotId: string): Promise<ControllerResult<DepotInfo>> {
     if (!auth.canRead) {
       return err(403, "Read access required");
     }
@@ -333,11 +320,7 @@ export class DepotController {
     }
 
     // Get the history record for target version
-    const historyRecord = await this.deps.depotDb.getHistory(
-      auth.realm,
-      depotId,
-      request.version
-    );
+    const historyRecord = await this.deps.depotDb.getHistory(auth.realm, depotId, request.version);
     if (!historyRecord) {
       return err(404, `Version ${request.version} not found`);
     }
