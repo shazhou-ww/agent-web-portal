@@ -99,7 +99,7 @@ export type TestHelpers = {
   /**
    * Create a test user with a token
    */
-  createTestUser: (userId: string, role?: "admin" | "user") => Promise<{
+  createTestUser: (userId: string, role?: "admin" | "authorized") => Promise<{
     userId: string
     token: string
     realm: string
@@ -164,7 +164,7 @@ export const createTestApp = (options: CreateTestAppOptions = {}): TestApp => {
 
   // Helper functions
   const helpers: TestHelpers = {
-    createTestUser: async (userId: string, role: "admin" | "user" = "user") => {
+    createTestUser: async (userId: string, role: "admin" | "authorized" = "authorized") => {
       // Set user role
       await db.userRolesDb.setRole(userId, role)
 

@@ -26,7 +26,8 @@ describe("Memory DB", () => {
       const retrieved = await db.tokensDb.getToken(tokenId)
 
       expect(retrieved).toBeDefined()
-      expect(retrieved?.userId).toBe("user-123")
+      expect(retrieved?.type).toBe("user")
+      expect((retrieved as { userId?: string })?.userId).toBe("user-123")
     })
 
     it("should create and retrieve agent token", async () => {
@@ -217,9 +218,9 @@ describe("Memory DB", () => {
       const defaultRole = await db.userRolesDb.getRole("user-1")
       expect(defaultRole).toBe("unauthorized")
 
-      await db.userRolesDb.setRole("user-1", "user")
+      await db.userRolesDb.setRole("user-1", "authorized")
       const userRole = await db.userRolesDb.getRole("user-1")
-      expect(userRole).toBe("user")
+      expect(userRole).toBe("authorized")
 
       await db.userRolesDb.setRole("user-1", "admin")
       const adminRole = await db.userRolesDb.getRole("user-1")
@@ -227,7 +228,7 @@ describe("Memory DB", () => {
     })
 
     it("should list all roles", async () => {
-      await db.userRolesDb.setRole("user-1", "user")
+      await db.userRolesDb.setRole("user-1", "authorized")
       await db.userRolesDb.setRole("user-2", "admin")
 
       const roles = await db.userRolesDb.listRoles()

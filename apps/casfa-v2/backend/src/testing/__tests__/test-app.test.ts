@@ -22,7 +22,13 @@ describe("TestApp", () => {
       const testApp = createTestApp({
         config: {
           server: {
+            nodeLimit: 1000,
+            maxNameBytes: 255,
+            maxCollectionChildren: 10000,
             maxPayloadSize: 1024,
+            maxTicketTtl: 86400,
+            maxAgentTokenTtl: 2592000,
+            baseUrl: "http://localhost:3560",
           },
         },
       })
@@ -42,7 +48,7 @@ describe("TestApp", () => {
 
       // Verify user role was set
       const role = await testApp.db.userRolesDb.getRole("test-user-1")
-      expect(role).toBe("user")
+      expect(role).toBe("authorized")
     })
 
     it("should create admin users", async () => {
@@ -94,7 +100,7 @@ describe("TestApp", () => {
       )
 
       expect(response.status).toBe(200)
-      const data = await response.json()
+      const data = (await response.json()) as { status: string }
       expect(data.status).toBe("ok")
     })
 
@@ -120,7 +126,7 @@ describe("TestApp", () => {
       )
 
       expect(response.status).toBe(200)
-      const data = await response.json()
+      const data = (await response.json()) as { realm: string }
       expect(data.realm).toBe(realm)
     })
   })

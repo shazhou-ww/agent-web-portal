@@ -180,7 +180,7 @@ export const createMemoryDepotsDb = (): DepotsDb & { _store: StoreData; _clear: 
     if (options.startKey) {
       // startKey is the full sk like "DEPOT_HIST#depotId#0000000002"
       const versionMatch = options.startKey.match(/(\d+)$/)
-      if (versionMatch) {
+      if (versionMatch && versionMatch[1]) {
         const version = Number.parseInt(versionMatch[1], 10)
         const startIdx = history.findIndex((h) => h.version === version)
         if (startIdx >= 0) startIndex = startIdx + 1
