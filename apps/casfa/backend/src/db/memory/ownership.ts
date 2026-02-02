@@ -58,9 +58,9 @@ export class MemoryOwnershipDb implements IOwnershipDb {
 
   async listNodes(
     realm: string,
-    limit: number = 10,
-    startKey?: string
+    options: { limit?: number; startKey?: string } = {}
   ): Promise<{ nodes: CasOwnership[]; nextKey?: string; total: number }> {
+    const { limit = 10, startKey } = options;
     // Get all nodes for this realm
     const allNodes: CasOwnership[] = [];
     for (const record of this.ownership.values()) {

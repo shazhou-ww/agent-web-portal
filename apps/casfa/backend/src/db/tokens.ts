@@ -13,6 +13,7 @@ import {
 import type { AgentToken, CasConfig, CasServerConfig, Ticket, Token, UserToken } from "../types.ts";
 import { loadServerConfig } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
+import type { ITokensDb } from "./memory/types.ts";
 
 // ============================================================================
 // Token ID Generation
@@ -40,7 +41,7 @@ export function generateTicketId(): string {
 // Token Database Operations
 // ============================================================================
 
-export class TokensDb {
+export class TokensDb implements ITokensDb {
   private client: DynamoDBDocumentClient;
   private tableName: string;
 

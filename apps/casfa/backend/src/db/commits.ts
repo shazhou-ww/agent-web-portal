@@ -18,6 +18,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { CasConfig } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
+import type { ICommitsDb } from "./memory/types.ts";
 
 // ============================================================================
 // Constants
@@ -72,7 +73,7 @@ export interface ListCommitsResult {
 // CommitsDb
 // ============================================================================
 
-export class CommitsDb {
+export class CommitsDb implements ICommitsDb {
   private client: DynamoDBDocumentClient;
   private tableName: string;
 

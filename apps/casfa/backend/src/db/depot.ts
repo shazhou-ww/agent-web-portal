@@ -19,6 +19,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { CasConfig } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
+import type { IDepotDb } from "./memory/types.ts";
 
 // ============================================================================
 // Constants
@@ -128,7 +129,7 @@ export interface ListHistoryResult {
 // DepotDb
 // ============================================================================
 
-export class DepotDb {
+export class DepotDb implements IDepotDb {
   private client: DynamoDBDocumentClient;
   private tableName: string;
 

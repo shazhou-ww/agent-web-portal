@@ -5,7 +5,10 @@
  */
 
 import type { AuthorizedPubkey, PendingAuth } from "@agent-web-portal/auth";
-import type { Ticket, Token, UserToken } from "../../types.ts";
+import type { CasOwnership, Ticket, Token, UserToken } from "../../types.ts";
+
+// Re-export CasOwnership from types.ts
+export type { CasOwnership } from "../../types.ts";
 
 // ============================================================================
 // CAS Storage Interface
@@ -41,19 +44,6 @@ export interface CasStorageInterface {
     | { key: string; size: number; isNew: boolean }
     | { error: "hash_mismatch"; expected: string; actual: string }
   >;
-}
-
-// ============================================================================
-// Ownership Types
-// ============================================================================
-
-export interface CasOwnership {
-  realm: string;
-  key: string;
-  createdAt: number;
-  createdBy: string;
-  contentType: string;
-  size: number;
 }
 
 // ============================================================================
@@ -139,6 +129,14 @@ export interface ITokensDb {
 }
 
 /**
+ * Options for listing ownership records
+ */
+export interface ListOwnershipOptions {
+  limit?: number;
+  startKey?: string;
+}
+
+/**
  * OwnershipDb interface - abstracts ownership storage
  */
 export interface IOwnershipDb {
@@ -154,8 +152,7 @@ export interface IOwnershipDb {
   ): Promise<CasOwnership>;
   listNodes(
     realm: string,
-    limit?: number,
-    startKey?: string
+    options?: ListOwnershipOptions
   ): Promise<{ nodes: CasOwnership[]; nextKey?: string; total: number }>;
   deleteOwnership(realm: string, casKey: string): Promise<boolean>;
 }
@@ -207,7 +204,7 @@ export interface IDepotDb {
     newRoot: string,
     message?: string
   ): Promise<{ depot: DepotRecord; history: DepotHistoryRecord }>;
-  delete(realm: string, depotId: string): Promise<boolean>;
+  delete(realm: string, depotId: string): Promise<DepotRecord | null | boolean>;
   listHistory(
     realm: string,
     depotId: string,

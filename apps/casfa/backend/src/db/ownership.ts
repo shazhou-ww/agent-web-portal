@@ -12,17 +12,16 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { CasConfig, CasOwnership, NodeKind } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
+import type { ListOwnershipOptions as BaseListOptions, IOwnershipDb } from "./memory/types.ts";
 
 /**
- * Options for listing ownership records
+ * Options for listing ownership records (extends base with DynamoDB-specific options)
  */
-export interface ListOwnershipOptions {
-  limit?: number;
-  startKey?: string;
+export interface ListOwnershipOptions extends BaseListOptions {
   kind?: NodeKind; // Filter by node kind
 }
 
-export class OwnershipDb {
+export class OwnershipDb implements IOwnershipDb {
   private client: DynamoDBDocumentClient;
   private tableName: string;
 
