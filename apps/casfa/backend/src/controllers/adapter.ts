@@ -109,3 +109,32 @@ export function toBunResponse<T>(
     }
   );
 }
+
+/**
+ * Server.ts AuthContext (simpler than router.ts)
+ */
+export interface ServerAuthContext {
+  userId: string;
+  scope: string;
+  canRead: boolean;
+  canWrite: boolean;
+  canIssueTicket: boolean;
+  tokenId: string;
+  allowedKey?: string;
+}
+
+/**
+ * Convert server.ts AuthContext to controller AuthContext
+ */
+export function toControllerAuthFromServer(auth: ServerAuthContext): ControllerAuthContext {
+  return {
+    userId: auth.userId,
+    realm: auth.scope, // server.ts uses 'scope' for realm
+    tokenId: auth.tokenId,
+    canRead: auth.canRead,
+    canWrite: auth.canWrite,
+    canIssueTicket: auth.canIssueTicket,
+    canManageUsers: false, // server.ts doesn't have this concept
+    allowedKeys: auth.allowedKey ? [auth.allowedKey] : undefined,
+  };
+}

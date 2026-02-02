@@ -4,9 +4,14 @@
  * Re-exports all controllers and shared types.
  */
 
-export type { HttpResponse } from "./adapter.ts";
+export type { HttpResponse, ServerAuthContext } from "./adapter.ts";
 // Adapter for converting between router/server and controller types
-export { toBunResponse, toControllerAuth, toHttpResponse } from "./adapter.ts";
+export {
+  toBunResponse,
+  toControllerAuth,
+  toControllerAuthFromServer,
+  toHttpResponse,
+} from "./adapter.ts";
 export type {
   AuthorizeUserRequest,
   AuthorizeUserResponse,
@@ -53,6 +58,9 @@ export type {
 } from "./depot.controller.ts";
 // Depot Controller
 export { DepotController } from "./depot.controller.ts";
+// Factory for creating controllers
+export type { Controllers, DependenciesBuilder } from "./factory.ts";
+export { buildDependencies, createControllers } from "./factory.ts";
 export type {
   LoginRequest,
   MeResponse,
