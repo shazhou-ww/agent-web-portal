@@ -2,7 +2,6 @@
  * CAS Stack - HTTP Router
  */
 
-import { generateVerificationCode } from "@agent-web-portal/auth";
 import {
   decodeNode,
   EMPTY_COLLECTION_BYTES,
@@ -16,9 +15,18 @@ import { AuthService } from "./auth/service.ts";
 import { NodeHashProvider, S3StorageProvider } from "./cas/providers.ts";
 import { CasStorage } from "./cas/storage.ts";
 import {
+  type Controllers,
+  createControllers,
+  toControllerAuth,
+  toHttpResponse,
+} from "./controllers/index.ts";
+import type { Dependencies } from "./controllers/types.ts";
+import { DagDb } from "./db/dag.ts";
+import {
   AwpPendingAuthStore,
   AwpPubkeyStore,
   CommitsDb,
+  createAgentTokensDbAdapter,
   DepotDb,
   MAIN_DEPOT_NAME,
   OwnershipDb,
@@ -178,9 +186,13 @@ export class Router {
   // CAS-core providers for binary format validation
   private hashProvider: NodeHashProvider;
   private storageProvider: S3StorageProvider;
+  // Controllers
+  private controllers: Controllers;
+  private serverConfig: ReturnType<typeof loadServerConfig>;
 
   constructor(config: CasConfig) {
     this.config = config;
+    this.serverConfig = loadServerConfig();
     this.tokensDb = new TokensDb(config);
     this.userRolesDb = new UserRolesDb(config);
     this.ownershipDb = new OwnershipDb(config);
@@ -198,10 +210,35 @@ export class Router {
     );
     this.authService = new AuthService(config, this.tokensDb, this.userRolesDb);
     this.casStorage = new CasStorage(config);
-    this.mcpHandler = new McpHandler(config, loadServerConfig());
+    this.mcpHandler = new McpHandler(config, this.serverConfig);
     // Initialize cas-core providers
     this.hashProvider = new NodeHashProvider();
     this.storageProvider = new S3StorageProvider({ bucket: config.casBucket });
+
+    // Initialize controllers with dependencies
+    const deps: Dependencies = {
+      tokensDb: this.tokensDb,
+      ownershipDb: this.ownershipDb,
+      dagDb: new DagDb(config),
+      commitsDb: this.commitsDb,
+      depotDb: this.depotDb,
+      casStorage: this.casStorage,
+      agentTokensDb: createAgentTokensDbAdapter(this.tokensDb, this.serverConfig),
+      pendingAuthStore: this.awpPendingStore,
+      pubkeyStore: this.awpPubkeyStore,
+      userRolesDb: this.userRolesDb as unknown as Dependencies["userRolesDb"],
+      serverConfig: this.serverConfig,
+      cognitoConfig: {
+        userPoolId: config.cognitoUserPoolId ?? "",
+        clientId: config.cognitoClientId ?? "",
+        region: config.cognitoRegion ?? "us-east-1",
+        hostedUiUrl: config.cognitoHostedUiUrl,
+      },
+    };
+    this.controllers = createControllers(deps, {
+      authService: this.authService,
+      getCognitoUserMap,
+    });
   }
 
   /**
@@ -320,50 +357,21 @@ export class Router {
 
     // GET /oauth/config - Public Cognito config for frontend (no auth)
     if (req.method === "GET" && path === "/config") {
-      const { cognitoUserPoolId, cognitoClientId, cognitoHostedUiUrl } = this.config;
-      return jsonResponse(200, {
-        cognitoUserPoolId: cognitoUserPoolId ?? "",
-        cognitoClientId: cognitoClientId ?? "",
-        cognitoHostedUiUrl: cognitoHostedUiUrl ?? "",
-      });
+      const result = this.controllers.oauth.getConfig();
+      return toHttpResponse(result);
     }
 
     // POST /oauth/token - Exchange authorization code for tokens (Cognito Hosted UI / Google sign-in)
     if (req.method === "POST" && path === "/token") {
-      const { cognitoHostedUiUrl, cognitoClientId } = this.config;
-      if (!cognitoHostedUiUrl || !cognitoClientId) {
-        return errorResponse(
-          503,
-          "OAuth / Google sign-in not configured (missing Hosted UI URL or Client ID)"
-        );
-      }
       const body = this.parseJson(req) as { code?: string; redirect_uri?: string };
       if (!body?.code || !body?.redirect_uri) {
         return errorResponse(400, "Missing code or redirect_uri");
       }
-      const tokenBody = new URLSearchParams({
-        grant_type: "authorization_code",
-        client_id: cognitoClientId,
+      const result = await this.controllers.oauth.exchangeToken({
         code: body.code,
-        redirect_uri: body.redirect_uri,
+        redirectUri: body.redirect_uri,
       });
-      const tokenRes = await fetch(`${cognitoHostedUiUrl}/oauth2/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: tokenBody.toString(),
-      });
-      const text = await tokenRes.text();
-      if (!tokenRes.ok) {
-        console.error("[OAuth] Token exchange failed:", tokenRes.status, text);
-        return jsonResponse(tokenRes.status, { error: "Token exchange failed", details: text });
-      }
-      let data: unknown;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        return errorResponse(502, "Invalid token response from Cognito");
-      }
-      return jsonResponse(200, data);
+      return toHttpResponse(result);
     }
 
     // POST /oauth/login
@@ -404,11 +412,8 @@ export class Router {
       if (!auth) {
         return errorResponse(401, "Unauthorized");
       }
-      return jsonResponse(200, {
-        userId: auth.userId,
-        realm: auth.realm,
-        role: auth.role ?? "unauthorized",
-      });
+      const result = this.controllers.oauth.getMe(toControllerAuth(auth));
+      return toHttpResponse(result);
     }
 
     return errorResponse(404, "OAuth endpoint not found");
@@ -433,32 +438,12 @@ export class Router {
         return errorResponse(400, "Invalid request", parsed.error.issues);
       }
 
-      try {
-        const verificationCode = generateVerificationCode();
-        const now = Date.now();
-        const expiresIn = 600; // 10 minutes
-
-        await this.awpPendingStore.create({
-          pubkey: parsed.data.pubkey,
-          clientName: parsed.data.client_name,
-          verificationCode,
-          createdAt: now,
-          expiresAt: now + expiresIn * 1000,
-        });
-
-        // Build auth URL (points to cas-webui)
-        const baseUrl = req.headers.origin ?? req.headers.Origin ?? "";
-        const authUrl = `${baseUrl}/auth/awp?pubkey=${encodeURIComponent(parsed.data.pubkey)}`;
-
-        return jsonResponse(200, {
-          auth_url: authUrl,
-          verification_code: verificationCode,
-          expires_in: expiresIn,
-          poll_interval: 5,
-        });
-      } catch (error: any) {
-        return errorResponse(500, error.message ?? "Failed to initiate auth");
-      }
+      const baseUrl = req.headers.origin ?? req.headers.Origin ?? this.serverConfig.baseUrl;
+      const result = await this.controllers.auth.initAwpClient(
+        { pubkey: parsed.data.pubkey, clientName: parsed.data.client_name },
+        baseUrl
+      );
+      return toHttpResponse(result);
     }
 
     // GET /auth/clients/status - Poll for auth completion (no auth required)
@@ -467,27 +452,8 @@ export class Router {
       if (!pubkey) {
         return errorResponse(400, "Missing pubkey parameter");
       }
-
-      const authorized = await this.awpPubkeyStore.lookup(pubkey);
-      if (authorized) {
-        return jsonResponse(200, {
-          authorized: true,
-          expires_at: authorized.expiresAt,
-        });
-      }
-
-      // Check if pending auth exists
-      const pending = await this.awpPendingStore.get(pubkey);
-      if (!pending) {
-        return jsonResponse(200, {
-          authorized: false,
-          error: "No pending authorization found",
-        });
-      }
-
-      return jsonResponse(200, {
-        authorized: false,
-      });
+      const result = await this.controllers.auth.getAwpClientStatus(pubkey);
+      return toHttpResponse(result);
     }
 
     // POST /auth/clients/complete - Complete authorization (requires user auth)
@@ -503,40 +469,11 @@ export class Router {
         return errorResponse(400, "Invalid request", parsed.error.issues);
       }
 
-      // Validate verification code
-      const isValid = await this.awpPendingStore.validateCode(
-        parsed.data.pubkey,
-        parsed.data.verification_code
-      );
-      if (!isValid) {
-        return errorResponse(400, "Invalid or expired verification code");
-      }
-
-      // Get pending auth to retrieve client name
-      const pending = await this.awpPendingStore.get(parsed.data.pubkey);
-      if (!pending) {
-        return errorResponse(400, "Pending authorization not found");
-      }
-
-      // Store authorized pubkey
-      const now = Date.now();
-      const expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 days
-
-      await this.awpPubkeyStore.store({
+      const result = await this.controllers.auth.completeAwpClient(toControllerAuth(auth), {
         pubkey: parsed.data.pubkey,
-        userId: auth.userId,
-        clientName: pending.clientName,
-        createdAt: now,
-        expiresAt,
+        verificationCode: parsed.data.verification_code,
       });
-
-      // Clean up pending auth
-      await this.awpPendingStore.delete(parsed.data.pubkey);
-
-      return jsonResponse(200, {
-        success: true,
-        expires_at: expiresAt,
-      });
+      return toHttpResponse(result);
     }
 
     // Routes requiring auth
@@ -547,30 +484,16 @@ export class Router {
 
     // GET /auth/clients - List authorized AWP clients
     if (req.method === "GET" && path === "/clients") {
-      const clients = await this.awpPubkeyStore.listByUser(auth.userId);
-      return jsonResponse(200, {
-        clients: clients.map((c) => ({
-          pubkey: c.pubkey,
-          clientName: c.clientName,
-          createdAt: new Date(c.createdAt).toISOString(),
-          expiresAt: c.expiresAt ? new Date(c.expiresAt).toISOString() : null,
-        })),
-      });
+      const result = await this.controllers.auth.listAwpClients(toControllerAuth(auth));
+      return toHttpResponse(result);
     }
 
     // DELETE /auth/clients/:pubkey - Revoke AWP client
     const clientRevokeMatch = path.match(/^\/clients\/(.+)$/);
     if (req.method === "DELETE" && clientRevokeMatch) {
       const pubkey = decodeURIComponent(clientRevokeMatch[1]!);
-
-      // Verify ownership
-      const client = await this.awpPubkeyStore.lookup(pubkey);
-      if (!client || client.userId !== auth.userId) {
-        return errorResponse(404, "Client not found or access denied");
-      }
-
-      await this.awpPubkeyStore.revoke(pubkey);
-      return jsonResponse(200, { success: true });
+      const result = await this.controllers.auth.revokeAwpClient(toControllerAuth(auth), pubkey);
+      return toHttpResponse(result);
     }
 
     // ========================================================================
@@ -585,44 +508,20 @@ export class Router {
         return errorResponse(400, "Invalid request", parsed.error.issues);
       }
 
-      try {
-        const serverConfig = loadServerConfig();
-        const ticket = await this.tokensDb.createTicket(
-          auth.realm,
-          TokensDb.extractTokenId(auth.token.pk),
-          parsed.data.scope,
-          parsed.data.commit,
-          parsed.data.expiresIn
-        );
-
-        const ticketId = TokensDb.extractTokenId(ticket.pk);
-        // Build endpoint URL - ticket ID is the credential
-        const endpoint = `${serverConfig.baseUrl}/api/ticket/${ticketId}`;
-
-        return jsonResponse(201, {
-          id: ticketId,
-          endpoint,
-          expiresAt: new Date(ticket.expiresAt).toISOString(),
-          realm: ticket.realm,
-          scope: ticket.scope,
-          commit: ticket.commit,
-          config: ticket.config,
-        });
-      } catch (error: any) {
-        return errorResponse(403, error.message ?? "Cannot create ticket");
-      }
+      const result = await this.controllers.auth.createTicket(toControllerAuth(auth), {
+        scope: parsed.data.scope,
+        commit: parsed.data.commit,
+        expiresIn: parsed.data.expiresIn,
+      });
+      return toHttpResponse(result, 201);
     }
 
     // DELETE /auth/ticket/:id
     const ticketMatch = path.match(/^\/ticket\/([^/]+)$/);
     if (req.method === "DELETE" && ticketMatch) {
       const ticketId = ticketMatch[1]!;
-      try {
-        await this.authService.revokeTicket(auth, ticketId);
-        return jsonResponse(200, { success: true });
-      } catch (error: any) {
-        return errorResponse(404, error.message ?? "Ticket not found");
-      }
+      const result = await this.controllers.auth.revokeTicket(toControllerAuth(auth), ticketId);
+      return toHttpResponse(result);
     }
 
     // ========================================================================
@@ -632,62 +531,31 @@ export class Router {
     // POST /auth/tokens - Create agent token
     if (req.method === "POST" && path === "/tokens") {
       const body = this.parseJson(req);
-      console.log("[CAS] Create agent token - body:", JSON.stringify(body));
       const parsed = CreateAgentTokenSchema.safeParse(body);
       if (!parsed.success) {
-        console.log("[CAS] Validation failed:", JSON.stringify(parsed.error.issues));
         return errorResponse(400, "Invalid request", parsed.error.issues);
       }
 
-      try {
-        const serverConfig = loadServerConfig();
-        const token = await this.tokensDb.createAgentToken(
-          auth.userId,
-          parsed.data.name,
-          serverConfig,
-          {
-            description: parsed.data.description,
-            expiresIn: parsed.data.expiresIn,
-          }
-        );
-
-        const tokenId = TokensDb.extractTokenId(token.pk);
-        return jsonResponse(201, {
-          id: tokenId,
-          name: token.name,
-          description: token.description,
-          expiresAt: new Date(token.expiresAt).toISOString(),
-          createdAt: new Date(token.createdAt).toISOString(),
-        });
-      } catch (error: any) {
-        return errorResponse(403, error.message ?? "Cannot create agent token");
-      }
+      const result = await this.controllers.auth.createAgentToken(toControllerAuth(auth), {
+        name: parsed.data.name,
+        description: parsed.data.description,
+        expiresIn: parsed.data.expiresIn,
+      });
+      return toHttpResponse(result, 201);
     }
 
     // GET /auth/tokens - List agent tokens
     if (req.method === "GET" && path === "/tokens") {
-      const tokens = await this.tokensDb.listAgentTokensByUser(auth.userId);
-      return jsonResponse(200, {
-        tokens: tokens.map((t) => ({
-          id: TokensDb.extractTokenId(t.pk),
-          name: t.name,
-          description: t.description,
-          expiresAt: new Date(t.expiresAt).toISOString(),
-          createdAt: new Date(t.createdAt).toISOString(),
-        })),
-      });
+      const result = await this.controllers.auth.listAgentTokens(toControllerAuth(auth));
+      return toHttpResponse(result);
     }
 
     // DELETE /auth/tokens/:id - Revoke agent token
     const agentTokenMatch = path.match(/^\/tokens\/([^/]+)$/);
     if (req.method === "DELETE" && agentTokenMatch) {
       const tokenId = agentTokenMatch[1]!;
-      try {
-        await this.tokensDb.revokeAgentToken(auth.userId, tokenId);
-        return jsonResponse(200, { success: true });
-      } catch (error: any) {
-        return errorResponse(404, error.message ?? "Agent token not found");
-      }
+      const result = await this.controllers.auth.revokeAgentToken(toControllerAuth(auth), tokenId);
+      return toHttpResponse(result);
     }
 
     return errorResponse(404, "Auth endpoint not found");
@@ -708,23 +576,10 @@ export class Router {
 
     const path = req.path.replace("/admin", "");
 
-    // GET /admin/users - List users with roles, enriched with email/name from Cognito
+    // GET /admin/users - List users with roles
     if (req.method === "GET" && path === "/users") {
-      const list = await this.userRolesDb.listRoles();
-      const cognitoMap = await getCognitoUserMap(
-        this.config.cognitoUserPoolId,
-        this.config.cognitoRegion
-      );
-      const users = list.map((u) => {
-        const attrs = cognitoMap.get(u.userId);
-        return {
-          userId: u.userId,
-          role: u.role,
-          email: attrs?.email ?? "",
-          name: attrs?.name ?? undefined,
-        };
-      });
-      return jsonResponse(200, { users });
+      const result = await this.controllers.admin.listUsers(toControllerAuth(auth));
+      return toHttpResponse(result);
     }
 
     // POST /admin/users/:userId/authorize - Set user role
@@ -736,16 +591,20 @@ export class Router {
       if (!parsed.success) {
         return errorResponse(400, "Invalid request", parsed.error.issues);
       }
-      await this.userRolesDb.setRole(targetUserId, parsed.data.role);
-      return jsonResponse(200, { userId: targetUserId, role: parsed.data.role });
+      const result = await this.controllers.admin.authorizeUser(
+        toControllerAuth(auth),
+        targetUserId,
+        { role: parsed.data.role }
+      );
+      return toHttpResponse(result);
     }
 
     // DELETE /admin/users/:userId/authorize - Revoke user
     const authorizeDeleteMatch = path.match(/^\/users\/([^/]+)\/authorize$/);
     if (req.method === "DELETE" && authorizeDeleteMatch) {
       const targetUserId = decodeURIComponent(authorizeDeleteMatch[1]!);
-      await this.userRolesDb.revoke(targetUserId);
-      return jsonResponse(200, { userId: targetUserId, revoked: true });
+      const result = await this.controllers.admin.revokeUser(toControllerAuth(auth), targetUserId);
+      return toHttpResponse(result);
     }
 
     return errorResponse(404, "Admin endpoint not found");

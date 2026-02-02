@@ -61,14 +61,25 @@ export interface Controllers {
   depot: DepotController;
 }
 
+export interface ControllerServices {
+  authService?: {
+    login(req: { email: string; password: string }): Promise<unknown>;
+    refresh(req: { refreshToken: string }): Promise<unknown>;
+  };
+  getCognitoUserMap?: (
+    userPoolId: string,
+    region: string
+  ) => Promise<Map<string, { email?: string; name?: string }>>;
+}
+
 /**
  * Create all controllers with shared dependencies
  */
-export function createControllers(deps: Dependencies): Controllers {
+export function createControllers(deps: Dependencies, services?: ControllerServices): Controllers {
   return {
     auth: new AuthController(deps),
-    oauth: new OAuthController(deps),
-    admin: new AdminController(deps),
+    oauth: new OAuthController(deps, services?.authService),
+    admin: new AdminController(deps, services?.getCognitoUserMap),
     commits: new CommitsController(deps),
     depot: new DepotController(deps),
   };
