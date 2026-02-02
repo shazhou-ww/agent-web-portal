@@ -6,7 +6,7 @@
  * Prerequisites:
  *   - AWS credentials (or DYNAMODB_ENDPOINT for local)
  *   - COGNITO_USER_POOL_ID (and AWS_REGION if not us-east-1)
- *   - TOKENS_TABLE (default: cas-tokens)
+ *   - TOKENS_TABLE (default: casfa-tokens)
  *
  * Usage:
  *   # List all Cognito users (sub, email, name)
@@ -21,11 +21,14 @@
  *   # Set multiple users as admin (space-separated)
  *   bun run scripts/set-admin-users.ts --set-admin "sub-1" "sub-2" admin@example.com
  *
+ *   # Use --local to force local DynamoDB endpoint
+ *   bun run scripts/set-admin-users.ts --local --set-admin <sub>
+ *
  * Env:
  *   COGNITO_USER_POOL_ID - Cognito User Pool ID (required for --list and --set-admin by email)
  *   AWS_REGION           - default us-east-1
- *   TOKENS_TABLE         - default cas-tokens
- *   DYNAMODB_ENDPOINT    - optional, for local DynamoDB
+ *   TOKENS_TABLE         - default casfa-tokens
+ *   DYNAMODB_ENDPOINT    - optional, for local DynamoDB (or use --local flag)
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -67,14 +70,17 @@ function loadEnvFile(dir: string): void {
 loadEnvFile(REPO_ROOT);
 loadEnvFile(ROOT_DIR);
 
-function parseArgs(): { list: boolean; setAdmin: string[] } {
+function parseArgs(): { list: boolean; setAdmin: string[]; local: boolean } {
   const args = process.argv.slice(2);
   let list = false;
+  let local = false;
   const setAdmin: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--list" || args[i] === "-l") {
       list = true;
+    } else if (args[i] === "--local") {
+      local = true;
     } else if (args[i] === "--set-admin" || args[i] === "-s") {
       i++;
       while (i < args.length && !args[i]!.startsWith("-")) {
@@ -85,7 +91,7 @@ function parseArgs(): { list: boolean; setAdmin: string[] } {
     }
   }
 
-  return { list, setAdmin };
+  return { list, setAdmin, local };
 }
 
 function isLikelySub(value: string): boolean {
@@ -127,7 +133,14 @@ async function listUsers(
 }
 
 async function main(): Promise<void> {
-  const { list, setAdmin } = parseArgs();
+  const { list, setAdmin, local } = parseArgs();
+  
+  // If --local flag is set, force local DynamoDB endpoint
+  if (local) {
+    process.env.DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT || "http://localhost:8000";
+    console.log(`Using local DynamoDB: ${process.env.DYNAMODB_ENDPOINT}\n`);
+  }
+  
   const config = loadConfig();
   const poolId = config.cognitoUserPoolId;
   const region = config.cognitoRegion;
@@ -159,7 +172,9 @@ async function main(): Promise<void> {
     console.log("Usage:");
     console.log("  --list              List all Cognito users");
     console.log("  --set-admin <id>    Set user(s) as admin (sub or email)");
-    console.log("\nExample: bun run scripts/set-admin-users.ts --set-admin admin@example.com");
+    console.log("  --local             Use local DynamoDB (http://localhost:8000)");
+    console.log("\nExample:");
+    console.log("  bun run set-admin -- --local --set-admin admin@example.com");
     process.exit(0);
   }
 
