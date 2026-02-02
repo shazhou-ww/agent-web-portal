@@ -1,18 +1,22 @@
 /**
- * Test App Factory
+ * CASFA v2 - Test Server
  *
- * Creates a fully-functional Hono app with in-memory databases and storage
- * for testing purposes. No DynamoDB or S3 dependencies required.
+ * A server with in-memory databases and storage for testing.
+ * No DynamoDB or S3 dependencies required.
+ *
+ * Usage:
+ *   bun run test-server.ts
+ *   bun run test-server.ts --port 3561
  */
 
 import type { Hono } from "hono"
 import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory"
 import type { StorageProvider } from "@agent-web-portal/cas-storage-core"
-import { createApp, type AppOptions, type DbInstances } from "../app.ts"
-import type { AppConfig, ServerConfig, CognitoConfig } from "../config.ts"
-import type { Env } from "../types.ts"
-import { createAllMemoryDbs, type AllDbs } from "./memory-db/index.ts"
-import { extractTokenId } from "../util/token-id.ts"
+import { createApp, type DbInstances } from "./src/app.ts"
+import type { AppConfig } from "./src/config.ts"
+import type { Env } from "./src/types.ts"
+import { createAllMemoryDbs, type AllDbs } from "./src/db-mock/index.ts"
+import { extractTokenId } from "./src/util/token-id.ts"
 
 // ============================================================================
 // Test Config
@@ -60,54 +64,24 @@ export const createTestConfig = (overrides?: Partial<AppConfig>): AppConfig => (
 })
 
 // ============================================================================
-// Test App
+// Test App Types
 // ============================================================================
 
 export type TestApp = {
-  /**
-   * The Hono app instance
-   */
   app: Hono<Env>
-
-  /**
-   * All in-memory database instances
-   */
   db: AllDbs & { clearAll: () => void }
-
-  /**
-   * In-memory storage instance
-   */
   storage: StorageProvider
-
-  /**
-   * Test configuration
-   */
   config: AppConfig
-
-  /**
-   * Reset all databases and storage
-   */
   reset: () => void
-
-  /**
-   * Helper to make authenticated requests
-   */
   helpers: TestHelpers
 }
 
 export type TestHelpers = {
-  /**
-   * Create a test user with a token
-   */
   createTestUser: (userId: string, role?: "admin" | "authorized") => Promise<{
     userId: string
     token: string
     realm: string
   }>
-
-  /**
-   * Create a test ticket for a realm
-   */
   createTestTicket: (
     realm: string,
     issuerId: string,
@@ -116,21 +90,16 @@ export type TestHelpers = {
     ticketId: string
     ticket: { realm: string; issuerId: string }
   }>
-
-  /**
-   * Make an authenticated request
-   */
-  authRequest: (
-    token: string,
-    method: string,
-    path: string,
-    body?: unknown
-  ) => Promise<Response>
+  authRequest: (token: string, method: string, path: string, body?: unknown) => Promise<Response>
 }
 
 export type CreateTestAppOptions = {
   config?: Partial<AppConfig>
 }
+
+// ============================================================================
+// Test App Factory
+// ============================================================================
 
 /**
  * Create a test app with in-memory databases and storage
@@ -158,29 +127,16 @@ export const createTestApp = (options: CreateTestAppOptions = {}): TestApp => {
 
   const reset = () => {
     db.clearAll()
-    // Note: createMemoryStorage() creates a new instance each time,
-    // so we can't clear it. Tests should create new test app if needed.
   }
 
-  // Helper functions
   const helpers: TestHelpers = {
     createTestUser: async (userId: string, role: "admin" | "authorized" = "authorized") => {
-      // Set user role
       await db.userRolesDb.setRole(userId, role)
-
-      // Create user token
-      const userToken = await db.tokensDb.createUserToken(
-        userId,
-        "test-refresh-token",
-        3600
-      )
-
+      const userToken = await db.tokensDb.createUserToken(userId, "test-refresh-token", 3600)
       const tokenId = extractTokenId(userToken.pk)
-
       return {
         userId,
         token: tokenId,
-        // realm format matches auth middleware: usr_{userId}
         realm: `usr_${userId}`,
       }
     },
@@ -192,45 +148,29 @@ export const createTestApp = (options: CreateTestAppOptions = {}): TestApp => {
     ) => {
       const ticket = await db.tokensDb.createTicket(realm, issuerId, options)
       const ticketId = extractTokenId(ticket.pk)
-
       return {
         ticketId,
         ticket: { realm, issuerId },
       }
     },
 
-    authRequest: async (
-      token: string,
-      method: string,
-      path: string,
-      body?: unknown
-    ) => {
+    authRequest: async (token: string, method: string, path: string, body?: unknown) => {
       const headers: Record<string, string> = {
         Authorization: `Bearer ${token}`,
       }
-
       if (body !== undefined) {
         headers["Content-Type"] = "application/json"
       }
-
       const request = new Request(`http://localhost${path}`, {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
       })
-
       return app.fetch(request)
     },
   }
 
-  return {
-    app,
-    db,
-    storage,
-    config,
-    reset,
-    helpers,
-  }
+  return { app, db, storage, config, reset, helpers }
 }
 
 // ============================================================================
@@ -238,14 +178,7 @@ export const createTestApp = (options: CreateTestAppOptions = {}): TestApp => {
 // ============================================================================
 
 export type TestServer = TestApp & {
-  /**
-   * The server URL
-   */
   url: string
-
-  /**
-   * Stop the test server
-   */
   stop: () => void
 }
 
@@ -256,7 +189,7 @@ export const startTestServer = (
   options: CreateTestAppOptions & { port?: number } = {}
 ): TestServer => {
   const testApp = createTestApp(options)
-  const port = options.port ?? 0 // 0 = random available port
+  const port = options.port ?? 0
 
   const server = Bun.serve({
     fetch: testApp.app.fetch,
@@ -270,4 +203,32 @@ export const startTestServer = (
     url,
     stop: () => server.stop(),
   }
+}
+
+// ============================================================================
+// CLI Entry Point
+// ============================================================================
+
+if (import.meta.main) {
+  const args = Bun.argv.slice(2)
+  let port = 3560
+
+  for (let i = 0; i < args.length; i++) {
+    const nextArg = args[i + 1]
+    if (args[i] === "--port" && nextArg) {
+      port = Number.parseInt(nextArg, 10)
+    }
+  }
+
+  const testApp = createTestApp()
+
+  const server = Bun.serve({
+    fetch: testApp.app.fetch,
+    port,
+  })
+
+  console.log(`🧪 CASFA v2 Test Server running at http://localhost:${server.port}`)
+  console.log("   Using in-memory databases and storage")
+  console.log("")
+  console.log("   Press Ctrl+C to stop")
 }

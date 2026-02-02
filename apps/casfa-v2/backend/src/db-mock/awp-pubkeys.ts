@@ -2,8 +2,8 @@
  * In-memory implementation of AwpPubkeysDb for testing
  */
 
-import type { AwpPubkey } from "../../types.ts"
-import type { AwpPubkeysDb } from "../../db/awp-pubkeys.ts"
+import type { AwpPubkey } from "../types.ts"
+import type { AwpPubkeysDb } from "../db/awp-pubkeys.ts"
 
 // ============================================================================
 // Factory

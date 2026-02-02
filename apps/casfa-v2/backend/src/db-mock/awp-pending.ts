@@ -2,8 +2,8 @@
  * In-memory implementation of AwpPendingDb for testing
  */
 
-import type { AwpPendingAuth } from "../../types.ts"
-import type { AwpPendingDb } from "../../db/awp-pending.ts"
+import type { AwpPendingAuth } from "../types.ts"
+import type { AwpPendingDb } from "../db/awp-pending.ts"
 
 // ============================================================================
 // Factory

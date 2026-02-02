@@ -16,15 +16,15 @@ export { createMemoryAwpPubkeysDb } from "./awp-pubkeys.ts"
 // All DBs type
 // ============================================================================
 
-import type { TokensDb } from "../../db/tokens.ts"
-import type { CommitsDb } from "../../db/commits.ts"
-import type { OwnershipDb } from "../../db/ownership.ts"
-import type { RefCountDb } from "../../db/refcount.ts"
-import type { UsageDb } from "../../db/usage.ts"
-import type { UserRolesDb } from "../../db/user-roles.ts"
-import type { DepotsDb } from "../../db/depots.ts"
-import type { AwpPendingDb } from "../../db/awp-pending.ts"
-import type { AwpPubkeysDb } from "../../db/awp-pubkeys.ts"
+import type { TokensDb } from "../db/tokens.ts"
+import type { CommitsDb } from "../db/commits.ts"
+import type { OwnershipDb } from "../db/ownership.ts"
+import type { RefCountDb } from "../db/refcount.ts"
+import type { UsageDb } from "../db/usage.ts"
+import type { UserRolesDb } from "../db/user-roles.ts"
+import type { DepotsDb } from "../db/depots.ts"
+import type { AwpPendingDb } from "../db/awp-pending.ts"
+import type { AwpPubkeysDb } from "../db/awp-pubkeys.ts"
 
 export type AllDbs = {
   tokensDb: TokensDb

@@ -2,8 +2,8 @@
  * In-memory implementation of CommitsDb for testing
  */
 
-import type { Commit } from "../../types.ts"
-import type { CommitsDb } from "../../db/commits.ts"
+import type { Commit } from "../types.ts"
+import type { CommitsDb } from "../db/commits.ts"
 
 // ============================================================================
 // Factory

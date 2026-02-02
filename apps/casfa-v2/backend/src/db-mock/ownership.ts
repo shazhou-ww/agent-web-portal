@@ -2,8 +2,8 @@
  * In-memory implementation of OwnershipDb for testing
  */
 
-import type { CasOwnership, NodeKind } from "../../types.ts"
-import type { OwnershipDb } from "../../db/ownership.ts"
+import type { CasOwnership, NodeKind } from "../types.ts"
+import type { OwnershipDb } from "../db/ownership.ts"
 
 // ============================================================================
 // Factory

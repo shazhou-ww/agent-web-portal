@@ -2,8 +2,8 @@
  * In-memory implementation of RefCountDb for testing
  */
 
-import type { RefCount, GcStatus } from "../../types.ts"
-import type { RefCountDb } from "../../db/refcount.ts"
+import type { RefCount, GcStatus } from "../types.ts"
+import type { RefCountDb } from "../db/refcount.ts"
 
 // ============================================================================
 // Types

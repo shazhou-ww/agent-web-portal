@@ -2,9 +2,9 @@
  * In-memory implementation of DepotsDb for testing
  */
 
-import type { Depot, DepotHistory } from "../../types.ts"
-import type { DepotsDb } from "../../db/depots.ts"
-import { generateDepotId } from "../../util/token-id.ts"
+import type { Depot, DepotHistory } from "../types.ts"
+import type { DepotsDb } from "../db/depots.ts"
+import { generateDepotId } from "../util/token-id.ts"
 
 // ============================================================================
 // Factory

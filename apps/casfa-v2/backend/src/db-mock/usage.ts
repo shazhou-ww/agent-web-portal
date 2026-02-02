@@ -2,8 +2,8 @@
  * In-memory implementation of UsageDb for testing
  */
 
-import type { RealmUsage } from "../../types.ts"
-import type { UsageDb } from "../../db/usage.ts"
+import type { RealmUsage } from "../types.ts"
+import type { UsageDb } from "../db/usage.ts"
 
 // ============================================================================
 // Factory

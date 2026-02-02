@@ -2,8 +2,8 @@
  * In-memory implementation of UserRolesDb for testing
  */
 
-import type { UserRole } from "../../types.ts"
-import type { UserRolesDb, UserRoleRecord } from "../../db/user-roles.ts"
+import type { UserRole } from "../types.ts"
+import type { UserRolesDb, UserRoleRecord } from "../db/user-roles.ts"
 
 // ============================================================================
 // Factory

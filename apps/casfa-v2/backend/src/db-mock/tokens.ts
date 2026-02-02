@@ -2,10 +2,10 @@
  * In-memory implementation of TokensDb for testing
  */
 
-import type { AgentToken, Ticket, Token, UserToken } from "../../types.ts"
-import type { TokensDb } from "../../db/tokens.ts"
-import { loadServerConfig } from "../../config.ts"
-import { generateTicketId, generateAgentTokenId, toTokenPk } from "../../util/token-id.ts"
+import type { AgentToken, Ticket, Token, UserToken } from "../types.ts"
+import type { TokensDb } from "../db/tokens.ts"
+import { loadServerConfig } from "../config.ts"
+import { generateTicketId, generateAgentTokenId, toTokenPk } from "../util/token-id.ts"
 
 // ============================================================================
 // Factory
