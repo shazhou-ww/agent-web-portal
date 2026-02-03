@@ -27,9 +27,10 @@ Authorization: Agent {agentToken}
 | GET | `/api/realm/{realmId}/commits/:root` | 获取 Commit 详情 | Read |
 | PATCH | `/api/realm/{realmId}/commits/:root` | 更新 Commit 元数据 | Write |
 | DELETE | `/api/realm/{realmId}/commits/:root` | 删除 Commit | Write |
-| PUT | `/api/realm/{realmId}/chunks/:key` | 上传 CAS 节点 | Write |
-| GET | `/api/realm/{realmId}/chunks/:key` | 获取原始节点数据 | Read |
-| GET | `/api/realm/{realmId}/tree/:key` | 获取完整 DAG 结构 | Read |
+| POST | `/api/realm/{realmId}/prepare-nodes` | 预上传检查 | Write |
+| GET | `/api/realm/{realmId}/nodes/:key/metadata` | 获取节点元信息 | Read |
+| GET | `/api/realm/{realmId}/nodes/:key` | 获取节点二进制数据 | Read |
+| PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | Write |
 
 > `realmId` 格式为 `usr_{userId}`
 
@@ -213,11 +214,109 @@ Authorization: Agent {agentToken}
 
 ---
 
-## Chunk 操作
+## Node 操作
 
-### PUT /api/realm/{realmId}/chunks/:key
+### POST /api/realm/{realmId}/prepare-nodes
 
-上传 CAS 节点（二进制格式）。
+预上传检查：提交一个 key 列表，服务端返回哪些节点需要上传。对于已存在的节点，会 touch 其生命周期，防止被 GC 回收。
+
+#### 请求
+
+```json
+{
+  "keys": ["sha256:abc123...", "sha256:def456...", "sha256:ghi789..."]
+}
+```
+
+#### 响应
+
+```json
+{
+  "missing": ["sha256:abc123...", "sha256:ghi789..."],
+  "exists": ["sha256:def456..."]
+}
+```
+
+| 字段 | 描述 |
+|------|------|
+| `missing` | 需要上传的节点 key 列表 |
+| `exists` | 已存在的节点 key 列表（已 touch 生命周期） |
+
+---
+
+### GET /api/realm/{realmId}/nodes/:key/metadata
+
+获取节点元信息，包括类型、payload 大小、子节点列表等。
+
+#### 响应
+
+Dict 节点 (d-node)：
+
+```json
+{
+  "key": "sha256:abc123...",
+  "kind": "dict",
+  "payloadSize": 256,
+  "children": {
+    "file1.txt": "sha256:file1...",
+    "subdir": "sha256:subdir..."
+  }
+}
+```
+
+File 节点 (f-node)：
+
+```json
+{
+  "key": "sha256:abc123...",
+  "kind": "file",
+  "payloadSize": 1234,
+  "contentType": "text/plain",
+  "successor": "sha256:next..."
+}
+```
+
+Successor 节点 (s-node)：
+
+```json
+{
+  "key": "sha256:abc123...",
+  "kind": "successor",
+  "payloadSize": 4194304,
+  "successor": "sha256:next..."
+}
+```
+
+| 字段 | 描述 |
+|------|------|
+| `key` | 节点 key |
+| `kind` | 节点类型：`dict`, `file`, `successor` |
+| `payloadSize` | payload 大小（字节） |
+| `children` | 子节点映射（仅 d-node） |
+| `contentType` | 内容类型（仅 f-node） |
+| `successor` | 后继节点 key（f-node/s-node，可选） |
+
+---
+
+### GET /api/realm/{realmId}/nodes/:key
+
+获取节点的二进制数据。
+
+#### 响应
+
+- Content-Type: `application/octet-stream`
+- Body: 节点二进制数据（cas-core 格式）
+
+响应头包含元数据：
+
+- `X-CAS-Kind`: 节点类型
+- `X-CAS-Payload-Size`: payload 大小
+
+---
+
+### PUT /api/realm/{realmId}/nodes/:key
+
+上传节点（二进制格式）。
 
 #### 请求
 
@@ -229,23 +328,22 @@ Authorization: Agent {agentToken}
 - Magic bytes 和头部结构
 - Hash 验证
 - 子节点存在性验证
-- Dict 节点 (d-node) 的 size 验证
 
 #### 响应
 
 ```json
 {
   "key": "sha256:abc123...",
-  "size": 12345,
-  "kind": "file"
+  "kind": "file",
+  "payloadSize": 12345
 }
 ```
 
 | 字段 | 描述 |
 |------|------|
 | `key` | 节点 key |
-| `size` | 逻辑大小 |
 | `kind` | 节点类型：`dict`, `file`, `successor` |
+| `payloadSize` | payload 大小 |
 
 #### 错误
 
@@ -263,71 +361,3 @@ Authorization: Agent {agentToken}
   "missing": ["sha256:xxx", "sha256:yyy"]
 }
 ```
-
----
-
-### GET /api/realm/{realmId}/chunks/:key
-
-获取原始节点数据（二进制格式）。
-
-#### 响应
-
-- Content-Type: `application/octet-stream`
-- 响应头包含元数据：
-  - `X-CAS-Kind`: 节点类型
-  - `X-CAS-Size`: 逻辑大小
-  - `X-CAS-Content-Type`: 原始内容类型（如适用）
-
----
-
-## Tree 操作
-
-### GET /api/realm/{realmId}/tree/:key
-
-获取以指定 key 为根的完整 DAG 结构。
-
-#### 响应
-
-```json
-{
-  "nodes": {
-    "sha256:root...": {
-      "kind": "dict",
-      "size": 12345,
-      "children": {
-        "file1.txt": "sha256:file1...",
-        "subdir": "sha256:subdir..."
-      }
-    },
-    "sha256:file1...": {
-      "kind": "file",
-      "size": 1234,
-      "contentType": "text/plain",
-      "chunks": 1
-    },
-    "sha256:subdir...": {
-      "kind": "dict",
-      "size": 5678,
-      "children": {
-        "nested.txt": "sha256:nested..."
-      }
-    }
-  },
-  "next": "sha256:continuation..."
-}
-```
-
-| 字段 | 描述 |
-|------|------|
-| `nodes` | key → 节点信息映射 |
-| `next` | 如果结果被截断，继续获取的起始 key |
-
-> 单次请求最多返回 1000 个节点
-
-### 节点类型
-
-| kind | 别名 | 描述 | 特有字段 |
-|------|------|------|----------|
-| `dict` | d-node | 目录节点，子节点按名称排序 | `children`: name → key 映射 |
-| `file` | f-node | 文件顶层节点，包含 content-type | `contentType`, `chunks` |
-| `successor` | s-node | 文件后继节点（大文件分块） | - |

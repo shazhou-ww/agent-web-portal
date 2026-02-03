@@ -23,9 +23,10 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 | GET | `/api/ticket/{ticketId}/commits/:root` | 获取 Commit 详情 | Read |
 | PATCH | `/api/ticket/{ticketId}/commits/:root` | 更新 Commit | Write |
 | DELETE | `/api/ticket/{ticketId}/commits/:root` | 删除 Commit | Write |
-| PUT | `/api/ticket/{ticketId}/chunks/:key` | 上传节点 | Write |
-| GET | `/api/ticket/{ticketId}/chunks/:key` | 获取节点 | Read |
-| GET | `/api/ticket/{ticketId}/tree/:key` | 获取 DAG 结构 | Read |
+| POST | `/api/ticket/{ticketId}/prepare-nodes` | 预上传检查 | Write |
+| GET | `/api/ticket/{ticketId}/nodes/:key/metadata` | 获取节点元信息 | Read |
+| GET | `/api/ticket/{ticketId}/nodes/:key` | 获取节点二进制数据 | Read |
+| PUT | `/api/ticket/{ticketId}/nodes/:key` | 上传节点 | Write |
 
 ---
 
@@ -107,16 +108,25 @@ Ticket 路由下的 CAS 操作与 [Realm 路由](./05-realm.md) 相同，区别�
    endpoint: https://api.example.com/api/ticket/ticket_xxx
    ```
 
-2. **上传 chunk**：
+2. **预检查需要上传的节点**：
 
    ```http
-   PUT /api/ticket/ticket_xxx/chunks/sha256:abc123...
+   POST /api/ticket/ticket_xxx/prepare-nodes
+   Content-Type: application/json
+   
+   {"keys": ["sha256:abc123..."]}
+   ```
+
+3. **上传节点**：
+
+   ```http
+   PUT /api/ticket/ticket_xxx/nodes/sha256:abc123...
    Content-Type: application/octet-stream
    
    (二进制数据)
    ```
 
-3. **创建 commit**：
+4. **创建 commit**：
 
    ```http
    POST /api/ticket/ticket_xxx/commit
@@ -132,16 +142,16 @@ Ticket 路由下的 CAS 操作与 [Realm 路由](./05-realm.md) 相同，区别�
 
 1. **获取只读 Ticket**（带 scope 限制）
 
-2. **获取 DAG 结构**：
+2. **获取节点元信息**：
 
    ```http
-   GET /api/ticket/ticket_xxx/tree/sha256:root...
+   GET /api/ticket/ticket_xxx/nodes/sha256:root.../metadata
    ```
 
-3. **下载具体节点**：
+3. **下载节点二进制数据**：
 
    ```http
-   GET /api/ticket/ticket_xxx/chunks/sha256:file...
+   GET /api/ticket/ticket_xxx/nodes/sha256:file...
    ```
 
 ---

@@ -1,26 +1,8 @@
-# Depot 管理 API
+# Depot 管理
 
 Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 
-## 访问方式
-
-Depot API 仅通过 Realm 路由访问：
-
-- **Realm 路由**: `/api/realm/{realmId}/depots/...`
-
-> **注意**: Ticket 不支持 Depot 操作。
-
-## 端点列表
-
-| 方法 | 路径 | 描述 | 权限 |
-|------|------|------|------|
-| GET | `/api/realm/{realmId}/depots` | 列出所有 Depots | Read |
-| POST | `/api/realm/{realmId}/depots` | 创建 Depot | Write |
-| GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情 | Read |
-| PUT | `/api/realm/{realmId}/depots/:depotId` | 更新 Depot root | Write |
-| DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | Write |
-| GET | `/api/realm/{realmId}/depots/:depotId/history` | 列出 Depot 历史 | Read |
-| POST | `/api/realm/{realmId}/depots/:depotId/rollback` | 回滚到指定版本 | Write |
+> **注意**: Ticket 不支持 Depot 操作，Depot 仅通过 Realm 路由访问。
 
 ---
 
@@ -297,7 +279,7 @@ curl -X POST /api/realm/usr_xxx/depots \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"name": "docs", "description": "文档仓库"}'
 
-# 2. 上传数据（省略 chunks 上传步骤）
+# 2. 上传数据（省略节点上传步骤）
 
 # 3. 更新 Depot root
 curl -X PUT /api/realm/usr_xxx/depots/depot_yyy \

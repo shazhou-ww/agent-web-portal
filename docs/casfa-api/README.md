@@ -75,7 +75,7 @@ CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的�
 
 ### Realm CAS 操作 API
 
-[详细文档](./05-realm.md)
+[详细文档](./05-realm/)
 
 需要 `Authorization` header（User/Agent Token）
 
@@ -88,9 +88,17 @@ CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的�
 | GET | `/api/realm/{realmId}/commits/:root` | 获取 Commit 详情 | Read |
 | PATCH | `/api/realm/{realmId}/commits/:root` | 更新 Commit 元数据 | Write |
 | DELETE | `/api/realm/{realmId}/commits/:root` | 删除 Commit | Write |
-| PUT | `/api/realm/{realmId}/chunks/:key` | 上传 CAS 节点 | Write |
-| GET | `/api/realm/{realmId}/chunks/:key` | 获取原始节点数据 | Read |
-| GET | `/api/realm/{realmId}/tree/:key` | 获取完整 DAG 结构 | Read |
+| POST | `/api/realm/{realmId}/prepare-nodes` | 预上传检查 | Write |
+| GET | `/api/realm/{realmId}/nodes/:key/metadata` | 获取节点元信息 | Read |
+| GET | `/api/realm/{realmId}/nodes/:key` | 获取节点二进制数据 | Read |
+| PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | Write |
+| GET | `/api/realm/{realmId}/depots` | 列出所有 Depots | Read |
+| POST | `/api/realm/{realmId}/depots` | 创建 Depot | Write |
+| GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情 | Read |
+| PUT | `/api/realm/{realmId}/depots/:depotId` | 更新 Depot root | Write |
+| DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | Write |
+| GET | `/api/realm/{realmId}/depots/:depotId/history` | 列出 Depot 历史 | Read |
+| POST | `/api/realm/{realmId}/depots/:depotId/rollback` | 回滚到指定版本 | Write |
 
 ### Ticket CAS 操作 API
 
@@ -107,27 +115,10 @@ Ticket ID 在路径中作为凭证，无需 `Authorization` header
 | GET | `/api/ticket/{ticketId}/commits/:root` | 获取 Commit 详情 | Ticket (Read) |
 | PATCH | `/api/ticket/{ticketId}/commits/:root` | 更新 Commit | Ticket (Write) |
 | DELETE | `/api/ticket/{ticketId}/commits/:root` | 删除 Commit | Ticket (Write) |
-| PUT | `/api/ticket/{ticketId}/chunks/:key` | 上传节点 | Ticket (Write) |
-| GET | `/api/ticket/{ticketId}/chunks/:key` | 获取节点 | Ticket (Read) |
-| GET | `/api/ticket/{ticketId}/tree/:key` | 获取 DAG 结构 | Ticket (Read) |
-
-### Depot 管理 API
-
-[详细文档](./07-depot.md)
-
-通过 Realm 或 Ticket 路由访问
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| GET | `{base}/depots` | 列出所有 Depots | Read |
-| POST | `{base}/depots` | 创建 Depot | Write |
-| GET | `{base}/depots/:depotId` | 获取 Depot 详情 | Read |
-| PUT | `{base}/depots/:depotId` | 更新 Depot root | Write |
-| DELETE | `{base}/depots/:depotId` | 删除 Depot | Write |
-| GET | `{base}/depots/:depotId/history` | 列出 Depot 历史 | Read |
-| POST | `{base}/depots/:depotId/rollback` | 回滚到指定版本 | Write |
-
-> `{base}` 可以是 `/api/realm/{realmId}` 或 `/api/ticket/{ticketId}`
+| POST | `/api/ticket/{ticketId}/prepare-nodes` | 预上传检查 | Ticket (Write) |
+| GET | `/api/ticket/{ticketId}/nodes/:key/metadata` | 获取节点元信息 | Ticket (Read) |
+| GET | `/api/ticket/{ticketId}/nodes/:key` | 获取节点二进制数据 | Ticket (Read) |
+| PUT | `/api/ticket/{ticketId}/nodes/:key` | 上传节点 | Ticket (Write) |
 
 ## 认证方式
 
