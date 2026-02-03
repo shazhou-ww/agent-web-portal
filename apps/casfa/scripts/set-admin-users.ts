@@ -131,7 +131,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const poolId = config.cognitoUserPoolId;
   const region = config.cognitoRegion;
-
+  
   if (!poolId) {
     console.error("COGNITO_USER_POOL_ID is required. Set it in env or .env.");
     process.exit(1);
