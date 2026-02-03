@@ -320,8 +320,8 @@ export const getTree = async (
       size: node.size,
     };
 
-    if (node.contentType) {
-      info.contentType = node.contentType;
+    if (node.fileInfo?.contentType) {
+      info.contentType = node.fileInfo.contentType;
     }
 
     if (childKeys && childKeys.length > 0) {

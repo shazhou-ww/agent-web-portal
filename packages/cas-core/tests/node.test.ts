@@ -1,15 +1,13 @@
 /**
- * Node encoding/decoding roundtrip tests (v2 format)
+ * Node encoding/decoding roundtrip tests (v2.1 format)
  */
 import { describe, expect, it } from "bun:test";
-import { DATA_ALIGNMENT, HASH_SIZE, HEADER_SIZE, NODE_TYPE } from "../src/constants.ts";
+import { FILEINFO_SIZE, HASH_SIZE, HEADER_SIZE, NODE_TYPE } from "../src/constants.ts";
 import {
   decodeNode,
   encodeDictNode,
   encodeFileNode,
-  encodeFileNodeWithSize,
   encodeSuccessorNode,
-  encodeSuccessorNodeWithSize,
   getNodeKind,
   isValidNode,
 } from "../src/node.ts";
@@ -38,22 +36,24 @@ describe("Node", () => {
   describe("encodeFileNode (f-node)", () => {
     it("should encode simple file node", async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const result = await encodeFileNode({ data }, mockHashProvider);
+      const result = await encodeFileNode({ data, fileSize: 5 }, mockHashProvider);
 
-      expect(result.bytes.length).toBeGreaterThanOrEqual(HEADER_SIZE + 5);
+      // Header(32) + FileInfo(64) + data(5) = 101
+      expect(result.bytes.length).toBe(HEADER_SIZE + FILEINFO_SIZE + 5);
       expect(result.hash.length).toBe(HASH_SIZE);
     });
 
     it("should encode file node with content type", async () => {
       const data = new Uint8Array([1, 2, 3]);
       const result = await encodeFileNode(
-        { data, contentType: "image/png" },
+        { data, contentType: "image/png", fileSize: 3 },
         mockHashProvider
       );
 
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("file");
-      expect(decoded.contentType).toBe("image/png");
+      expect(decoded.fileInfo?.contentType).toBe("image/png");
+      expect(decoded.fileInfo?.fileSize).toBe(3);
       expect(decoded.data).toEqual(data);
     });
 
@@ -63,7 +63,7 @@ describe("Node", () => {
       const child2 = new Uint8Array(HASH_SIZE).fill(0xbb);
 
       const result = await encodeFileNode(
-        { data, children: [child1, child2] },
+        { data, children: [child1, child2], fileSize: 1000 },
         mockHashProvider
       );
 
@@ -72,51 +72,31 @@ describe("Node", () => {
       expect(decoded.children).toHaveLength(2);
       expect(decoded.children![0]).toEqual(child1);
       expect(decoded.children![1]).toEqual(child2);
+      expect(decoded.fileInfo?.fileSize).toBe(1000);
     });
 
-    it("should pad content-type to 16/32/64 bytes", async () => {
-      const data = new Uint8Array([1, 2, 3]);
-
-      // Short content-type (<=16 bytes)
-      const r1 = await encodeFileNode({ data, contentType: "text/plain" }, mockHashProvider);
-      // Check data starts at 16-byte aligned position
-      expect((HEADER_SIZE + 16) % DATA_ALIGNMENT).toBe(0);
-
-      // Medium content-type (<=32 bytes)
-      const r2 = await encodeFileNode({ data, contentType: "application/octet-stream" }, mockHashProvider);
-      expect((HEADER_SIZE + 32) % DATA_ALIGNMENT).toBe(0);
-    });
-
-    it("should have data 16-byte aligned", async () => {
+    it("should store fileSize in FileInfo", async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const child = new Uint8Array(HASH_SIZE).fill(0x11);
-
-      // f-node with 1 child and content-type
       const result = await encodeFileNode(
-        { data, contentType: "text/plain", children: [child] },
+        { data, fileSize: 1000000, contentType: "text/plain" },
         mockHashProvider
       );
 
-      // Header(32) + Children(32) + ContentType(16) = 80, which is 16-byte aligned
-      const expectedDataOffset = HEADER_SIZE + HASH_SIZE + 16;
-      expect(expectedDataOffset % DATA_ALIGNMENT).toBe(0);
-
       const decoded = decodeNode(result.bytes);
-      expect(decoded.data).toEqual(data);
+      expect(decoded.fileInfo?.fileSize).toBe(1000000);
     });
-  });
 
-  describe("encodeFileNodeWithSize", () => {
-    it("should set explicit size", async () => {
+    it("should store contentType in 56-byte slot", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeFileNodeWithSize(
-        { data },
-        1000000, // logical size
+      const longContentType = "application/vnd.custom.type+json; charset=utf-8";
+
+      const result = await encodeFileNode(
+        { data, contentType: longContentType, fileSize: 3 },
         mockHashProvider
       );
 
       const decoded = decodeNode(result.bytes);
-      expect(decoded.size).toBe(1000000);
+      expect(decoded.fileInfo?.contentType).toBe(longContentType);
     });
   });
 
@@ -128,10 +108,10 @@ describe("Node", () => {
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("successor");
       expect(decoded.data).toEqual(data);
-      expect(decoded.contentType).toBeUndefined();
+      expect(decoded.fileInfo).toBeUndefined();
     });
 
-    it("should have data 16-byte aligned with padding", async () => {
+    it("should encode successor node with children", async () => {
       const data = new Uint8Array([1, 2, 3]);
       const child = new Uint8Array(HASH_SIZE).fill(0xcc);
 
@@ -140,31 +120,18 @@ describe("Node", () => {
         mockHashProvider
       );
 
-      // Header(32) + Children(32) = 64, already 16-byte aligned
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("successor");
       expect(decoded.data).toEqual(data);
+      expect(decoded.children).toHaveLength(1);
     });
 
-    it("should pad to 16-byte alignment when needed", async () => {
+    it("should not have FileInfo", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      // No children, so data offset = 32 (already aligned)
       const result = await encodeSuccessorNode({ data }, mockHashProvider);
-      expect(result.bytes.length).toBe(HEADER_SIZE + data.length);
-    });
-  });
-
-  describe("encodeSuccessorNodeWithSize", () => {
-    it("should set explicit size for s-node", async () => {
-      const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeSuccessorNodeWithSize(
-        { data },
-        500000,
-        mockHashProvider
-      );
-
-      const decoded = decodeNode(result.bytes);
-      expect(decoded.size).toBe(500000);
+      
+      // Header(32) + data(3) = 35 (no FileInfo)
+      expect(result.bytes.length).toBe(HEADER_SIZE + 3);
     });
   });
 
@@ -175,7 +142,6 @@ describe("Node", () => {
 
       const result = await encodeDictNode(
         {
-          size: 5000,
           children: [child1, child2],
           childNames: ["file1.txt", "folder2"],
         },
@@ -184,7 +150,6 @@ describe("Node", () => {
 
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("dict");
-      expect(decoded.size).toBe(5000);
       expect(decoded.children).toHaveLength(2);
     });
 
@@ -196,7 +161,6 @@ describe("Node", () => {
       // Input unsorted
       const result = await encodeDictNode(
         {
-          size: 100,
           children: [childC, childA, childB],
           childNames: ["zebra", "alpha", "beta"],
         },
@@ -217,7 +181,6 @@ describe("Node", () => {
       await expect(
         encodeDictNode(
           {
-            size: 100,
             children: [child1],
             childNames: ["a", "b"],
           },
@@ -231,7 +194,6 @@ describe("Node", () => {
 
       const result = await encodeDictNode(
         {
-          size: 100,
           children: [child1],
           childNames: ["文件夹 📁"],
         },
@@ -245,7 +207,6 @@ describe("Node", () => {
     it("should handle empty dict node", async () => {
       const result = await encodeDictNode(
         {
-          size: 0,
           children: [],
           childNames: [],
         },
@@ -258,27 +219,31 @@ describe("Node", () => {
       expect(decoded.childNames).toEqual([]);
     });
 
-    it("should not have content-type field", async () => {
+    it("should not have fileInfo field", async () => {
       const child = new Uint8Array(HASH_SIZE).fill(0x11);
       const result = await encodeDictNode(
-        { size: 0, children: [child], childNames: ["x"] },
+        { children: [child], childNames: ["x"] },
         mockHashProvider
       );
 
       const decoded = decodeNode(result.bytes);
-      expect(decoded.contentType).toBeUndefined();
+      expect(decoded.fileInfo).toBeUndefined();
     });
   });
 
   describe("decodeNode", () => {
     it("should decode f-node correctly", async () => {
       const data = new Uint8Array([10, 20, 30, 40, 50]);
-      const encoded = await encodeFileNode({ data, contentType: "application/octet-stream" }, mockHashProvider);
+      const encoded = await encodeFileNode(
+        { data, contentType: "application/octet-stream", fileSize: 5 },
+        mockHashProvider
+      );
       const decoded = decodeNode(encoded.bytes);
 
       expect(decoded.kind).toBe("file");
       expect(decoded.data).toEqual(data);
-      expect(decoded.contentType).toBe("application/octet-stream");
+      expect(decoded.fileInfo?.contentType).toBe("application/octet-stream");
+      expect(decoded.fileInfo?.fileSize).toBe(5);
     });
 
     it("should decode s-node correctly", async () => {
@@ -288,14 +253,13 @@ describe("Node", () => {
 
       expect(decoded.kind).toBe("successor");
       expect(decoded.data).toEqual(data);
-      expect(decoded.contentType).toBeUndefined();
+      expect(decoded.fileInfo).toBeUndefined();
     });
 
     it("should decode d-node correctly", async () => {
       const child = new Uint8Array(HASH_SIZE).fill(0x55);
       const encoded = await encodeDictNode(
         {
-          size: 999,
           children: [child],
           childNames: ["test"],
         },
@@ -304,7 +268,6 @@ describe("Node", () => {
       const decoded = decodeNode(encoded.bytes);
 
       expect(decoded.kind).toBe("dict");
-      expect(decoded.size).toBe(999);
       expect(decoded.childNames).toEqual(["test"]);
     });
   });
@@ -312,7 +275,7 @@ describe("Node", () => {
   describe("isValidNode", () => {
     it("should return true for valid node", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeFileNode({ data }, mockHashProvider);
+      const result = await encodeFileNode({ data, fileSize: 3 }, mockHashProvider);
       expect(isValidNode(result.bytes)).toBe(true);
     });
 
@@ -329,7 +292,7 @@ describe("Node", () => {
   describe("getNodeKind", () => {
     it("should return file for f-node", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeFileNode({ data }, mockHashProvider);
+      const result = await encodeFileNode({ data, fileSize: 3 }, mockHashProvider);
       expect(getNodeKind(result.bytes)).toBe("file");
     });
 
@@ -342,7 +305,7 @@ describe("Node", () => {
     it("should return dict for d-node", async () => {
       const child = new Uint8Array(HASH_SIZE).fill(0x11);
       const result = await encodeDictNode(
-        { size: 0, children: [child], childNames: ["x"] },
+        { children: [child], childNames: ["x"] },
         mockHashProvider
       );
       expect(getNodeKind(result.bytes)).toBe("dict");
@@ -356,8 +319,8 @@ describe("Node", () => {
   describe("roundtrip with real hash", () => {
     it("should produce consistent hash", async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const result1 = await encodeFileNode({ data }, realHashProvider);
-      const result2 = await encodeFileNode({ data }, realHashProvider);
+      const result1 = await encodeFileNode({ data, fileSize: 5 }, realHashProvider);
+      const result2 = await encodeFileNode({ data, fileSize: 5 }, realHashProvider);
 
       expect(result1.hash).toEqual(result2.hash);
       expect(result1.bytes).toEqual(result2.bytes);
@@ -367,8 +330,8 @@ describe("Node", () => {
       const data1 = new Uint8Array([1, 2, 3]);
       const data2 = new Uint8Array([1, 2, 4]);
 
-      const result1 = await encodeFileNode({ data: data1 }, realHashProvider);
-      const result2 = await encodeFileNode({ data: data2 }, realHashProvider);
+      const result1 = await encodeFileNode({ data: data1, fileSize: 3 }, realHashProvider);
+      const result2 = await encodeFileNode({ data: data2, fileSize: 3 }, realHashProvider);
 
       expect(result1.hash).not.toEqual(result2.hash);
     });
@@ -379,11 +342,11 @@ describe("Node", () => {
 
       // Different input order, same logical content
       const result1 = await encodeDictNode(
-        { size: 100, children: [childA, childB], childNames: ["a", "b"] },
+        { children: [childA, childB], childNames: ["a", "b"] },
         realHashProvider
       );
       const result2 = await encodeDictNode(
-        { size: 100, children: [childB, childA], childNames: ["b", "a"] },
+        { children: [childB, childA], childNames: ["b", "a"] },
         realHashProvider
       );
 

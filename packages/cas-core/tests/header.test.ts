@@ -1,5 +1,5 @@
 /**
- * Header encoding/decoding tests (v2 format)
+ * Header encoding/decoding tests (v2.1 format)
  */
 import { describe, expect, it } from "bun:test";
 import { HEADER_SIZE, MAGIC, NODE_TYPE } from "../src/constants.ts";
@@ -9,7 +9,6 @@ import {
   createSuccessorHeader,
   decodeHeader,
   encodeHeader,
-  getContentTypeLength,
   getNodeType,
 } from "../src/header.ts";
 import type { CasHeader } from "../src/types.ts";
@@ -22,7 +21,6 @@ describe("Header", () => {
         flags: 0,
         size: 0,
         count: 0,
-        length: 32,
       };
       const bytes = encodeHeader(header);
       expect(bytes.length).toBe(HEADER_SIZE);
@@ -34,7 +32,6 @@ describe("Header", () => {
         flags: 0,
         size: 0,
         count: 0,
-        length: 32,
       };
       const bytes = encodeHeader(header);
       // "CAS\x01" in LE
@@ -44,59 +41,41 @@ describe("Header", () => {
       expect(bytes[3]).toBe(0x01); // version
     });
 
-    it("should encode size as u64 LE at offset 8", () => {
+    it("should encode size as u32 LE at offset 8", () => {
       const header: CasHeader = {
         magic: MAGIC,
         flags: 0,
-        size: 0x123456789ABC, // > 32 bits
+        size: 0x12345678, // u32 value
         count: 0,
-        length: 32,
       };
       const bytes = encodeHeader(header);
       const view = new DataView(bytes.buffer);
-      const low = view.getUint32(8, true);
-      const high = view.getUint32(12, true);
-      expect(low + high * 0x100000000).toBe(0x123456789ABC);
+      expect(view.getUint32(8, true)).toBe(0x12345678);
     });
 
-    it("should encode count at offset 16", () => {
+    it("should encode count at offset 12", () => {
       const header: CasHeader = {
         magic: MAGIC,
         flags: 0,
         size: 0,
         count: 42,
-        length: 32,
       };
       const bytes = encodeHeader(header);
       const view = new DataView(bytes.buffer);
-      expect(view.getUint32(16, true)).toBe(42);
+      expect(view.getUint32(12, true)).toBe(42);
     });
 
-    it("should encode length at offset 20", () => {
+    it("should have reserved bytes = 0 at offset 16-31", () => {
       const header: CasHeader = {
         magic: MAGIC,
-        flags: 0,
-        size: 0,
-        count: 0,
-        length: 1024,
-      };
-      const bytes = encodeHeader(header);
-      const view = new DataView(bytes.buffer);
-      expect(view.getUint32(20, true)).toBe(1024);
-    });
-
-    it("should have reserved bytes = 0 at offset 24-31", () => {
-      const header: CasHeader = {
-        magic: MAGIC,
-        flags: 0b1111,
+        flags: 0b11,
         size: 12345,
         count: 10,
-        length: 1000,
       };
       const bytes = encodeHeader(header);
-      const view = new DataView(bytes.buffer);
-      expect(view.getUint32(24, true)).toBe(0);
-      expect(view.getUint32(28, true)).toBe(0);
+      for (let i = 16; i < 32; i++) {
+        expect(bytes[i]).toBe(0);
+      }
     });
   });
 
@@ -104,10 +83,9 @@ describe("Header", () => {
     it("should roundtrip header correctly", () => {
       const original: CasHeader = {
         magic: MAGIC,
-        flags: 0b1111,
+        flags: 0b11,
         size: 1024 * 1024,
         count: 42,
-        length: 2048,
       };
       const bytes = encodeHeader(original);
       const decoded = decodeHeader(bytes);
@@ -125,51 +103,39 @@ describe("Header", () => {
       expect(() => decodeHeader(bytes)).toThrow(/Buffer too small/);
     });
 
-    it("should handle large sizes correctly", () => {
+    it("should handle max u32 size correctly", () => {
       const original: CasHeader = {
         magic: MAGIC,
         flags: 0,
-        size: Number.MAX_SAFE_INTEGER,
+        size: 0xFFFFFFFF, // max u32
         count: 0,
-        length: 32,
       };
       const bytes = encodeHeader(original);
       const decoded = decodeHeader(bytes);
-      expect(decoded.size).toBe(Number.MAX_SAFE_INTEGER);
+      expect(decoded.size).toBe(0xFFFFFFFF);
     });
   });
 
   describe("node type helpers", () => {
     it("should create d-node header", () => {
-      const header = createDictHeader(100, 5, 200);
+      const header = createDictHeader(100, 5);
       expect(getNodeType(header.flags)).toBe(NODE_TYPE.DICT);
       expect(header.size).toBe(100);
       expect(header.count).toBe(5);
-      expect(header.length).toBe(200);
     });
 
     it("should create s-node header", () => {
-      const header = createSuccessorHeader(100, 2, 164);
+      const header = createSuccessorHeader(100, 2);
       expect(getNodeType(header.flags)).toBe(NODE_TYPE.SUCCESSOR);
       expect(header.size).toBe(100);
       expect(header.count).toBe(2);
-      expect(header.length).toBe(164);
     });
 
-    it("should create f-node header with content-type length", () => {
-      const header = createFileHeader(100, 2, 180, 16);
+    it("should create f-node header", () => {
+      const header = createFileHeader(164, 2); // FileInfo(64) + data(100)
       expect(getNodeType(header.flags)).toBe(NODE_TYPE.FILE);
-      expect(getContentTypeLength(header.flags)).toBe(16);
-      expect(header.size).toBe(100);
+      expect(header.size).toBe(164);
       expect(header.count).toBe(2);
-      expect(header.length).toBe(180);
-    });
-
-    it("should create f-node header with different content-type lengths", () => {
-      expect(getContentTypeLength(createFileHeader(0, 0, 32, 0).flags)).toBe(0);
-      expect(getContentTypeLength(createFileHeader(0, 0, 48, 16).flags)).toBe(16);
-      expect(getContentTypeLength(createFileHeader(0, 0, 64, 32).flags)).toBe(32);
-      expect(getContentTypeLength(createFileHeader(0, 0, 96, 64).flags)).toBe(64);
     });
   });
 });

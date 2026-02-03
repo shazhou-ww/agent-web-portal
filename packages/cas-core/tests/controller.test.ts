@@ -1,5 +1,5 @@
 /**
- * Controller tests (functional API)
+ * Controller tests (functional API) - v2.1 format
  */
 import { describe, expect, it, beforeEach } from "bun:test";
 import {
@@ -153,7 +153,7 @@ describe("Controller", () => {
       expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
     });
 
-    it("should compute size as sum of children logical sizes", async () => {
+    it("should create dict with children", async () => {
       // Create files with known sizes
       const file1 = await writeFile(ctx, new Uint8Array(100), "text/plain"); // 100 bytes
       const file2 = await writeFile(ctx, new Uint8Array(200), "text/plain"); // 200 bytes
@@ -165,10 +165,11 @@ describe("Controller", () => {
 
       const node = await getNode(ctx, dictKey);
       expect(node).not.toBeNull();
-      expect(node!.size).toBe(300); // 100 + 200
+      expect(node!.kind).toBe("dict");
+      expect(node!.childNames).toHaveLength(2);
     });
 
-    it("should compute nested dict size correctly", async () => {
+    it("should handle nested dict", async () => {
       // Create files
       const file1 = await writeFile(ctx, new Uint8Array(50), "text/plain");
       const file2 = await writeFile(ctx, new Uint8Array(150), "text/plain");
@@ -186,8 +187,9 @@ describe("Controller", () => {
 
       const node = await getNode(ctx, outerDict);
       expect(node).not.toBeNull();
-      // Outer size = inner dict size (50) + file2 size (150) = 200
-      expect(node!.size).toBe(200);
+      expect(node!.kind).toBe("dict");
+      expect(node!.childNames).toContain("subdir");
+      expect(node!.childNames).toContain("outer.txt");
     });
   });
 
@@ -200,7 +202,8 @@ describe("Controller", () => {
       const node = tree.nodes[result.key];
       expect(node).toBeDefined();
       expect(node!.kind).toBe("file");
-      expect(node!.size).toBe(3);
+      // size is now payload size (FileInfo + data = 64 + 3 = 67)
+      expect(node!.size).toBe(67);
       expect(node!.contentType).toBe("image/png");
     });
 
@@ -218,8 +221,8 @@ describe("Controller", () => {
       const dictNode = tree.nodes[dictKey];
       expect(dictNode!.kind).toBe("dict");
       expect(dictNode!.childNames).toEqual(["a.txt", "b.txt"]);
-      // Dict size should be sum of children's logical sizes (3 + 3 = 6)
-      expect(dictNode!.size).toBe(6);
+      // Dict size is now the names payload size
+      expect(dictNode!.size).toBeGreaterThan(0);
     });
 
     it("should respect limit parameter", async () => {
@@ -249,7 +252,7 @@ describe("Controller", () => {
       expect(node).not.toBeNull();
       expect(node!.kind).toBe("file");
       expect(node!.data).toEqual(new Uint8Array([1, 2, 3]));
-      expect(node!.contentType).toBe("image/png");
+      expect(node!.fileInfo?.contentType).toBe("image/png");
     });
 
     it("should return null for missing node", async () => {

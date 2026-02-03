@@ -1,5 +1,5 @@
 /**
- * Tests for well-known CAS keys and data (v2 format)
+ * Tests for well-known CAS keys and data (v2.1 format)
  */
 
 import { describe, expect, it } from "bun:test";
@@ -24,32 +24,26 @@ describe("Well-known Keys", () => {
       expect(flags & 0b11).toBe(NODE_TYPE.DICT);
     });
 
-    it("should have size = 0 at offset 8", () => {
+    it("should have size = 0 at offset 8 (u32)", () => {
       const view = new DataView(EMPTY_DICT_BYTES.buffer);
-      expect(view.getBigUint64(8, true)).toBe(0n);
+      expect(view.getUint32(8, true)).toBe(0);
     });
 
-    it("should have count = 0 at offset 16", () => {
+    it("should have count = 0 at offset 12", () => {
       const view = new DataView(EMPTY_DICT_BYTES.buffer);
-      expect(view.getUint32(16, true)).toBe(0);
+      expect(view.getUint32(12, true)).toBe(0);
     });
 
-    it("should have length = HEADER_SIZE at offset 20", () => {
-      const view = new DataView(EMPTY_DICT_BYTES.buffer);
-      expect(view.getUint32(20, true)).toBe(HEADER_SIZE);
-    });
-
-    it("should have reserved bytes = 0 at offset 24-31", () => {
-      const view = new DataView(EMPTY_DICT_BYTES.buffer);
-      expect(view.getUint32(24, true)).toBe(0);
-      expect(view.getUint32(28, true)).toBe(0);
+    it("should have reserved bytes = 0 at offset 16-31", () => {
+      for (let i = 16; i < 32; i++) {
+        expect(EMPTY_DICT_BYTES[i]).toBe(0);
+      }
     });
 
     it("should decode correctly as a d-node header", () => {
       const header = decodeHeader(EMPTY_DICT_BYTES);
       expect(header.count).toBe(0);
       expect(header.size).toBe(0);
-      expect(header.length).toBe(HEADER_SIZE);
       expect(getNodeType(header.flags)).toBe(NODE_TYPE.DICT);
     });
   });
