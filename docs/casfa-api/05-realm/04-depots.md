@@ -23,12 +23,12 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 {
   "depots": [
     {
-      "depotId": "depot_xxxx",
+      "depotId": "depot:01HQXK5V8N3Y7M2P4R6T9W0ABC",
       "name": "main",
-      "root": "sha256:abc123...",
+      "root": "node:abc123...",
       "version": 5,
-      "createdAt": "2025-01-01T00:00:00.000Z",
-      "updatedAt": "2025-02-02T12:00:00.000Z",
+      "createdAt": 1704067200000,
+      "updatedAt": 1738497600000,
       "description": "主仓库"
     }
   ],
@@ -60,12 +60,12 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 
 ```json
 {
-  "depotId": "depot_xxxx",
+  "depotId": "depot:01HQXK5V8N3Y7M2P4R6T9W0ABC",
   "name": "my-depot",
-  "root": "sha256:empty...",
+  "root": "node:empty...",
   "version": 1,
-  "createdAt": "2025-02-02T12:00:00.000Z",
-  "updatedAt": "2025-02-02T12:00:00.000Z",
+  "createdAt": 1738497600000,
+  "updatedAt": 1738497600000,
   "description": "我的仓库"
 }
 ```
@@ -88,12 +88,12 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 
 ```json
 {
-  "depotId": "depot_xxxx",
+  "depotId": "depot:01HQXK5V8N3Y7M2P4R6T9W0ABC",
   "name": "my-depot",
-  "root": "sha256:abc123...",
+  "root": "node:abc123...",
   "version": 5,
-  "createdAt": "2025-01-01T00:00:00.000Z",
-  "updatedAt": "2025-02-02T12:00:00.000Z",
+  "createdAt": 1704067200000,
+  "updatedAt": 1738497600000,
   "description": "我的仓库"
 }
 ```
@@ -104,8 +104,8 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 | `name` | Depot 名称 |
 | `root` | 当前根节点 key |
 | `version` | 当前版本号 |
-| `createdAt` | 创建时间 |
-| `updatedAt` | 最后更新时间 |
+| `createdAt` | 创建时间（epoch 毫秒） |
+| `updatedAt` | 最后更新时间（epoch 毫秒） |
 | `description` | 描述 |
 
 ---
@@ -118,7 +118,7 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 
 ```json
 {
-  "root": "sha256:newroot...",
+  "root": "node:newroot...",
   "message": "更新说明"
 }
 ```
@@ -132,12 +132,12 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 
 ```json
 {
-  "depotId": "depot_xxxx",
+  "depotId": "depot:01HQXK5V8N3Y7M2P4R6T9W0ABC",
   "name": "my-depot",
-  "root": "sha256:newroot...",
+  "root": "node:newroot...",
   "version": 6,
-  "createdAt": "2025-01-01T00:00:00.000Z",
-  "updatedAt": "2025-02-02T13:00:00.000Z",
+  "createdAt": 1704067200000,
+  "updatedAt": 1738501200000,
   "description": "我的仓库"
 }
 ```
@@ -192,14 +192,14 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
   "history": [
     {
       "version": 6,
-      "root": "sha256:v6root...",
-      "createdAt": "2025-02-02T13:00:00.000Z",
+      "root": "node:v6root...",
+      "createdAt": 1738501200000,
       "message": "最新更新"
     },
     {
       "version": 5,
-      "root": "sha256:v5root...",
-      "createdAt": "2025-02-02T12:00:00.000Z",
+      "root": "node:v5root...",
+      "createdAt": 1738497600000,
       "message": "之前的版本"
     }
   ],
@@ -229,12 +229,12 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 
 ```json
 {
-  "depotId": "depot_xxxx",
+  "depotId": "depot:01HQXK5V8N3Y7M2P4R6T9W0ABC",
   "name": "my-depot",
-  "root": "sha256:v3root...",
+  "root": "node:v3root...",
   "version": 7,
-  "createdAt": "2025-01-01T00:00:00.000Z",
-  "updatedAt": "2025-02-02T14:00:00.000Z",
+  "createdAt": 1704067200000,
+  "updatedAt": 1738504800000,
   "description": "我的仓库"
 }
 ```
@@ -275,23 +275,23 @@ Depot 是 CAS 中的命名存储空间，支持版本控制和回滚。
 
 ```bash
 # 1. 创建 Depot
-curl -X POST /api/realm/usr_xxx/depots \
+curl -X POST /api/realm/user:01HQXK5V8N3Y7M2P4R6T9W0XYZ/depots \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"name": "docs", "description": "文档仓库"}'
 
 # 2. 上传数据（省略节点上传步骤）
 
 # 3. 更新 Depot root
-curl -X PUT /api/realm/usr_xxx/depots/depot_yyy \
+curl -X PUT /api/realm/user:01HQXK5V8N3Y7M2P4R6T9W0XYZ/depots/depot:01HQXK5V8N3Y7M2P4R6T9W0ABC \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"root": "sha256:newroot...", "message": "添加新文档"}'
+  -d '{"root": "node:newroot...", "message": "添加新文档"}'
 
 # 4. 查看历史
-curl /api/realm/usr_xxx/depots/depot_yyy/history \
+curl /api/realm/user:01HQXK5V8N3Y7M2P4R6T9W0XYZ/depots/depot:01HQXK5V8N3Y7M2P4R6T9W0ABC/history \
   -H "Authorization: Bearer $TOKEN"
 
 # 5. 回滚到版本 2
-curl -X POST /api/realm/usr_xxx/depots/depot_yyy/rollback \
+curl -X POST /api/realm/user:01HQXK5V8N3Y7M2P4R6T9W0XYZ/depots/depot:01HQXK5V8N3Y7M2P4R6T9W0ABC/rollback \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"version": 2}'
 ```

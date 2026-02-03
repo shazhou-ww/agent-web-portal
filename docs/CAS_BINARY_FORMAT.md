@@ -24,7 +24,7 @@
 | 术语 | 定义 |
 |------|------|
 | **CAS** | Content Addressed Storage，内容寻址存储。数据的地址由其内容的哈希值决定 |
-| **CAS Key** | 数据的唯一标识符，格式为 `sha256:<64位十六进制>`，例如 `sha256:04821167d026fa3b24e160b8f9f0ff2a342ca1f96c78c24b23e6a086b71e2391` |
+| **CAS Key** | 数据的唯一标识符，格式为 `blake3s:<32位十六进制>`，例如 `blake3s:04821167d026fa3b24e160b8f9f0ff2a` |
 | **Node** | CAS 中的基本存储单元，一个二进制块，包含 Header 和 Body |
 | **d-node** | Dict Node（目录节点），存储有序的子节点名称和引用 |
 | **s-node** | Successor Node（续块节点），文件 B-Tree 的内部节点 |
@@ -36,7 +36,7 @@
 | **FileInfo** | f-node 的 Payload 头部，包含 fileSize (8 bytes) + contentType (56 bytes) = 64 bytes |
 | **Payload Size** | Header.size 字段的含义：Payload 部分的字节数（不含 Header 和 Children） |
 | **Node Limit** | 单个节点的最大字节数限制（默认 1 MB） |
-| **Hash Provider** | 提供 SHA-256 哈希计算的抽象接口 |
+| **Hash Provider** | 提供 BLAKE3s-128 哈希计算的抽象接口 |
 | **Storage Provider** | 提供节点存取的抽象接口（S3、HTTP、内存等） |
 
 ---
@@ -55,10 +55,10 @@ Content Addressed Storage（内容寻址存储）是一种数据存储范式，�
 - 数据被篡改后，标识符不变，无法检测
 - 引用其他数据需要依赖外部系统维护一致性
 
-CAS 使用**加密哈希函数**（本规范使用 SHA-256）计算数据的唯一标识符：
+CAS 使用**加密哈希函数**（本规范使用 BLAKE3s-128）计算数据的唯一标识符：
 
 ```
-Key = "sha256:" + hex(SHA-256(data))
+Key = "blake3s:" + hex(BLAKE3s-128(data))
 ```
 
 这带来了关键特性：
@@ -191,12 +191,12 @@ d-node 表示一个目录，包含零个或多个命名子节点：
 
 ### 3.4 Merkle Tree 的安全性
 
-由于每个节点的 Key 是其内容的 SHA-256 哈希，形成了 Merkle Tree：
+由于每个节点的 Key 是其内容的 BLAKE3s-128 哈希，形成了 Merkle Tree：
 
 ```
-Root Key = SHA-256(Header + Children + Data)
-                         ↑
-                    包含子节点的 Key（哈希值）
+Root Key = BLAKE3s-128(Header + Children + Data)
+                             ↑
+                        包含子节点的 Key（哈希值）
 ```
 
 这意味着：
@@ -209,25 +209,24 @@ Root Key = SHA-256(Header + Children + Data)
 
 ## 4. 节点二进制协议
 
-### 4.1 通用 Header 格式（32 字节）
+### 4.1 通用 Header 格式（16 字节）
 
-所有节点类型共享相同的 32 字节 Header：
+所有节点类型共享相同的 16 字节 Header：
 
 ```
 Offset  Size   Field      Type     Description
 ────────────────────────────────────────────────────────────────
 0-3     4      magic      u32 LE   固定值 0x01534143 ("CAS\x01")
-4-7     4      flags      u32 LE   节点类型（bits 0-1），其余保留
+4-7     4      flags      u32 LE   见下文 Flags 字段布局
 8-11    4      size       u32 LE   Payload 大小（不含 Header 和 Children）
 12-15   4      count      u32 LE   子节点数量
-16-31   16     reserved   -        保留字段（必须全为 0）
 ```
 
 **节点总大小计算**：
 
 ```
 nodeLength = HEADER_SIZE + count × HASH_SIZE + size
-           = 32 + count × 32 + size
+           = 16 + count × 16 + size
 ```
 
 #### 4.1.1 Magic Number
@@ -245,7 +244,17 @@ u32 LE 值: 0x01534143
 Bits 0-1:   节点类型 (TYPE_MASK = 0b11)
             01 = d-node, 10 = s-node, 11 = f-node
             
-Bits 2-31:  保留位（必须为 0）
+Bits 2-3:   Header Extension Count
+            表示 Header 后有多少个 16 字节扩展段（默认 0）
+            
+Bits 4-7:   Block Size Limit
+            系统级块大小上限指数，表示 2^n × KB（例如 12 表示 4 MB）
+            这是整个系统统一的配置，不是单个节点的实际大小
+            
+Bits 8-15:  Hash Algorithm
+            0 = BLAKE3s-128（当前唯一支持的算法）
+            
+Bits 16-31: 保留位（必须为 0）
 ```
 
 #### 4.1.3 Size 字段
@@ -262,9 +271,9 @@ Bits 2-31:  保留位（必须为 0）
 
 ```
 ┌────────────────────────────────────────┐
-│ Header (32 bytes)                      │
+│ Header (16 bytes)                      │
 ├────────────────────────────────────────┤
-│ Children (count × 32 bytes)            │  ← SHA-256 哈希数组
+│ Children (count × 16 bytes)            │  ← BLAKE3s-128 哈希数组
 ├────────────────────────────────────────┤
 │ Names (Pascal strings)                 │  ← 按 UTF-8 字节序排序
 └────────────────────────────────────────┘
@@ -272,7 +281,7 @@ Bits 2-31:  保留位（必须为 0）
 
 **Children 段**：
 
-- `count` 个连续的 32 字节 SHA-256 哈希
+- `count` 个连续的 16 字节 BLAKE3s-128 哈希
 - 顺序与 Names 段一一对应
 
 **Names 段**：
@@ -285,23 +294,23 @@ Bits 2-31:  保留位（必须为 0）
 
 ```
 Offset   Content
-0-31     Header (magic=0x01534143, flags=0x01, count=2, ...)
-32-63    Child[0] hash (32 bytes)
-64-95    Child[1] hash (32 bytes)
-96-97    Name[0] length (u16 LE) = 5
-98-102   Name[0] bytes "alpha"
-103-104  Name[1] length (u16 LE) = 4
-105-108  Name[1] bytes "beta"
+0-15     Header (magic=0x01534143, flags=0x01, count=2, ...)
+16-31    Child[0] hash (16 bytes)
+32-47    Child[1] hash (16 bytes)
+48-49    Name[0] length (u16 LE) = 5
+50-54    Name[0] bytes "alpha"
+55-56    Name[1] length (u16 LE) = 4
+57-60    Name[1] bytes "beta"
 ```
 
 ### 4.3 s-node 完整格式
 
 ```
 ┌────────────────────────────────────────┐
-│ Header (32 bytes)                      │
+│ Header (16 bytes)                      │
 │   size = data.length                   │
 ├────────────────────────────────────────┤
-│ Children (count × 32 bytes)            │  ← SHA-256 哈希数组
+│ Children (count × 16 bytes)            │  ← BLAKE3s-128 哈希数组
 ├────────────────────────────────────────┤
 │ Data (raw bytes)                       │  ← 原始文件数据片段
 └────────────────────────────────────────┘
@@ -311,21 +320,21 @@ Offset   Content
 
 ```
 Offset   Content
-0-31     Header (flags=0x02, count=1, size=100)
-32-63    Child[0] hash (32 bytes)
-64-163   Data (100 bytes)
+0-15     Header (flags=0x02, count=1, size=100)
+16-31    Child[0] hash (16 bytes)
+32-131   Data (100 bytes)
 ```
 
-**注意**：s-node 不再需要 Padding，因为 Header(32) + Children(N×32) 已经是 32 的倍数。
+**注意**：s-node 不需要 Padding，因为 Header(16) + Children(N×16) 已经是 16 的倍数。
 
 ### 4.4 f-node 完整格式
 
 ```
 ┌────────────────────────────────────────┐
-│ Header (32 bytes)                      │
+│ Header (16 bytes)                      │
 │   size = 64 + data.length              │
 ├────────────────────────────────────────┤
-│ Children (count × 32 bytes)            │  ← SHA-256 哈希数组
+│ Children (count × 16 bytes)            │  ← BLAKE3s-128 哈希数组
 ├────────────────────────────────────────┤
 │ FileInfo (64 bytes)                    │  ← 文件元信息
 │   0-7:   fileSize (u64 LE)             │  ← 原始文件总大小
@@ -344,21 +353,21 @@ Offset   Content
 
 **对齐规则**：
 
-- Header = 32 字节（32 的倍数）
-- Children = N × 32 字节（32 的倍数）
-- FileInfo = 64 字节（32 的倍数）
-- 因此 Data 段自然对齐到 32 字节边界
+- Header = 16 字节（16 的倍数）
+- Children = N × 16 字节（16 的倍数）
+- FileInfo = 64 字节（16 的倍数）
+- 因此 Data 段自然对齐到 16 字节边界
 
 **示例**（无子节点，contentType="application/json"，50 字节数据）：
 
 ```
 Offset   Content
-0-31     Header (flags=0x03, count=0, size=114)
+0-15     Header (flags=0x03, count=0, size=114)
          flags = 0b11 = f-node
          size = 64 + 50 = 114
-32-39    fileSize: 50 (u64 LE)
-40-95    contentType: "application/json" + zeros (56 bytes)
-96-145   Data (50 bytes)
+16-23    fileSize: 50 (u64 LE)
+24-79    contentType: "application/json" + zeros (56 bytes)
+80-129   Data (50 bytes)
 ```
 
 ### 4.5 Pascal String 编码
@@ -382,7 +391,7 @@ Pascal String 用于 d-node 的子节点名称：
 
 ### 5.1 为什么需要拆分
 
-当文件大小超过 `nodeLimit - HEADER_SIZE` 时（默认约 1 MB - 32 = 1,048,544 字节），需要将文件拆分为多个节点。
+当文件大小超过 `nodeLimit - HEADER_SIZE` 时（默认约 1 MB - 16 = 1,048,560 字节），需要将文件拆分为多个节点。
 
 **不拆分的问题**：
 
@@ -397,14 +406,14 @@ CAS 使用**贪婪填充 B-Tree**（Greedy Fill B-Tree）而非传统的 CDC（C
 **核心思想**：
 
 - 每个节点既存储数据，也存储子节点引用
-- 子节点引用各占 32 字节（SHA-256 哈希）
+- 子节点引用各占 16 字节（BLAKE3s-128 哈希）
 - 优先填满最左侧节点
 
 **容量公式**：
 
 深度 $d$ 的 B-Tree 最大容量：
 
-$$C(d) = \frac{L^d}{32^{d-1}}$$
+$$C(d) = \frac{L^d}{16^{d-1}}$$
 
 其中：
 
@@ -414,8 +423,8 @@ $$C(d) = \frac{L^d}{32^{d-1}}$$
 **推导**：
 
 - 深度 1（叶节点）：$C(1) = L$（全部空间存数据）
-- 深度 2：根节点存 $L - 32n$ 字节数据，$n$ 个子节点各存 $L$ 字节
-  - 最优时 $n = L/32$，容量 = $L + n \times L \approx L^2/32$
+- 深度 2：根节点存 $L - 16n$ 字节数据，$n$ 个子节点各存 $L$ 字节
+  - 最优时 $n = L/16$，容量 = $L + n \times L \approx L^2/16$
 - 以此类推
 
 ### 5.3 深度计算算法
@@ -439,7 +448,7 @@ function computeCapacity(depth: number, nodeLimit: number): number {
   if (depth === 1) return L;
   
   // 使用对数避免溢出
-  const logCapacity = depth * Math.log(L) - (depth - 1) * Math.log(32);
+  const logCapacity = depth * Math.log(L) - (depth - 1) * Math.log(16);
   return Math.min(Math.exp(logCapacity), Number.MAX_SAFE_INTEGER);
 }
 ```
@@ -478,17 +487,17 @@ function computeLayoutAtDepth(
   // 计算需要多少子节点
   const childCapacity = computeCapacity(depth - 1, nodeLimit);
   
-  // 每个子节点贡献 childCapacity 容量，消耗 32 字节指针空间
+  // 每个子节点贡献 childCapacity 容量，消耗 16 字节指针空间
   // 设 n 个子节点，则：
-  //   myData = L - n * 32
+  //   myData = L - n * 16
   //   n * childCapacity + myData >= remainingSize
-  //   n * (childCapacity - 32) >= remainingSize - L
-  //   n >= (remainingSize - L) / (childCapacity - 32)
+  //   n * (childCapacity - 16) >= remainingSize - L
+  //   n >= (remainingSize - L) / (childCapacity - 16)
   
   const childCount = Math.ceil(
-    (remainingSize - L) / (childCapacity - 32)
+    (remainingSize - L) / (childCapacity - 16)
   );
-  const myDataSize = L - childCount * 32;
+  const myDataSize = L - childCount * 16;
   
   // 递归构建子节点布局
   let leftover = remainingSize - myDataSize;
@@ -513,9 +522,9 @@ function computeLayoutAtDepth(
 | 深度 | 最大容量 | 典型用途 |
 |------|----------|----------|
 | 1 | ~1 MB | 小文件，单节点 |
-| 2 | ~32 GB | 中等文件，根节点 + 叶子 |
-| 3 | ~1 PB | 大文件，三层结构 |
-| 4 | ~32 EB | 理论上限 |
+| 2 | ~64 GB | 中等文件，根节点 + 叶子 |
+| 3 | ~4 PB | 大文件，三层结构 |
+| 4 | ~256 EB | 理论上限 |
 
 **深度 2 示例**（存储 50 MB 文件）：
 
@@ -642,8 +651,8 @@ async function readFileData(ctx: CasContext, node: CasNode): Promise<Uint8Array>
 | 常量 | 值 | 说明 |
 |------|-----|------|
 | `MAGIC` | `0x01534143` | "CAS\x01" little-endian |
-| `HEADER_SIZE` | 32 字节 | 所有节点类型共用 |
-| `HASH_SIZE` | 32 字节 | SHA-256 输出长度 |
+| `HEADER_SIZE` | 16 字节 | 所有节点类型共用 |
+| `HASH_SIZE` | 16 字节 | BLAKE3s-128 输出长度 |
 | `DATA_ALIGNMENT` | 16 字节 | 数据段对齐边界 |
 | `DEFAULT_NODE_LIMIT` | 1,048,576 字节 (1 MB) | 默认单节点最大值 |
 
@@ -663,28 +672,28 @@ d-node 的子节点数受限于 Pascal String 总长度：
 
 ```
 节点总大小 = Header + Children + Names
-          = 32 + N × 32 + Σ(2 + len(name_i))
+          = 16 + N × 16 + Σ(2 + len(name_i))
           ≤ nodeLimit
 ```
 
 **最坏情况**（所有名称为空字符串）：
 
-- 每个子节点消耗：32（哈希）+ 2（Pascal 长度前缀）= 34 字节
-- 最大子节点数：$(nodeLimit - 32) / 34 \approx 30,840$（1 MB 节点）
+- 每个子节点消耗：16（哈希）+ 2（Pascal 长度前缀）= 18 字节
+- 最大子节点数：$(nodeLimit - 16) / 18 \approx 58,252$（1 MB 节点）
 
 **最佳情况**（无名称段，仅 s-node/f-node 的子节点）：
 
-- 每个子节点消耗：32 字节（哈希）
-- 最大子节点数：$(nodeLimit - 32) / 32 = 32,767$（1 MB 节点）
+- 每个子节点消耗：16 字节（哈希）
+- 最大子节点数：$(nodeLimit - 16) / 16 = 65,535$（1 MB 节点）
 
 ### 6.4 不同 Node Size 下的容量对比
 
 | Node Limit | 深度 1 | 深度 2 | 深度 3 |
 |------------|--------|--------|--------|
-| 64 KB | ~64 KB | ~128 MB | ~256 GB |
-| 256 KB | ~256 KB | ~2 GB | ~16 TB |
-| 1 MB | ~1 MB | ~32 GB | ~1 PB |
-| 4 MB | ~4 MB | ~512 GB | ~64 PB |
+| 64 KB | ~64 KB | ~256 MB | ~1 TB |
+| 256 KB | ~256 KB | ~4 GB | ~64 TB |
+| 1 MB | ~1 MB | ~64 GB | ~4 PB |
+| 4 MB | ~4 MB | ~1 TB | ~256 PB |
 
 ### 6.5 Size 字段说明
 
@@ -723,10 +732,9 @@ const fileSize = sizeLow + sizeHigh * 0x100000000;
 | 规则 | 说明 |
 |------|------|
 | **Magic 验证** | 前 4 字节必须为 `0x43, 0x41, 0x53, 0x01` |
-| **Flags 验证** | bits 2-31 必须全为 0 |
-| **Reserved 验证** | 字节 16-31 必须全为 0 |
-| **长度一致性** | `buffer.length == 32 + count × 32 + size` |
-| **哈希验证** | `sha256(buffer) == expectedKey` |
+| **Flags 验证** | bits 16-31（保留位）必须全为 0 |
+| **长度一致性** | `buffer.length == 16 + count × 16 + size` |
+| **哈希验证** | `blake3s(buffer) == expectedKey` |
 
 ### 7.2 Payload 校验
 
@@ -749,7 +757,19 @@ const fileSize = sizeLow + sizeHigh * 0x100000000;
 
 #### 7.2.3 s-node 校验
 
-无特殊校验（纯数据）。
+| 规则 | 说明 |
+|------|------|
+| **填充校验** | 如果节点有 children，则本节点数据段必须填满（达到 block size limit） |
+
+#### 7.2.4 f-node/s-node 填充规则
+
+对于 f-node 和 s-node，存在一个重要的结构性约束：
+
+> **只有填满的节点才能有子节点。**
+
+即：如果 `count > 0`（有子节点），则本节点的数据段必须达到 block size limit。
+
+这确保了 B-Tree 的正确性——数据优先填充当前节点，只有当前节点满了才会"溢出"到子节点。
 
 ### 7.3 不做的校验
 
@@ -761,9 +781,10 @@ const fileSize = sizeLow + sizeHigh * 0x100000000;
 ### 7.4 验证实现示例
 
 ```typescript
-const HEADER_SIZE = 32;
-const HASH_SIZE = 32;
+const HEADER_SIZE = 16;
+const HASH_SIZE = 16;
 const FILEINFO_SIZE = 64;
+const RESERVED_MASK = 0xffff0000;  // bits 16-31
 
 async function validateNode(
   buffer: Uint8Array,
@@ -780,26 +801,19 @@ async function validateNode(
   // 2. 解码 Header
   const header = decodeHeader(buffer);
   
-  // 3. 验证 Flags 未使用位 (bits 2-31)
-  if ((header.flags & ~0b11) !== 0) {
-    return { valid: false, error: "Unused flag bits are set" };
+  // 3. 验证 Flags 保留位 (bits 16-31)
+  if ((header.flags & RESERVED_MASK) !== 0) {
+    return { valid: false, error: "Reserved flag bits are set" };
   }
   
-  // 4. 验证 Reserved 字节 (16-31)
-  for (let i = 16; i < 32; i++) {
-    if (buffer[i] !== 0) {
-      return { valid: false, error: `Reserved byte ${i} is not zero` };
-    }
-  }
-  
-  // 5. 验证长度一致性
+  // 4. 验证长度一致性
   const expectedLength = HEADER_SIZE + header.count * HASH_SIZE + header.size;
   if (buffer.length !== expectedLength) {
     return { valid: false, error: `Length mismatch: ${buffer.length} != ${expectedLength}` };
   }
   
-  // 6. 验证哈希
-  const hash = await hashProvider.sha256(buffer);
+  // 5. 验证哈希
+  const hash = await hashProvider.hash(buffer);
   const actualKey = hashToKey(hash);
   if (actualKey !== expectedKey) {
     return { valid: false, error: `Hash mismatch` };
@@ -834,36 +848,34 @@ Well-Known Keys 是预计算的特殊节点，具有系统级意义。
 
 **用途**：新 Depot 的初始根节点
 
-**字节内容**（32 字节）：
+**字节内容**（16 字节）：
 
 ```
 Offset   Content
 0-3      Magic: 0x43, 0x41, 0x53, 0x01
-4-7      Flags: 0x01, 0x00, 0x00, 0x00 (d-node)
+4-7      Flags: 0x01, 0x00, 0x00, 0x00 (d-node, hash_algo=0)
 8-11     Size: 0x00, 0x00, 0x00, 0x00 (size = 0, no names)
 12-15    Count: 0x00, 0x00, 0x00, 0x00 (count = 0)
-16-31    Reserved: 0x00 × 16
 ```
 
 **Key**：
 
 ```
-sha256:928fb40f7f8d2746a9dba82de1f75603fd81d486542ba854770ac2dd1d78a4e2
+blake3s:8b49b82afb41373146a970681bbe55a1
 ```
 
 **生成代码**：
 
 ```typescript
-const EMPTY_DICT_BYTES = new Uint8Array(32);
+const EMPTY_DICT_BYTES = new Uint8Array(16);
 const view = new DataView(EMPTY_DICT_BYTES.buffer);
 view.setUint32(0, 0x01534143, true);  // magic
-view.setUint32(4, 0x01, true);        // flags = d-node
+view.setUint32(4, 0x01, true);        // flags = d-node (hash_algo=0 in bits 8-15)
 view.setUint32(8, 0, true);           // size = 0 (no names payload)
 view.setUint32(12, 0, true);          // count = 0
-// bytes 16-31 already 0 (reserved)
 
-const hash = await crypto.subtle.digest("SHA-256", EMPTY_DICT_BYTES);
-const key = "sha256:" + bytesToHex(new Uint8Array(hash));
+const hash = blake3s_128(EMPTY_DICT_BYTES);
+const key = "blake3s:" + bytesToHex(hash);
 ```
 
 ### 8.2 使用场景

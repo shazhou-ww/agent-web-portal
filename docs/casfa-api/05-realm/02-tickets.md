@@ -16,7 +16,7 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
 
 ```json
 {
-  "input": ["blake3s:abc123..."],
+  "input": ["node:abc123..."],
   "purpose": "Generate thumbnail for uploaded image",
   "writable": {
     "quota": 10485760,
@@ -39,9 +39,9 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
 
 ```json
 {
-  "ticketId": "ticket_xxx",
-  "endpoint": "https://api.example.com/api/ticket/ticket_xxx",
-  "input": ["blake3s:abc123..."],
+  "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+  "endpoint": "https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+  "input": ["node:abc123..."],
   "writable": true,
   "config": {
     "nodeLimit": 4194304,
@@ -49,7 +49,7 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
     "quota": 10485760,
     "accept": ["image/*"]
   },
-  "expiresAt": "2025-02-03T12:00:00.000Z"
+  "expiresAt": 1738584000000
 }
 ```
 
@@ -80,25 +80,25 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
 {
   "tickets": [
     {
-      "ticketId": "ticket_xxx",
+      "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
       "status": "active",
       "purpose": "Generate thumbnail for uploaded image",
-      "input": ["blake3s:abc123..."],
+      "input": ["node:abc123..."],
       "output": null,
-      "issuerId": "agent_yyy",
-      "createdAt": "2025-02-02T12:00:00.000Z",
-      "expiresAt": "2025-02-03T12:00:00.000Z"
+      "issuerId": "agent:01HQXK5V8N3Y7M2P4R6T9W0DEF",
+      "createdAt": 1738497600000,
+      "expiresAt": 1738584000000
     },
     {
-      "ticketId": "ticket_zzz",
+      "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
       "status": "committed",
       "purpose": "Convert document to PDF",
-      "input": ["blake3s:def456...", "blake3s:template789..."],
-      "output": "blake3s:ghi789...",
-      "issuerId": "agent_yyy",
-      "createdAt": "2025-02-01T10:00:00.000Z",
-      "expiresAt": "2025-02-02T10:00:00.000Z",
-      "committedAt": "2025-02-01T11:30:00.000Z"
+      "input": ["node:def456...", "node:template789..."],
+      "output": "node:ghi789...",
+      "issuerId": "agent:01HQXK5V8N3Y7M2P4R6T9W0DEF",
+      "createdAt": 1738404000000,
+      "expiresAt": 1738490400000,
+      "committedAt": 1738409400000
     }
   ],
   "nextKey": "下一页游标"
@@ -114,22 +114,22 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
 
 ```json
 {
-  "ticketId": "ticket_xxx",
+  "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
   "status": "active",
   "purpose": "Generate thumbnail for uploaded image",
-  "input": ["blake3s:abc123..."],
+  "input": ["node:abc123..."],
   "output": null,
   "writable": true,
-  "issuerId": "agent_yyy",
-  "issuerFingerprint": "fp_xxx",
+  "issuerId": "agent:01HQXK5V8N3Y7M2P4R6T9W0DEF",
+  "issuerFingerprint": "fp:abc123...",
   "config": {
     "nodeLimit": 4194304,
     "maxNameBytes": 255,
     "quota": 10485760,
     "accept": ["image/*"]
   },
-  "createdAt": "2025-02-02T12:00:00.000Z",
-  "expiresAt": "2025-02-03T12:00:00.000Z"
+  "createdAt": 1738497600000,
+  "expiresAt": 1738584000000
 }
 ```
 

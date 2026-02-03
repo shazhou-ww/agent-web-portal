@@ -178,7 +178,7 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
 
 | 参数 | 类型 | 描述 |
 |------|------|------|
-| `scope` | `string \| string[]` | 要访问的 DAG root key(s) |
+| `input` | `string \| string[]` | 输入节点 key(s) |
 | `writable` | `boolean?` | 是否需要写入权限，默认 false |
 | `expiresIn` | `number?` | 有效期（秒） |
 
@@ -192,7 +192,7 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
   "params": {
     "name": "cas_get_ticket",
     "arguments": {
-      "scope": "sha256:abc123...",
+      "input": "node:abc123...",
       "writable": true,
       "expiresIn": 3600
     }
@@ -210,7 +210,7 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
     "content": [
       {
         "type": "text",
-        "text": "{\"endpoint\":\"https://api.example.com/api/ticket/xxx\",\"scope\":[\"sha256:abc123...\"],\"expiresAt\":\"2025-02-02T13:00:00.000Z\"}"
+        "text": "{\"endpoint\":\"https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC\",\"input\":[\"node:abc123...\"],\"expiresAt\":1738501200000}"
       }
     ]
   }
@@ -241,8 +241,8 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
   "params": {
     "name": "cas_read",
     "arguments": {
-      "endpoint": "https://api.example.com/api/ticket/xxx",
-      "key": "sha256:abc123...",
+      "endpoint": "https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+      "key": "node:abc123...",
       "path": "."
     }
   }
@@ -259,7 +259,7 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
     "content": [
       {
         "type": "text",
-        "text": "{\"key\":\"sha256:abc123...\",\"contentType\":\"image/png\",\"size\":12345,\"content\":\"base64编码的内容...\"}"
+        "text": "{\"key\":\"node:abc123...\",\"contentType\":\"image/png\",\"size\":12345,\"content\":\"base64编码的内容...\"}"
       }
     ]
   }
@@ -290,7 +290,7 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
   "params": {
     "name": "cas_write",
     "arguments": {
-      "endpoint": "https://api.example.com/api/ticket/xxx",
+      "endpoint": "https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
       "content": "SGVsbG8gV29ybGQh",
       "contentType": "text/plain"
     }
@@ -308,7 +308,7 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
     "content": [
       {
         "type": "text",
-        "text": "{\"key\":\"sha256:def456...\",\"contentType\":\"text/plain\",\"size\":12}"
+        "text": "{\"key\":\"node:def456...\",\"contentType\":\"text/plain\",\"size\":12}"
       }
     ]
   }

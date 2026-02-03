@@ -6,6 +6,23 @@ CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的�
 
 所有 API 路由均以 `/api` 为前缀。
 
+## ID 格式规范
+
+所有 128 位标识符使用 Crockford Base32 编码，固定 26 位字符。
+
+| 类型 | 格式 | 示例 |
+|------|------|------|
+| User ID | `user:{ulid}` | `user:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
+| Ticket ID | `ticket:{ulid}` | `ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
+| Depot ID | `depot:{ulid}` | `depot:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
+| Agent ID | `agent:{ulid}` | `agent:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
+| Node Key | `node:{hash}` | `node:abc123...` |
+
+> **注意**: 
+> - 所有时间戳使用 epoch 毫秒格式（如 `1738497600000`）
+> - Node Key 使用统一的 hash 算法，不带算法前缀
+> - Realm ID 等同于 User ID
+
 ## 路由表
 
 ### 健康检查
@@ -196,6 +213,5 @@ X-AWP-Signature: {signature}
 - [Auth 授权 API](./02-auth.md)
 - [Admin 管理 API](./03-admin.md)
 - [MCP 协议 API](./04-mcp.md)
-- [Realm CAS 操作 API](./05-realm.md)
+- [Realm CAS 操作 API](./05-realm/README.md)
 - [Ticket CAS 操作 API](./06-ticket.md)
-- [Depot 管理 API](./07-depot.md)

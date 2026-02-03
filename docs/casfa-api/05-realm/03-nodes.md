@@ -15,7 +15,7 @@
 
 ```json
 {
-  "keys": ["sha256:abc123...", "sha256:def456...", "sha256:ghi789..."]
+  "keys": ["node:abc123...", "node:def456...", "node:ghi789..."]
 }
 ```
 
@@ -23,8 +23,8 @@
 
 ```json
 {
-  "missing": ["sha256:abc123...", "sha256:ghi789..."],
-  "exists": ["sha256:def456..."]
+  "missing": ["node:abc123...", "node:ghi789..."],
+  "exists": ["node:def456..."]
 }
 ```
 
@@ -45,12 +45,12 @@ Dict 节点 (d-node)：
 
 ```json
 {
-  "key": "sha256:abc123...",
+  "key": "node:abc123...",
   "kind": "dict",
   "payloadSize": 256,
   "children": {
-    "file1.txt": "sha256:file1...",
-    "subdir": "sha256:subdir..."
+    "file1.txt": "node:file1...",
+    "subdir": "node:subdir..."
   }
 }
 ```
@@ -59,11 +59,11 @@ File 节点 (f-node)：
 
 ```json
 {
-  "key": "sha256:abc123...",
+  "key": "node:abc123...",
   "kind": "file",
   "payloadSize": 1234,
   "contentType": "text/plain",
-  "successor": "sha256:next..."
+  "successor": "node:next..."
 }
 ```
 
@@ -71,10 +71,10 @@ Successor 节点 (s-node)：
 
 ```json
 {
-  "key": "sha256:abc123...",
+  "key": "node:abc123...",
   "kind": "successor",
   "payloadSize": 4194304,
-  "successor": "sha256:next..."
+  "successor": "node:next..."
 }
 ```
 
@@ -124,7 +124,7 @@ Successor 节点 (s-node)：
 
 ```json
 {
-  "key": "sha256:abc123...",
+  "key": "node:abc123...",
   "kind": "file",
   "payloadSize": 12345
 }
@@ -149,6 +149,6 @@ Successor 节点 (s-node)：
 {
   "success": false,
   "error": "missing_nodes",
-  "missing": ["sha256:xxx", "sha256:yyy"]
+  "missing": ["node:xxx...", "node:yyy..."]
 }
 ```

@@ -80,10 +80,8 @@ export const createMemoryStorage = (): MemoryStorage => {
  */
 export const createWebCryptoHash = (): HashProvider => ({
   hash: async (data: Uint8Array): Promise<Uint8Array> => {
-    // Create a new ArrayBuffer copy to ensure compatibility with Web Crypto API
     // This handles both regular ArrayBuffer and SharedArrayBuffer backing
-    const buffer = new Uint8Array(data).buffer;
-    const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     // Truncate to 16 bytes (128 bits) to match BLAKE3s-128 output size
     return new Uint8Array(hashBuffer).slice(0, 16);
   },

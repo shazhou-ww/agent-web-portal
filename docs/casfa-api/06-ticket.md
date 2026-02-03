@@ -70,11 +70,11 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 
 ```json
 {
-  "ticketId": "ticket_xxx",
-  "realm": "usr_xxxxxxxx",
+  "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+  "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
   "status": "active",
   "purpose": "Generate thumbnail for uploaded image",
-  "input": ["blake3s:abc123..."],
+  "input": ["node:abc123..."],
   "output": null,
   "writable": true,
   "config": {
@@ -83,7 +83,7 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
     "quota": 10485760,
     "accept": ["image/*"]
   },
-  "expiresAt": "2025-02-02T13:00:00.000Z"
+  "expiresAt": 1738501200000
 }
 ```
 
@@ -121,7 +121,7 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 
 ```json
 {
-  "output": "blake3s:result..."
+  "output": "node:result..."
 }
 ```
 
@@ -137,7 +137,7 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 {
   "success": true,
   "status": "committed",
-  "output": "blake3s:result..."
+  "output": "node:result..."
 }
 ```
 
@@ -180,7 +180,7 @@ Ticket 的写入权限由 `writable` 字段控制：
 1. **获取 Ticket 信息**：
 
    ```http
-   GET /api/ticket/ticket_xxx
+   GET /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC
    ```
 
    返回 input 节点数组和配置信息。
@@ -188,16 +188,16 @@ Ticket 的写入权限由 `writable` 字段控制：
 2. **读取输入数据**（遍历 input 数组中的所有节点）：
 
    ```http
-   GET /api/ticket/ticket_xxx/nodes/blake3s:input1.../metadata
-   GET /api/ticket/ticket_xxx/nodes/blake3s:input1...
-   GET /api/ticket/ticket_xxx/nodes/blake3s:input2.../metadata
-   GET /api/ticket/ticket_xxx/nodes/blake3s:input2...
+   GET /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/nodes/node:input1.../metadata
+   GET /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/nodes/node:input1...
+   GET /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/nodes/node:input2.../metadata
+   GET /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/nodes/node:input2...
    ```
 
 3. **上传结果节点**：
 
    ```http
-   PUT /api/ticket/ticket_xxx/nodes/blake3s:result...
+   PUT /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/nodes/node:result...
    Content-Type: application/octet-stream
    
    (二进制数据)
@@ -206,11 +206,11 @@ Ticket 的写入权限由 `writable` 字段控制：
 4. **提交结果**：
 
    ```http
-   POST /api/ticket/ticket_xxx/commit
+   POST /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/commit
    Content-Type: application/json
    
    {
-     "output": "blake3s:result..."
+     "output": "node:result..."
    }
    ```
 
@@ -221,8 +221,8 @@ Ticket 的写入权限由 `writable` 字段控制：
 2. **读取节点数据**（可访问任意 input 及其子节点）：
 
    ```http
-   GET /api/ticket/ticket_xxx/nodes/blake3s:input.../metadata
-   GET /api/ticket/ticket_xxx/nodes/blake3s:file...
+   GET /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/nodes/node:input.../metadata
+   GET /api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/nodes/node:file...
    ```
 
 ---

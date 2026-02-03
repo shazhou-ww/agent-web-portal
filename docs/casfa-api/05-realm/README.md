@@ -16,7 +16,7 @@ Authorization: Bearer {userToken}
 Authorization: Agent {agentToken}
 ```
 
-> `realmId` 格式为 `usr_{userId}`
+> `realmId` 格式为 `user:{ulid}`，其中 ULID 为 26 位 Crockford Base32 编码
 
 ## 子文档
 
@@ -38,6 +38,7 @@ Authorization: Agent {agentToken}
 
 | 方法 | 路径 | 描述 | 权限 |
 |------|------|------|------|
+| POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | Write |
 | GET | `/api/realm/{realmId}/tickets` | 列出 Realm 下所有 Tickets | Read |
 | GET | `/api/realm/{realmId}/tickets/:ticketId` | 获取 Ticket 详情 | Read |
 | POST | `/api/realm/{realmId}/tickets/:ticketId/revoke` | 撤销 Ticket（仅 Issuer） | Write |

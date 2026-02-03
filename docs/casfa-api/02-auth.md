@@ -68,7 +68,7 @@ AWP (Agent Web Portal) 客户端使用 P256 公钥进行认证。
 ```json
 {
   "authorized": true,
-  "expires_at": 1706961600000
+  "expires_at": 1709294400000
 }
 ```
 
@@ -115,7 +115,7 @@ Authorization: Bearer {userToken}
 ```json
 {
   "success": true,
-  "expires_at": 1706961600000
+  "expires_at": 1709294400000
 }
 ```
 
@@ -144,8 +144,8 @@ Authorization: Bearer {userToken}
     {
       "pubkey": "P256 公钥",
       "clientName": "My Agent",
-      "createdAt": "2025-02-02T12:00:00.000Z",
-      "expiresAt": "2025-03-04T12:00:00.000Z"
+      "createdAt": 1738497600000,
+      "expiresAt": 1741089600000
     }
   ]
 }
@@ -204,8 +204,8 @@ Ticket 是临时访问凭证，可以限制访问范围和权限。
 
 ```json
 {
-  "scope": ["sha256:xxx", "sha256:yyy"],
-  "commit": {
+  "input": ["node:xxx", "node:yyy"],
+  "writable": {
     "quota": 10485760,
     "accept": ["image/*", "application/json"]
   },
@@ -215,22 +215,22 @@ Ticket 是临时访问凭证，可以限制访问范围和权限。
 
 | 字段 | 类型 | 描述 |
 |------|------|------|
-| `scope` | `string[]?` | 可读的 root key 列表，未指定则可读全部 |
-| `commit` | `object?` | 提交权限配置，未指定则只读 |
-| `commit.quota` | `number?` | 上传字节数限制 |
-| `commit.accept` | `string[]?` | 允许的 MIME 类型 |
+| `input` | `string[]?` | 输入节点 key 数组，未指定则可读全部 |
+| `writable` | `object?` | 写入权限配置，未指定则只读 |
+| `writable.quota` | `number?` | 上传字节数限制 |
+| `writable.accept` | `string[]?` | 允许的 MIME 类型 |
 | `expiresIn` | `number?` | 有效期（秒），默认 3600 |
 
 #### 响应
 
 ```json
 {
-  "id": "ticket_xxxxxxxxxxxx",
-  "endpoint": "https://api.example.com/api/ticket/ticket_xxxxxxxxxxxx",
-  "expiresAt": "2025-02-02T13:00:00.000Z",
-  "realm": "usr_xxxxxxxx",
-  "scope": ["sha256:xxx"],
-  "commit": {
+  "id": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+  "endpoint": "https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+  "expiresAt": 1738501200000,
+  "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
+  "input": ["node:xxx"],
+  "writable": {
     "quota": 10485760,
     "accept": ["image/*"]
   },
@@ -301,11 +301,11 @@ Agent Token 是为 AI Agent 创建的长期访问令牌。
 
 ```json
 {
-  "id": "token_xxxxxxxxxxxx",
+  "id": "agent:01HQXK5V8N3Y7M2P4R6T9W0ABC",
   "name": "My AI Agent",
   "description": "用于自动化任务的 Agent",
-  "expiresAt": "2025-03-04T12:00:00.000Z",
-  "createdAt": "2025-02-02T12:00:00.000Z"
+  "expiresAt": 1741089600000,
+  "createdAt": 1738497600000
 }
 ```
 
@@ -325,11 +325,11 @@ Agent Token 是为 AI Agent 创建的长期访问令牌。
 {
   "tokens": [
     {
-      "id": "token_xxxxxxxxxxxx",
+      "id": "agent:01HQXK5V8N3Y7M2P4R6T9W0ABC",
       "name": "My AI Agent",
       "description": "用于自动化任务的 Agent",
-      "expiresAt": "2025-03-04T12:00:00.000Z",
-      "createdAt": "2025-02-02T12:00:00.000Z"
+      "expiresAt": 1741089600000,
+      "createdAt": 1738497600000
     }
   ]
 }

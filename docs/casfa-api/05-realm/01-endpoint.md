@@ -12,7 +12,7 @@
 
 ```json
 {
-  "realm": "usr_xxxxxxxx",
+  "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
   "commit": {},
   "nodeLimit": 4194304,
   "maxNameBytes": 255
@@ -37,12 +37,12 @@
 
 ```json
 {
-  "realm": "usr_xxxxxxxx",
+  "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
   "physicalBytes": 1234567890,
   "logicalBytes": 987654321,
   "nodeCount": 12345,
   "quotaLimit": 10737418240,
-  "updatedAt": "2025-02-02T12:00:00.000Z"
+  "updatedAt": 1738497600000
 }
 ```
 
@@ -52,4 +52,4 @@
 | `logicalBytes` | 逻辑存储字节数（仅 f-node 和 s-node 数据） |
 | `nodeCount` | 唯一节点数 |
 | `quotaLimit` | 配额限制（0 = 无限制） |
-| `updatedAt` | 最后更新时间 |
+| `updatedAt` | 最后更新时间（epoch 毫秒） |

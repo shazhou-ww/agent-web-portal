@@ -90,7 +90,7 @@
 {
   "userToken": "JWT Token",
   "refreshToken": "刷新 Token",
-  "expiresAt": "2025-02-03T12:00:00.000Z",
+  "expiresAt": 1738584000000,
   "user": {
     "id": "用户 ID",
     "email": "user@example.com",
@@ -126,7 +126,7 @@
 ```json
 {
   "userToken": "新的 JWT Token",
-  "expiresAt": "2025-02-03T12:00:00.000Z",
+  "expiresAt": 1738584000000,
   "role": "authorized"
 }
 ```
@@ -157,7 +157,7 @@ Authorization: Bearer {userToken}
 ```json
 {
   "userId": "用户 ID",
-  "realm": "usr_xxxxxxxx",
+  "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
   "role": "authorized"
 }
 ```
