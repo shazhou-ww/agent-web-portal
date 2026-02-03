@@ -85,14 +85,19 @@ export async function createAllTables(): Promise<void> {
   console.log(`Using DynamoDB at ${endpoint}\n`);
 
   // Tokens table (users, agents, tickets, roles, awp-pending, awp-pubkeys)
+  // Uses composite key (pk, sk) to support different entity types in one table
   await createTable({
     TableName: tokensTable,
     AttributeDefinitions: [
       { AttributeName: "pk", AttributeType: "S" },
+      { AttributeName: "sk", AttributeType: "S" },
       { AttributeName: "userId", AttributeType: "S" },
       { AttributeName: "createdAt", AttributeType: "N" },
     ],
-    KeySchema: [{ AttributeName: "pk", KeyType: "HASH" }],
+    KeySchema: [
+      { AttributeName: "pk", KeyType: "HASH" },
+      { AttributeName: "sk", KeyType: "RANGE" },
+    ],
     BillingMode: "PAY_PER_REQUEST",
     GlobalSecondaryIndexes: [
       {

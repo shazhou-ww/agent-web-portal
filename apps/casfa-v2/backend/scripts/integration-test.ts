@@ -6,14 +6,15 @@
  * 1. Checks if DynamoDB Local is running
  * 2. Creates test tables
  * 3. Runs e2e tests
- * 4. Optionally cleans up (--cleanup flag)
+ * 4. Cleans up (tables and file storage)
  *
  * Prerequisites:
  *   docker compose up -d dynamodb
  *
  * Usage:
  *   bun run backend/scripts/integration-test.ts
- *   bun run backend/scripts/integration-test.ts --cleanup
+ *   bun run backend/scripts/integration-test.ts --no-cleanup   # Skip cleanup (for debugging)
+ *   bun run backend/scripts/integration-test.ts --skip-tables  # Skip table creation (tables already exist)
  *
  * Environment variables (defaults for testing):
  *   DYNAMODB_ENDPOINT=http://localhost:8000
@@ -35,7 +36,7 @@ const STORAGE_FS_PATH = process.env.STORAGE_FS_PATH ?? "./test-storage";
 const MOCK_JWT_SECRET = process.env.MOCK_JWT_SECRET ?? "test-secret-key-for-e2e";
 
 const args = process.argv.slice(2);
-const shouldCleanup = args.includes("--cleanup");
+const shouldCleanup = !args.includes("--no-cleanup"); // Default: cleanup
 const shouldSkipTableCreation = args.includes("--skip-tables");
 
 // ============================================================================

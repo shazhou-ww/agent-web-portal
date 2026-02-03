@@ -37,6 +37,7 @@ export type TokenType = "user" | "agent" | "ticket";
 
 export type BaseToken = {
   pk: string;
+  sk: string;
   type: TokenType;
   createdAt: number;
   expiresAt: number;

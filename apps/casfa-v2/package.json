@@ -15,7 +15,7 @@
     "sam:deploy": "sam deploy",
     "test": "bun test",
     "test:e2e": "bun run backend/scripts/integration-test.ts",
-    "test:e2e:cleanup": "bun run backend/scripts/integration-test.ts --cleanup",
+    "test:e2e:debug": "bun run backend/scripts/integration-test.ts --no-cleanup",
     "db:create": "bun run backend/scripts/create-local-tables.ts",
     "db:delete": "bun run backend/scripts/create-local-tables.ts --delete",
     "typecheck": "tsc --noEmit",

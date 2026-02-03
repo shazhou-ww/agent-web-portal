@@ -78,7 +78,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
-        Key: { pk: toTokenPk(tokenId) },
+        Key: { pk: toTokenPk(tokenId), sk: "TOKEN" },
       })
     );
 
@@ -105,6 +105,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
 
     const token: UserToken = {
       pk: toTokenPk(tokenId),
+      sk: "TOKEN",
       type: "user",
       userId,
       refreshToken,
@@ -130,6 +131,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
 
     const token: AgentToken = {
       pk: toTokenPk(tokenId),
+      sk: "TOKEN",
       type: "agent",
       userId,
       name,
@@ -162,6 +164,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
 
     const ticket: Ticket = {
       pk: toTokenPk(ticketId),
+      sk: "TOKEN",
       type: "ticket",
       realm,
       issuerId,
@@ -185,7 +188,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
       await client.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: { pk: toTokenPk(ticketId) },
+          Key: { pk: toTokenPk(ticketId), sk: "TOKEN" },
           UpdateExpression: "SET #commit.#root = :root",
           ConditionExpression: "attribute_not_exists(#commit.#root)",
           ExpressionAttributeNames: {
@@ -208,7 +211,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     if (!token || token.type !== "agent" || (token as AgentToken).userId !== userId) {
       throw new Error("Token not found or access denied");
     }
-    await client.send(new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId) } }));
+    await client.send(new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId), sk: "TOKEN" } }));
   };
 
   const listAgentTokensByUser = async (userId: string): Promise<AgentToken[]> => {
@@ -230,7 +233,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
   };
 
   const deleteToken = async (tokenId: string): Promise<void> => {
-    await client.send(new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId) } }));
+    await client.send(new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId), sk: "TOKEN" } }));
   };
 
   const revokeTicket = async (

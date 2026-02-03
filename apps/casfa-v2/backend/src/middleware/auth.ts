@@ -149,6 +149,7 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
           const fingerprint = await fingerprintFromUser(userId);
           const syntheticToken: Token = {
             pk: `token#jwt_${userId}`,
+            sk: "TOKEN",
             type: "user",
             userId,
             createdAt: Date.now(),
@@ -207,6 +208,7 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
     // AWP Client uses "agent" type token to represent agent-level access
     const syntheticToken: Token = {
       pk: `token#awp_${userId}`,
+      sk: "TOKEN",
       type: "agent",
       userId,
       name: "AWP Client",
