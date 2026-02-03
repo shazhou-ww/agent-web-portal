@@ -137,21 +137,7 @@ Ticket 的 `issuerId` 根据创建方式使用不同格式：
 | POST | `/api/realm/{realmId}/depots/:depotId/commit` | 提交新 root | Write |
 | DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | Write |
 
-### Ticket CAS 操作 API
-
-[详细文档](./06-ticket.md)
-
-Ticket ID 在路径中作为凭证，无需 `Authorization` header
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| GET | `/api/ticket/{ticketId}` | 获取 Ticket 端点信息 | Ticket ID |
-| GET | `/api/ticket/{ticketId}/usage` | 获取使用统计 | Ticket (Read) |
-| POST | `/api/ticket/{ticketId}/commit` | 提交 output | Ticket (Write) |
-| POST | `/api/ticket/{ticketId}/prepare-nodes` | 预上传检查 | Ticket (Write) |
-| GET | `/api/ticket/{ticketId}/nodes/:key/metadata` | 获取节点元信息 | Ticket (Read) |
-| GET | `/api/ticket/{ticketId}/nodes/:key` | 获取节点二进制数据 | Ticket (Read) |
-| PUT | `/api/ticket/{ticketId}/nodes/:key` | 上传节点 | Ticket (Write) |
+> **Ticket 访问**: Ticket 不再有独立路由，而是通过 `Authorization: Ticket` header 访问 Realm 路由的子集。详见 [Ticket 管理与认证](./05-realm/02-tickets.md)。
 
 ## 认证方式
 
@@ -175,11 +161,13 @@ Authorization: Agent {agentToken}
 
 ### 3. Ticket
 
-临时访问凭证，Ticket ID 直接在 URL 路径中作为凭证。
+临时访问凭证，通过 `Authorization` header 访问 Realm 路由的子集。
 
+```http
+Authorization: Ticket {ticketId}
 ```
-/api/ticket/{ticketId}/...
-```
+
+> Ticket 认证受 scope 和 quota 限制，详见 [Ticket 管理与认证](./05-realm/02-tickets.md)。
 
 ### 4. AWP 签名
 
@@ -318,7 +306,7 @@ Retry-After: 30
 | `POST /tickets` | ❌ 非幂等 | 每次创建新 Ticket |
 | `POST /tokens` | ❌ 非幂等 | 每次创建新 Token |
 | `POST /depots/:id/commit` | ❌ 非幂等 | 改变 history 栈 |
-| `POST /ticket/:id/commit` | ⚠️ 仅一次 | 成功后不可重复 |
+| `POST /tickets/:id/commit` | ⚠️ 仅一次 | 成功后不可重复 |
 
 ### 重试建议
 
@@ -333,4 +321,4 @@ Retry-After: 30
 - [Admin 管理 API](./03-admin.md)
 - [MCP 协议 API](./04-mcp.md)
 - [Realm CAS 操作 API](./05-realm/README.md)
-- [Ticket CAS 操作 API](./06-ticket.md)
+  - [Ticket 管理与认证](./05-realm/02-tickets.md)

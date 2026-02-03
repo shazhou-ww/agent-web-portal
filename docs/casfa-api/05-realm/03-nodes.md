@@ -5,6 +5,18 @@
 - **f-node (file)**: 文件顶层节点，包含 content-type
 - **s-node (successor)**: 文件后继节点，用于大文件分块
 
+## Ticket 认证限制
+
+使用 `Authorization: Ticket` 认证时，Node 操作受以下限制：
+
+| 操作 | 限制 |
+|------|------|
+| 读取 (`GET`) | 只能访问 `input` 节点及其子节点；`output` 已设置时也可访问 |
+| 上传 (`PUT`) | 需要 `writable: true`，受 `quota` 和 `accept` 限制 |
+| 预检查 (`POST prepare-nodes`) | 需要 `writable: true` |
+
+超出 scope 的访问返回 `403 Forbidden`。
+
 ---
 
 ## POST /api/realm/{realmId}/prepare-nodes

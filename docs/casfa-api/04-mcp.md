@@ -221,12 +221,14 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
     "content": [
       {
         "type": "text",
-        "text": "{\"endpoint\":\"https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC\",\"input\":[\"node:abc123...\"],\"expiresAt\":1738501200000}"
+        "text": "{\"realmId\":\"user:A6JCHNMFWRT90AXMYWHJ8HKS90\",\"ticketId\":\"ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC\",\"input\":[\"node:abc123...\"],\"expiresAt\":1738501200000}"
       }
     ]
   }
 }
 ```
+
+> **访问方式**: Tool 使用返回的 `realmId` 和 `ticketId` 访问 Realm 路由，通过 `Authorization: Ticket {ticketId}` header 认证。
 
 ---
 
@@ -238,7 +240,8 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
 
 | 参数 | 类型 | 描述 |
 |------|------|------|
-| `endpoint` | `string` | Ticket 端点 URL |
+| `realmId` | `string` | Realm ID |
+| `ticketId` | `string` | Ticket ID |
 | `key` | `string` | CAS 节点 key |
 | `path` | `string?` | 路径，默认 "."（节点本身） |
 
@@ -252,7 +255,8 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
   "params": {
     "name": "cas_read",
     "arguments": {
-      "endpoint": "https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+      "realmId": "user:A6JCHNMFWRT90AXMYWHJ8HKS90",
+      "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
       "key": "node:abc123...",
       "path": "."
     }
@@ -287,7 +291,8 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
 
 | 参数 | 类型 | 描述 |
 |------|------|------|
-| `endpoint` | `string` | 可写的 Ticket 端点 URL |
+| `realmId` | `string` | Realm ID |
+| `ticketId` | `string` | 可写的 Ticket ID |
 | `content` | `string` | Base64 编码的内容 |
 | `contentType` | `string` | MIME 类型 |
 
@@ -301,7 +306,8 @@ CASFA MCP 实现遵循 MCP 2024-11-05 协议版本。
   "params": {
     "name": "cas_write",
     "arguments": {
-      "endpoint": "https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+      "realmId": "user:A6JCHNMFWRT90AXMYWHJ8HKS90",
+      "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
       "content": "SGVsbG8gV29ybGQh",
       "contentType": "text/plain"
     }

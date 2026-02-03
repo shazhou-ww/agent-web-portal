@@ -1,20 +1,38 @@
 # Realm CAS 操作 API
 
-通过 Realm 路由访问 CAS 存储的 API。需要 User Token 或 Agent Token 认证。
+通过 Realm 路由访问 CAS 存储的 API。支持多种认证方式。
 
 ## 认证
 
-所有 Realm 路由需要 `Authorization` header：
+所有 Realm 路由需要 `Authorization` header，支持以下认证方式：
+
+### User Token（完整权限）
 
 ```http
 Authorization: Bearer {userToken}
 ```
 
-或
+### Agent Token（Realm 范围权限）
 
 ```http
 Authorization: Agent {agentToken}
 ```
+
+### Ticket（受限访问）
+
+```http
+Authorization: Ticket {ticketId}
+```
+
+> Ticket 认证只能访问 Realm 路由的子集，且受 scope 和 quota 限制。详见 [Ticket 管理与认证](./02-tickets.md)。
+
+### 认证方式对比
+
+| 认证方式 | 可访问端点 | 限制 |
+|---------|-----------|------|
+| Bearer (User) | 全部 | 无 |
+| Agent | 全部 | Realm 配置限制 |
+| Ticket | Node 操作 + commit | scope + quota |
 
 > `realmId` 格式为 `user:{id}`，其中 id 为 Cognito UUID 的 Crockford Base32 编码（26 位字符）
 
@@ -41,6 +59,7 @@ Authorization: Agent {agentToken}
 | POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | Write |
 | GET | `/api/realm/{realmId}/tickets` | 列出 Realm 下所有 Tickets | Read |
 | GET | `/api/realm/{realmId}/tickets/:ticketId` | 获取 Ticket 详情 | Read |
+| POST | `/api/realm/{realmId}/tickets/:ticketId/commit` | 提交结果（Ticket 认证） | Ticket |
 | POST | `/api/realm/{realmId}/tickets/:ticketId/revoke` | 撤销 Ticket（仅 Issuer） | Write |
 | DELETE | `/api/realm/{realmId}/tickets/:ticketId` | 删除 Ticket（仅 User） | Write |
 
@@ -64,4 +83,4 @@ Authorization: Agent {agentToken}
 | POST | `/api/realm/{realmId}/depots/:depotId/commit` | 提交新 root | Write |
 | DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | Write |
 
-> **注意**: Ticket 路由不支持 Depot 操作，Depot 只能通过 Realm 路由管理。
+> **注意**: 使用 Ticket 认证时不支持 Depot 操作和 Ticket 管理接口，这些端点只能通过 Bearer/Agent 认证访问。
