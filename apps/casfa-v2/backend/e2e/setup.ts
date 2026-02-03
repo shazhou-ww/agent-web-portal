@@ -40,6 +40,13 @@ import {
 import { type AuthService, createAuthService } from "../src/services/auth.ts";
 
 // ============================================================================
+// Test Utilities
+// ============================================================================
+
+/** Generate a unique test ID */
+export const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+// ============================================================================
 // Test Configuration
 // ============================================================================
 
@@ -82,6 +89,23 @@ export type TestServer = {
   stop: () => void;
 };
 
+/** Agent Token creation result */
+export type AgentTokenResult = {
+  id: string;
+  token: string;
+  name: string;
+  expiresAt: number;
+};
+
+/** Ticket creation result */
+export type TicketResult = {
+  ticketId: string;
+  realm: string;
+  input?: string[];
+  writable: boolean;
+  expiresAt: number;
+};
+
 export type TestHelpers = {
   /** Create a mock JWT token for a user */
   createUserToken: (userId: string, options?: { exp?: number }) => string;
@@ -96,6 +120,26 @@ export type TestHelpers = {
   }>;
   /** Make an authenticated request */
   authRequest: (token: string, method: string, path: string, body?: unknown) => Promise<Response>;
+  /** Create an Agent Token for a user */
+  createAgentToken: (
+    token: string,
+    options?: { name?: string; description?: string; expiresIn?: number }
+  ) => Promise<AgentTokenResult>;
+  /** Create a Ticket for a realm */
+  createTicket: (
+    token: string,
+    realm: string,
+    options?: {
+      input?: string[];
+      purpose?: string;
+      writable?: { quota?: number; accept?: string[] };
+      expiresIn?: number;
+    }
+  ) => Promise<TicketResult>;
+  /** Make a request with Ticket authentication */
+  ticketRequest: (ticketId: string, method: string, path: string, body?: unknown) => Promise<Response>;
+  /** Make a request with Agent Token authentication */
+  agentRequest: (agentToken: string, method: string, path: string, body?: unknown) => Promise<Response>;
 };
 
 // ============================================================================
@@ -191,6 +235,69 @@ export const startTestServer = (options?: { port?: number }): TestServer => {
     authRequest: async (token: string, method: string, path: string, body?: unknown) => {
       const headers: Record<string, string> = {
         Authorization: `Bearer ${token}`,
+      };
+      if (body !== undefined) {
+        headers["Content-Type"] = "application/json";
+      }
+      const request = new Request(`${url}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      return app.fetch(request);
+    },
+
+    createAgentToken: async (token: string, options = {}) => {
+      const { name = "Test Agent Token", description, expiresIn } = options;
+      const response = await helpers.authRequest(token, "POST", "/api/auth/tokens", {
+        name,
+        description,
+        expiresIn,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create agent token: ${response.status}`);
+      }
+
+      const data = (await response.json()) as AgentTokenResult;
+      return data;
+    },
+
+    createTicket: async (token: string, realm: string, options = {}) => {
+      const { input, purpose, writable, expiresIn } = options;
+      const response = await helpers.authRequest(token, "POST", `/api/realm/${realm}/tickets`, {
+        input,
+        purpose,
+        writable,
+        expiresIn,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create ticket: ${response.status}`);
+      }
+
+      const data = (await response.json()) as TicketResult;
+      return data;
+    },
+
+    ticketRequest: async (ticketId: string, method: string, path: string, body?: unknown) => {
+      const headers: Record<string, string> = {
+        Authorization: `Ticket ${ticketId}`,
+      };
+      if (body !== undefined) {
+        headers["Content-Type"] = "application/json";
+      }
+      const request = new Request(`${url}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      return app.fetch(request);
+    },
+
+    agentRequest: async (agentToken: string, method: string, path: string, body?: unknown) => {
+      const headers: Record<string, string> = {
+        Authorization: `Agent ${agentToken}`,
       };
       if (body !== undefined) {
         headers["Content-Type"] = "application/json";
