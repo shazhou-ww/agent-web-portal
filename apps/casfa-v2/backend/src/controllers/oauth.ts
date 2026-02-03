@@ -2,26 +2,26 @@
  * OAuth controller
  */
 
-import type { Context } from "hono"
-import type { CognitoConfig } from "../config.ts"
-import type { AuthService } from "../services/auth.ts"
-import type { Env } from "../types.ts"
+import type { Context } from "hono";
+import type { CognitoConfig } from "../config.ts";
+import type { AuthService } from "../services/auth.ts";
+import type { Env } from "../types.ts";
 
 export type OAuthController = {
-  getConfig: (c: Context) => Response
-  login: (c: Context) => Promise<Response>
-  refresh: (c: Context) => Promise<Response>
-  exchangeToken: (c: Context) => Promise<Response>
-  me: (c: Context<Env>) => Response
-}
+  getConfig: (c: Context) => Response;
+  login: (c: Context) => Promise<Response>;
+  refresh: (c: Context) => Promise<Response>;
+  exchangeToken: (c: Context) => Promise<Response>;
+  me: (c: Context<Env>) => Response;
+};
 
 type OAuthControllerDeps = {
-  cognitoConfig: CognitoConfig
-  authService: AuthService
-}
+  cognitoConfig: CognitoConfig;
+  authService: AuthService;
+};
 
 export const createOAuthController = (deps: OAuthControllerDeps): OAuthController => {
-  const { cognitoConfig, authService } = deps
+  const { cognitoConfig, authService } = deps;
 
   return {
     getConfig: (c) =>
@@ -32,32 +32,32 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
       }),
 
     login: async (c) => {
-      const body = await c.req.json()
-      const result = await authService.login(body.email, body.password)
+      const body = await c.req.json();
+      const result = await authService.login(body.email, body.password);
 
       if (!result.ok) {
-        return c.json({ error: result.error }, 401)
+        return c.json({ error: result.error }, 401);
       }
 
-      return c.json(result.value)
+      return c.json(result.value);
     },
 
     refresh: async (c) => {
-      const body = await c.req.json()
-      const result = await authService.refresh(body.refreshToken)
+      const body = await c.req.json();
+      const result = await authService.refresh(body.refreshToken);
 
       if (!result.ok) {
-        return c.json({ error: result.error }, 401)
+        return c.json({ error: result.error }, 401);
       }
 
-      return c.json(result.value)
+      return c.json(result.value);
     },
 
     exchangeToken: async (c) => {
-      const body = await c.req.json()
+      const body = await c.req.json();
 
       if (!cognitoConfig.hostedUiUrl || !cognitoConfig.clientId) {
-        return c.json({ error: "OAuth not configured" }, 503)
+        return c.json({ error: "OAuth not configured" }, 503);
       }
 
       const tokenBody = new URLSearchParams({
@@ -65,34 +65,34 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
         client_id: cognitoConfig.clientId,
         code: body.code,
         redirect_uri: body.redirect_uri,
-      })
+      });
 
       const tokenRes = await fetch(`${cognitoConfig.hostedUiUrl}/oauth2/token`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: tokenBody.toString(),
-      })
+      });
 
-      const text = await tokenRes.text()
+      const text = await tokenRes.text();
       if (!tokenRes.ok) {
-        return c.json({ error: "Token exchange failed", details: text }, tokenRes.status as 400)
+        return c.json({ error: "Token exchange failed", details: text }, tokenRes.status as 400);
       }
 
       try {
-        const data = JSON.parse(text)
-        return c.json(data)
+        const data = JSON.parse(text);
+        return c.json(data);
       } catch {
-        return c.json({ error: "Invalid token response" }, 502)
+        return c.json({ error: "Invalid token response" }, 502);
       }
     },
 
     me: (c) => {
-      const auth = c.get("auth")
+      const auth = c.get("auth");
       return c.json({
         userId: auth.userId,
         realm: auth.realm,
         role: auth.role ?? "unauthorized",
-      })
+      });
     },
-  }
-}
+  };
+};

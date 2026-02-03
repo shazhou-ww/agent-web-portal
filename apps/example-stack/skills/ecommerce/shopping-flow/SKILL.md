@@ -15,6 +15,7 @@ This skill provides a complete e-commerce shopping experience using three tools:
 ## Overview
 
 The shopping flow consists of three main steps:
+
 1. **{{search_products}}** - Find products by name, category, or filters
 2. **{{manage_cart}}** - Add, remove, or view items in the shopping cart
 3. **{{checkout}}** - Complete the purchase with shipping and payment details
@@ -34,6 +35,7 @@ Use {{search_products}} to find products:
 ```
 
 **Result:**
+
 ```json
 {
   "products": [
@@ -62,6 +64,7 @@ Use {{manage_cart}} with action "add":
 ```
 
 **Result:**
+
 ```json
 {
   "cart": {
@@ -107,6 +110,7 @@ Use {{checkout}} with shipping and payment details:
 ```
 
 **Result:**
+
 ```json
 {
   "orderId": "order-abc123",
@@ -122,12 +126,14 @@ Use {{checkout}} with shipping and payment details:
 Search for products in the catalog.
 
 **Input:**
+
 - `query` (string, optional): Search query
 - `category` (string, optional): Product category filter
 - `minPrice` (number, optional): Minimum price filter
 - `maxPrice` (number, optional): Maximum price filter
 
 **Output:**
+
 - `products` (array): List of matching products
 - `totalResults` (number): Total count of results
 
@@ -136,11 +142,13 @@ Search for products in the catalog.
 Manage the shopping cart.
 
 **Input:**
+
 - `action` (string, required): One of "add", "remove", "list", "clear"
 - `productId` (string, optional): Product ID (required for add/remove)
 - `quantity` (number, optional): Quantity (for add action)
 
 **Output:**
+
 - `cart` (object): Current cart state
 - `message` (string): Action result message
 
@@ -149,10 +157,12 @@ Manage the shopping cart.
 Complete the checkout process.
 
 **Input:**
+
 - `shippingAddress` (object, required): Shipping address details
 - `paymentMethod` (string, required): Payment method
 
 **Output:**
+
 - `orderId` (string): Generated order ID
 - `status` (string): Order status
 - `estimatedDelivery` (string): Estimated delivery date

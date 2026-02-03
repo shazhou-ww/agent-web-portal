@@ -102,11 +102,13 @@ Ticket 路由下的 CAS 操作与 [Realm 路由](./05-realm.md) 相同，区别�
 ### 示例：通过 Ticket 上传文件
 
 1. **获取可写 Ticket**（从创建 Ticket 的响应中获取）：
+
    ```
    endpoint: https://api.example.com/api/ticket/ticket_xxx
    ```
 
 2. **上传 chunk**：
+
    ```http
    PUT /api/ticket/ticket_xxx/chunks/sha256:abc123...
    Content-Type: application/octet-stream
@@ -115,6 +117,7 @@ Ticket 路由下的 CAS 操作与 [Realm 路由](./05-realm.md) 相同，区别�
    ```
 
 3. **创建 commit**：
+
    ```http
    POST /api/ticket/ticket_xxx/commit
    Content-Type: application/json
@@ -130,11 +133,13 @@ Ticket 路由下的 CAS 操作与 [Realm 路由](./05-realm.md) 相同，区别�
 1. **获取只读 Ticket**（带 scope 限制）
 
 2. **获取 DAG 结构**：
+
    ```http
    GET /api/ticket/ticket_xxx/tree/sha256:root...
    ```
 
 3. **下载具体节点**：
+
    ```http
    GET /api/ticket/ticket_xxx/chunks/sha256:file...
    ```

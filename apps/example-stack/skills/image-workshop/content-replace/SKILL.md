@@ -138,6 +138,7 @@ Use {{inpaint}} to fill masked regions with new content:
 ## Parameters
 
 ### {{flux_fill}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Source image to edit | Required (blob) |
@@ -148,6 +149,7 @@ Use {{inpaint}} to fill masked regions with new content:
 | safety_tolerance | Content filter (0-6) | 2 |
 
 ### {{flux_kontext}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Source image to edit | Required (blob) |
@@ -156,6 +158,7 @@ Use {{inpaint}} to fill masked regions with new content:
 | prompt_upsampling | Auto-enhance prompts | false |
 
 ### {{search_replace}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Source image | Required (blob) |
@@ -164,6 +167,7 @@ Use {{inpaint}} to fill masked regions with new content:
 | negative_prompt | What to avoid | None |
 
 ### {{inpaint}} / {{erase}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Source image | Required (blob) |
@@ -173,6 +177,7 @@ Use {{inpaint}} to fill masked regions with new content:
 ## Best Practices
 
 ### Creating Good Masks
+
 - Use pure white (#FFFFFF) for areas to edit
 - Use pure black (#000000) for areas to preserve
 - Add slight feathering (2-5px) for smoother blending
@@ -181,12 +186,14 @@ Use {{inpaint}} to fill masked regions with new content:
 ### Writing Effective Prompts
 
 **For {{flux_fill}}:**
+
 ```
 ✅ "A sunset sky with orange and purple clouds, golden hour lighting matching the scene"
 ❌ "sunset"
 ```
 
 **For {{search_replace}}:**
+
 ```
 ✅ Search: "red car in parking lot"
 ✅ Replace: "blue sports car, matching perspective and lighting"
@@ -194,12 +201,14 @@ Use {{inpaint}} to fill masked regions with new content:
 ```
 
 **For {{flux_kontext}}:**
+
 ```
 ✅ "Change the person's hair color to blonde while keeping everything else the same"
 ❌ "blonde hair" → Too vague
 ```
 
 ### Maintaining Consistency
+
 1. Match lighting and perspective in replacement prompts
 2. Reference surrounding elements for coherent results
 3. Use lower guidance (2-3) for subtle changes

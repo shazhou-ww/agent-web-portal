@@ -93,6 +93,7 @@ CAS 特别适用于以下场景：
 4. **哈希即验证**：Key 本身就是数据完整性的证明
 
 这种自洽性使得：
+
 - 任何节点可以独立验证，无需访问其他数据
 - 数据可以在任意存储系统间迁移，只需复制字节
 - 客户端可以离线验证数据完整性
@@ -112,6 +113,7 @@ CAS 定义三种节点类型，通过 flags 字段的低 2 位区分：
 | **f-node** (File) | `0b11` | 3 | 文件顶层节点，包含 Content-Type |
 
 **位含义**：
+
 - Bit 0: 有字符串段（d-node 的名称列表，f-node 的 Content-Type）
 - Bit 1: 有数据段（s-node 和 f-node 存储原始数据）
 
@@ -136,6 +138,7 @@ d-node 表示一个目录，包含零个或多个命名子节点：
 ```
 
 **关键规则**：
+
 1. 子节点按**UTF-8 字节序**升序排列（lexicographic byte order）
 2. 不允许重复名称
 3. `size` 字段 = 所有子节点 `size` 之和（递归）
@@ -181,6 +184,7 @@ d-node 表示一个目录，包含零个或多个命名子节点：
 ```
 
 **数据读取顺序**：
+
 1. 先读取当前节点的 `data` 段
 2. 按顺序递归读取每个 `children` 引用的节点
 3. 拼接所有数据得到原始文件
@@ -196,6 +200,7 @@ Root Key = SHA-256(Header + Children + Data)
 ```
 
 这意味着：
+
 - **根节点的 Key 隐含验证了整棵树**
 - 任何子节点被篡改，父节点的哈希会变化
 - 验证根节点等于验证所有数据
@@ -219,6 +224,7 @@ Offset  Size   Field      Type     Description
 ```
 
 **节点总大小计算**：
+
 ```
 nodeLength = HEADER_SIZE + count × HASH_SIZE + size
            = 32 + count × 32 + size
@@ -265,15 +271,18 @@ Bits 2-31:  保留位（必须为 0）
 ```
 
 **Children 段**：
+
 - `count` 个连续的 32 字节 SHA-256 哈希
 - 顺序与 Names 段一一对应
 
 **Names 段**：
+
 - `count` 个连续的 Pascal String
 - 每个 Pascal String: `[u16 LE 长度][UTF-8 字节]`
 - 必须按 UTF-8 字节序严格升序排列
 
 **示例**（2 个子节点）：
+
 ```
 Offset   Content
 0-31     Header (magic=0x01534143, flags=0x01, count=2, ...)
@@ -299,6 +308,7 @@ Offset   Content
 ```
 
 **示例**（1 个子节点，100 字节数据）：
+
 ```
 Offset   Content
 0-31     Header (flags=0x02, count=1, size=100)
@@ -326,18 +336,21 @@ Offset   Content
 ```
 
 **FileInfo 段（64 字节）**：
+
 - `fileSize` (8 bytes): 原始文件的总字节数（整个 B-Tree 表示的文件大小）
 - `contentType` (56 bytes): MIME 类型，ASCII 编码，不足部分用 0x00 填充
   - 仅允许 printable ASCII (0x20-0x7E)
   - 最大有效长度 56 字节（足够大多数 MIME 类型）
 
 **对齐规则**：
+
 - Header = 32 字节（32 的倍数）
 - Children = N × 32 字节（32 的倍数）
 - FileInfo = 64 字节（32 的倍数）
 - 因此 Data 段自然对齐到 32 字节边界
 
 **示例**（无子节点，contentType="application/json"，50 字节数据）：
+
 ```
 Offset   Content
 0-31     Header (flags=0x03, count=0, size=114)
@@ -372,6 +385,7 @@ Pascal String 用于 d-node 的子节点名称：
 当文件大小超过 `nodeLimit - HEADER_SIZE` 时（默认约 1 MB - 32 = 1,048,544 字节），需要将文件拆分为多个节点。
 
 **不拆分的问题**：
+
 1. 单个节点过大影响传输效率
 2. 无法并行上传/下载
 3. 小改动需要重新上传整个文件
@@ -381,6 +395,7 @@ Pascal String 用于 d-node 的子节点名称：
 CAS 使用**贪婪填充 B-Tree**（Greedy Fill B-Tree）而非传统的 CDC（Content-Defined Chunking）：
 
 **核心思想**：
+
 - 每个节点既存储数据，也存储子节点引用
 - 子节点引用各占 32 字节（SHA-256 哈希）
 - 优先填满最左侧节点
@@ -392,10 +407,12 @@ CAS 使用**贪婪填充 B-Tree**（Greedy Fill B-Tree）而非传统的 CDC（C
 $$C(d) = \frac{L^d}{32^{d-1}}$$
 
 其中：
+
 - $d$ = 树深度（1 = 叶节点，2 = 一层内部节点 + 叶节点，...）
 - $L$ = 每节点可用空间 = `nodeLimit - HEADER_SIZE`
 
 **推导**：
+
 - 深度 1（叶节点）：$C(1) = L$（全部空间存数据）
 - 深度 2：根节点存 $L - 32n$ 字节数据，$n$ 个子节点各存 $L$ 字节
   - 最优时 $n = L/32$，容量 = $L + n \times L \approx L^2/32$
@@ -651,10 +668,12 @@ d-node 的子节点数受限于 Pascal String 总长度：
 ```
 
 **最坏情况**（所有名称为空字符串）：
+
 - 每个子节点消耗：32（哈希）+ 2（Pascal 长度前缀）= 34 字节
 - 最大子节点数：$(nodeLimit - 32) / 34 \approx 30,840$（1 MB 节点）
 
 **最佳情况**（无名称段，仅 s-node/f-node 的子节点）：
+
 - 每个子节点消耗：32 字节（哈希）
 - 最大子节点数：$(nodeLimit - 32) / 32 = 32,767$（1 MB 节点）
 
@@ -670,10 +689,12 @@ d-node 的子节点数受限于 Pascal String 总长度：
 ### 6.5 Size 字段说明
 
 **Header.size (u32)**：
+
 - 表示 Payload 大小，最大约 4 GB
 - 单节点通常限制在 1 MB，所以 u32 绑绑有余
 
 **FileInfo.fileSize (u64)**：
+
 - 表示原始文件总大小
 - 使用 JavaScript `number` 存储时上限为 `Number.MAX_SAFE_INTEGER` ≈ 9 PB
 - 二进制格式支持完整 64 位（约 16 EB）
@@ -814,6 +835,7 @@ Well-Known Keys 是预计算的特殊节点，具有系统级意义。
 **用途**：新 Depot 的初始根节点
 
 **字节内容**（32 字节）：
+
 ```
 Offset   Content
 0-3      Magic: 0x43, 0x41, 0x53, 0x01
@@ -824,11 +846,13 @@ Offset   Content
 ```
 
 **Key**：
+
 ```
 sha256:928fb40f7f8d2746a9dba82de1f75603fd81d486542ba854770ac2dd1d78a4e2
 ```
 
 **生成代码**：
+
 ```typescript
 const EMPTY_DICT_BYTES = new Uint8Array(32);
 const view = new DataView(EMPTY_DICT_BYTES.buffer);

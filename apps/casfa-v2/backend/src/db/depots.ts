@@ -2,55 +2,77 @@
  * Depot database operations
  */
 
-import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb"
-import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb"
-import type { Depot, DepotHistory } from "../types.ts"
-import { createDocClient } from "./client.ts"
-import { generateDepotId } from "../util/token-id.ts"
+import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
+import type { Depot, DepotHistory } from "../types.ts";
+import { generateDepotId } from "../util/token-id.ts";
+import { createDocClient } from "./client.ts";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export const MAIN_DEPOT_NAME = "main"
+export const MAIN_DEPOT_NAME = "main";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type DepotsDb = {
-  create: (realm: string, options: { name: string; root: string; description?: string }) => Promise<Depot>
-  get: (realm: string, depotId: string) => Promise<Depot | null>
-  getByName: (realm: string, name: string) => Promise<Depot | null>
-  updateRoot: (realm: string, depotId: string, root: string, message?: string) => Promise<{ depot: Depot; history: DepotHistory }>
-  delete: (realm: string, depotId: string) => Promise<boolean>
-  list: (realm: string, options?: { limit?: number; startKey?: string }) => Promise<{ depots: Depot[]; nextKey?: string }>
-  getHistory: (realm: string, depotId: string, version: number) => Promise<DepotHistory | null>
-  listHistory: (realm: string, depotId: string, options?: { limit?: number; startKey?: string }) => Promise<{ history: DepotHistory[]; nextKey?: string }>
-}
+  create: (
+    realm: string,
+    options: { name: string; root: string; description?: string }
+  ) => Promise<Depot>;
+  get: (realm: string, depotId: string) => Promise<Depot | null>;
+  getByName: (realm: string, name: string) => Promise<Depot | null>;
+  updateRoot: (
+    realm: string,
+    depotId: string,
+    root: string,
+    message?: string
+  ) => Promise<{ depot: Depot; history: DepotHistory }>;
+  delete: (realm: string, depotId: string) => Promise<boolean>;
+  list: (
+    realm: string,
+    options?: { limit?: number; startKey?: string }
+  ) => Promise<{ depots: Depot[]; nextKey?: string }>;
+  getHistory: (realm: string, depotId: string, version: number) => Promise<DepotHistory | null>;
+  listHistory: (
+    realm: string,
+    depotId: string,
+    options?: { limit?: number; startKey?: string }
+  ) => Promise<{ history: DepotHistory[]; nextKey?: string }>;
+};
 
 type DepotsDbConfig = {
-  tableName: string
-  client?: DynamoDBDocumentClient
-}
+  tableName: string;
+  client?: DynamoDBDocumentClient;
+};
 
 // ============================================================================
 // Factory
 // ============================================================================
 
 export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
-  const client = config.client ?? createDocClient()
-  const tableName = config.tableName
+  const client = config.client ?? createDocClient();
+  const tableName = config.tableName;
 
-  const toDepotSk = (depotId: string) => `DEPOT#${depotId}`
-  const toHistorySk = (depotId: string, version: number) => `DEPOT_HIST#${depotId}#${String(version).padStart(10, "0")}`
+  const toDepotSk = (depotId: string) => `DEPOT#${depotId}`;
+  const toHistorySk = (depotId: string, version: number) =>
+    `DEPOT_HIST#${depotId}#${String(version).padStart(10, "0")}`;
 
   const create = async (
     realm: string,
     options: { name: string; root: string; description?: string }
   ): Promise<Depot> => {
-    const depotId = generateDepotId()
-    const now = Date.now()
+    const depotId = generateDepotId();
+    const now = Date.now();
 
     const depot: Depot = {
       realm,
@@ -61,7 +83,7 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
       createdAt: now,
       updatedAt: now,
       description: options.description,
-    }
+    };
 
     // Create depot record
     await client.send(
@@ -75,7 +97,7 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
           ...depot,
         },
       })
-    )
+    );
 
     // Create initial history record
     await client.send(
@@ -91,10 +113,10 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
           message: "Initial version",
         },
       })
-    )
+    );
 
-    return depot
-  }
+    return depot;
+  };
 
   const get = async (realm: string, depotId: string): Promise<Depot | null> => {
     const result = await client.send(
@@ -102,10 +124,10 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
         TableName: tableName,
         Key: { pk: realm, sk: toDepotSk(depotId) },
       })
-    )
-    if (!result.Item) return null
-    return result.Item as Depot
-  }
+    );
+    if (!result.Item) return null;
+    return result.Item as Depot;
+  };
 
   const getByName = async (realm: string, name: string): Promise<Depot | null> => {
     const result = await client.send(
@@ -119,10 +141,10 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
         },
         Limit: 1,
       })
-    )
-    if (!result.Items || result.Items.length === 0) return null
-    return result.Items[0] as Depot
-  }
+    );
+    if (!result.Items || result.Items.length === 0) return null;
+    return result.Items[0] as Depot;
+  };
 
   const updateRoot = async (
     realm: string,
@@ -130,7 +152,7 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     root: string,
     message?: string
   ): Promise<{ depot: Depot; history: DepotHistory }> => {
-    const now = Date.now()
+    const now = Date.now();
 
     // Update depot with new version
     const updateResult = await client.send(
@@ -149,9 +171,9 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
         },
         ReturnValues: "ALL_NEW",
       })
-    )
+    );
 
-    const depot = updateResult.Attributes as Depot
+    const depot = updateResult.Attributes as Depot;
 
     // Create history record
     const historyRecord: DepotHistory = {
@@ -161,7 +183,7 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
       root,
       createdAt: now,
       message,
-    }
+    };
 
     await client.send(
       new PutCommand({
@@ -172,10 +194,10 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
           ...historyRecord,
         },
       })
-    )
+    );
 
-    return { depot, history: historyRecord }
-  }
+    return { depot, history: historyRecord };
+  };
 
   const deleteDepot = async (realm: string, depotId: string): Promise<boolean> => {
     try {
@@ -185,14 +207,14 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
           Key: { pk: realm, sk: toDepotSk(depotId) },
           ConditionExpression: "attribute_exists(pk)",
         })
-      )
-      return true
+      );
+      return true;
     } catch (error: unknown) {
-      const err = error as { name?: string }
-      if (err.name === "ConditionalCheckFailedException") return false
-      throw error
+      const err = error as { name?: string };
+      if (err.name === "ConditionalCheckFailedException") return false;
+      throw error;
     }
-  }
+  };
 
   const list = async (
     realm: string,
@@ -211,13 +233,13 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
           ? { pk: realm, sk: toDepotSk(options.startKey) }
           : undefined,
       })
-    )
+    );
 
-    const depots = (result.Items ?? []) as Depot[]
-    const nextKey = result.LastEvaluatedKey?.sk?.slice(6) // Remove "DEPOT#"
+    const depots = (result.Items ?? []) as Depot[];
+    const nextKey = result.LastEvaluatedKey?.sk?.slice(6); // Remove "DEPOT#"
 
-    return { depots, nextKey }
-  }
+    return { depots, nextKey };
+  };
 
   const getHistory = async (
     realm: string,
@@ -229,10 +251,10 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
         TableName: tableName,
         Key: { pk: realm, sk: toHistorySk(depotId, version) },
       })
-    )
-    if (!result.Item) return null
-    return result.Item as DepotHistory
-  }
+    );
+    if (!result.Item) return null;
+    return result.Item as DepotHistory;
+  };
 
   const listHistory = async (
     realm: string,
@@ -249,17 +271,15 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
         },
         Limit: options.limit ?? 50,
         ScanIndexForward: false, // newest first
-        ExclusiveStartKey: options.startKey
-          ? { pk: realm, sk: options.startKey }
-          : undefined,
+        ExclusiveStartKey: options.startKey ? { pk: realm, sk: options.startKey } : undefined,
       })
-    )
+    );
 
-    const history = (result.Items ?? []) as DepotHistory[]
-    const nextKey = result.LastEvaluatedKey?.sk
+    const history = (result.Items ?? []) as DepotHistory[];
+    const nextKey = result.LastEvaluatedKey?.sk;
 
-    return { history, nextKey }
-  }
+    return { history, nextKey };
+  };
 
   return {
     create,
@@ -270,5 +290,5 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     list,
     getHistory,
     listHistory,
-  }
-}
+  };
+};

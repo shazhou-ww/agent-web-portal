@@ -8,20 +8,20 @@ export type StorageProvider = {
   /**
    * Check if a key exists in storage
    */
-  has: (key: string) => Promise<boolean>
+  has: (key: string) => Promise<boolean>;
 
   /**
    * Get blob content by key
    * Returns null if not found
    */
-  get: (key: string) => Promise<Uint8Array | null>
+  get: (key: string) => Promise<Uint8Array | null>;
 
   /**
    * Store blob content
    * Key must be the correct SHA-256 hash of the content
    */
-  put: (key: string, value: Uint8Array) => Promise<void>
-}
+  put: (key: string, value: Uint8Array) => Promise<void>;
+};
 
 /**
  * Hash Provider interface
@@ -32,8 +32,8 @@ export type HashProvider = {
   /**
    * Compute SHA-256 hash of data
    */
-  sha256: (data: Uint8Array) => Promise<Uint8Array>
-}
+  sha256: (data: Uint8Array) => Promise<Uint8Array>;
+};
 
 /**
  * Storage Provider configuration
@@ -43,11 +43,11 @@ export type StorageConfig = {
    * Key prefix in storage
    * Default: "cas/sha256/"
    */
-  prefix?: string
+  prefix?: string;
 
   /**
    * LRU cache size for key existence checks
    * Default: 10000
    */
-  cacheSize?: number
-}
+  cacheSize?: number;
+};

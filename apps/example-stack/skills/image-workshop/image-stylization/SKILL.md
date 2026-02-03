@@ -160,6 +160,7 @@ Use {{structure}} to generate following an edge or depth map:
 ## Parameters
 
 ### {{style}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Style reference image | Required (blob) |
@@ -169,6 +170,7 @@ Use {{structure}} to generate following an edge or depth map:
 | output_format | png, jpeg, webp | png |
 
 ### {{transfer}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | content_image | Image to stylize | Required (blob) |
@@ -177,6 +179,7 @@ Use {{structure}} to generate following an edge or depth map:
 | fidelity | Style strength (0-1) | 0.5 |
 
 ### {{sketch}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Sketch/line art | Required (blob) |
@@ -185,6 +188,7 @@ Use {{structure}} to generate following an edge or depth map:
 | negative_prompt | What to avoid | None |
 
 ### {{structure}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Structure guide (edge/depth) | Required (blob) |
@@ -193,6 +197,7 @@ Use {{structure}} to generate following an edge or depth map:
 | negative_prompt | What to avoid | None |
 
 ### {{flux_kontext}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Source image | Required (blob) |
@@ -200,6 +205,7 @@ Use {{structure}} to generate following an edge or depth map:
 | guidance | Guidance scale (1.5-5) | 3.5 |
 
 ### {{search_recolor}}
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | image | Source image | Required (blob) |
@@ -209,11 +215,13 @@ Use {{structure}} to generate following an edge or depth map:
 ## Style Transfer Tips
 
 ### Choosing Reference Images
+
 - **High quality**: Use clear, well-lit reference images
 - **Representative**: Choose images that exemplify the style you want
 - **Similar content**: Style transfer works better with similar subject matter
 
 ### Fidelity Settings
+
 | Fidelity | Effect |
 |----------|--------|
 | 0.1-0.3 | Subtle style hints, mostly original |
@@ -222,7 +230,9 @@ Use {{structure}} to generate following an edge or depth map:
 | 1.0 | Maximum style, may lose content detail |
 
 ### Prompt Engineering for Style
+
 Include style-specific keywords:
+
 - **Art movements**: "impressionist", "art deco", "baroque", "minimalist"
 - **Media**: "oil painting", "watercolor", "digital art", "photograph"
 - **Mood**: "moody", "vibrant", "ethereal", "dramatic"
@@ -243,19 +253,25 @@ Include style-specific keywords:
 ## Advanced Techniques
 
 ### Multi-Step Stylization
+
 Combine tools for complex effects:
+
 1. Use {{structure}} to establish composition
 2. Apply {{style}} for aesthetic consistency
 3. Fine-tune with {{search_recolor}} for specific elements
 
 ### Style Consistency Across Images
+
 For a series of images:
+
 1. Create one "master" styled image
 2. Use that as the style reference for subsequent images
 3. Keep prompts similar for consistency
 
 ### Preserving Identity
+
 When stylizing portraits:
+
 - Use lower fidelity (0.3-0.5) to preserve facial features
 - Include "preserve facial features" in prompt
 - Use {{flux_kontext}} for subtle changes

@@ -81,6 +81,7 @@ GSI: by-type
 ```
 
 按 SK 前缀查询可以：
+
 - 列出所有 Depot: `sk BEGINS_WITH "depot#"`
 - 列出某 Depot 的历史: `sk BEGINS_WITH "depot-history#${depotId}#"`
 
@@ -122,6 +123,7 @@ GET /realms/{realmId}/depots
 ```
 
 Response:
+
 ```json
 {
   "depots": [
@@ -149,6 +151,7 @@ Content-Type: application/json
 ```
 
 Response:
+
 ```json
 {
   "depotId": "uuid",
@@ -180,6 +183,7 @@ Content-Type: application/json
 ```
 
 行为：
+
 1. 验证新 root 存在且已提交
 2. 对旧 root 执行 decrementRef
 3. 对新 root 执行 incrementRef
@@ -193,6 +197,7 @@ DELETE /realms/{realmId}/depots/{depotId}
 ```
 
 限制：
+
 - main Depot 不可删除（返回 403）
 - 删除时对 root 执行 decrementRef
 - 历史记录保留（可选：设置过期时间自动清理）
@@ -204,6 +209,7 @@ GET /realms/{realmId}/depots/{depotId}/history?limit=20&cursor=xxx
 ```
 
 Response:
+
 ```json
 {
   "history": [
@@ -230,6 +236,7 @@ Content-Type: application/json
 ```
 
 行为：
+
 1. 查找指定版本的历史记录
 2. 将该版本的 root 设置为当前 root
 3. 创建新的历史记录（指向相同 root）
@@ -255,6 +262,7 @@ await refCountDb.decrementRef(realmId, currentRoot);
 ### 与 Commit 的关系
 
 Depot 和 Commit 的引用是独立的：
+
 - 同一个 CAS key 可以同时被 Depot 和 Commit 引用
 - 只有当所有引用（包括 Depot 和 Commit）都释放后，GC 才会清理节点
 

@@ -27,19 +27,23 @@ This skill provides comprehensive image generation and manipulation capabilities
 ## Available Tools
 
 ### Text-to-Image
+
 - {{txt2img}}: Generate images from text descriptions using Stable Diffusion Ultra
 
 ### Image Editing
+
 - {{erase}}: Remove unwanted objects from images using mask-based erasing
 - {{inpaint}}: Fill masked regions with AI-generated content
 - {{outpaint}}: Extend images beyond their original boundaries
 - {{remove_bg}}: Remove image backgrounds cleanly
 
 ### Search & Replace
+
 - {{search_replace}}: Find and replace objects in images using text descriptions
 - {{search_recolor}}: Find and recolor specific objects in images
 
 ### Control & Style
+
 - {{sketch}}: Generate images from sketch inputs using ControlNet
 - {{structure}}: Generate images following structural edge/depth maps
 - {{style}}: Apply style references to generated images
@@ -129,6 +133,7 @@ Use {{inpaint}} to fill masked areas with new content:
 ## Parameters
 
 ### Common Parameters
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | prompt | Text description of desired output | Required |
@@ -137,6 +142,7 @@ Use {{inpaint}} to fill masked areas with new content:
 | output_format | png, jpeg, or webp | png |
 
 ### Control Parameters
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | control_strength | How strongly control images influence output (0-1) | 0.7 |

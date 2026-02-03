@@ -2,21 +2,21 @@
  * CAS Stack - HTTP Router
  */
 
+import { generateVerificationCode } from "@agent-web-portal/auth";
 import {
   decodeNode,
-  validateNode,
-  validateNodeStructure,
-  hashToKey,
   EMPTY_DICT_BYTES,
   EMPTY_DICT_KEY,
+  hashToKey,
   type ValidationResult,
+  validateNode,
+  validateNodeStructure,
 } from "@agent-web-portal/cas-core";
-import { generateVerificationCode } from "@agent-web-portal/auth";
 import { z } from "zod";
 import { getCognitoUserMap } from "./auth/cognito-users.ts";
 import { AuthService } from "./auth/service.ts";
-import { CasStorage } from "./cas/storage.ts";
 import { NodeHashProvider, S3StorageProvider } from "./cas/providers.ts";
+import { CasStorage } from "./cas/storage.ts";
 import {
   AwpPendingAuthStore,
   AwpPubkeyStore,
@@ -70,10 +70,12 @@ const CreateTicketSchema = z.object({
   // Readable scope - undefined means full read access
   scope: z.array(z.string()).optional(),
   // Commit permission - undefined means read-only
-  commit: z.object({
-    quota: z.number().positive().optional(),
-    accept: z.array(z.string()).optional(),
-  }).optional(),
+  commit: z
+    .object({
+      quota: z.number().positive().optional(),
+      accept: z.array(z.string()).optional(),
+    })
+    .optional(),
   expiresIn: z.number().positive().optional(),
 });
 
@@ -956,10 +958,7 @@ export class Router {
   /**
    * GET /usage - Return realm usage statistics
    */
-  private async handleGetUsage(
-    auth: AuthContext,
-    realm: string
-  ): Promise<HttpResponse> {
+  private async handleGetUsage(auth: AuthContext, realm: string): Promise<HttpResponse> {
     const usage = await this.usageDb.getUsage(realm);
 
     return jsonResponse(200, {
@@ -1051,12 +1050,7 @@ export class Router {
     // Increment reference count for root (commit references root)
     const rootRef = await this.refCountDb.getRefCount(realm, root);
     if (rootRef) {
-      await this.refCountDb.incrementRef(
-        realm,
-        root,
-        rootRef.physicalSize,
-        rootRef.logicalSize
-      );
+      await this.refCountDb.incrementRef(realm, root, rootRef.physicalSize, rootRef.logicalSize);
     }
 
     // Record commit
@@ -1203,7 +1197,7 @@ export class Router {
 
   /**
    * DELETE /commits/:root - Delete commit record
-   * 
+   *
    * Decrements reference count for the root node.
    * Does NOT recursively delete children - that's handled by GC.
    */
@@ -1236,13 +1230,13 @@ export class Router {
 
   /**
    * PUT /chunks/:key - Upload CAS node (binary format)
-   * 
+   *
    * Validates:
    * - Magic bytes and header structure
    * - Hash matches expected key
    * - All children exist in storage
    * - For collections: size equals sum of children sizes
-   * 
+   *
    * Tracks references and usage:
    * - Increments ref count for this node and its children
    * - Updates realm usage statistics
@@ -1308,9 +1302,9 @@ export class Router {
         return jsonResponse(200, {
           success: false,
           error: "missing_nodes",
-          missing: validationResult.childKeys?.filter(async (k) =>
-            !(await this.storageProvider.has(k))
-          ) ?? [],
+          missing:
+            validationResult.childKeys?.filter(async (k) => !(await this.storageProvider.has(k))) ??
+            [],
         });
       }
       return errorResponse(400, "Node validation failed", { error: validationResult.error });
@@ -1319,7 +1313,10 @@ export class Router {
     // Calculate sizes for reference counting
     const physicalSize = bytes.length;
     // logicalSize is only for file nodes (actual data), 0 for dict nodes
-    const logicalSize = (structureResult.kind === "file" || structureResult.kind === "successor") ? (validationResult.size ?? bytes.length) : 0;
+    const logicalSize =
+      structureResult.kind === "file" || structureResult.kind === "successor"
+        ? (validationResult.size ?? bytes.length)
+        : 0;
     const childKeys = validationResult.childKeys ?? [];
 
     // Check realm quota before storing
@@ -1553,11 +1550,7 @@ export class Router {
    * - chunk/inline-file/file: returns binary body
    * - collection: returns JSON body
    */
-  private async handleGetRaw(
-    auth: AuthContext,
-    realm: string,
-    key: string
-  ): Promise<HttpResponse> {
+  private async handleGetRaw(auth: AuthContext, realm: string, key: string): Promise<HttpResponse> {
     if (!this.authMiddleware.checkReadAccess(auth, key)) {
       return errorResponse(403, "Read access denied");
     }
@@ -1685,12 +1678,7 @@ export class Router {
     await this.ensureEmptyDict();
 
     // Increment ref for empty dict
-    await this.refCountDb.incrementRef(
-      realm,
-      EMPTY_DICT_KEY,
-      EMPTY_DICT_BYTES.length,
-      0
-    );
+    await this.refCountDb.incrementRef(realm, EMPTY_DICT_KEY, EMPTY_DICT_BYTES.length, 0);
 
     // Create the depot
     const depot = await this.depotDb.create(realm, {
@@ -1781,7 +1769,7 @@ export class Router {
 
     const decoded = decodeNode(new Uint8Array(newRootResult.content));
     const physicalSize = newRootResult.content.length;
-    const logicalSize = (decoded.kind === "file" || decoded.kind === "successor") ? decoded.size : 0;
+    const logicalSize = decoded.kind === "file" || decoded.kind === "successor" ? decoded.size : 0;
 
     // Increment ref for new root
     await this.refCountDb.incrementRef(realm, newRoot, physicalSize, logicalSize);
@@ -1790,12 +1778,7 @@ export class Router {
     await this.refCountDb.decrementRef(realm, oldRoot);
 
     // Update depot
-    const { depot: updatedDepot } = await this.depotDb.updateRoot(
-      realm,
-      depotId,
-      newRoot,
-      message
-    );
+    const { depot: updatedDepot } = await this.depotDb.updateRoot(realm, depotId, newRoot, message);
 
     return jsonResponse(200, {
       depotId: updatedDepot.depotId,
@@ -1936,7 +1919,7 @@ export class Router {
 
     const decoded = decodeNode(new Uint8Array(newRootResult.content));
     const physicalSize = newRootResult.content.length;
-    const logicalSize = (decoded.kind === "file" || decoded.kind === "successor") ? decoded.size : 0;
+    const logicalSize = decoded.kind === "file" || decoded.kind === "successor" ? decoded.size : 0;
 
     // Increment ref for target root
     await this.refCountDb.incrementRef(realm, newRoot, physicalSize, logicalSize);

@@ -12,7 +12,7 @@ import {
   QueryCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { CasConfig, RefCount, GcStatus } from "../types.ts";
+import type { CasConfig, GcStatus, RefCount } from "../types.ts";
 import { createDynamoDBClient } from "./client.ts";
 
 /**

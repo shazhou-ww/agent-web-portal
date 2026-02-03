@@ -80,9 +80,12 @@ class DefaultTicketProvider implements CasTicketProvider {
     const info: CasEndpointInfo = {
       realm: ticket.realm,
       scope: Array.isArray(ticket.scope) ? ticket.scope : [ticket.scope],
-      commit: ticket.writable === false ? undefined : 
-        ticket.writable === true ? {} : 
-        { quota: ticket.writable.quota, accept: ticket.writable.accept },
+      commit:
+        ticket.writable === false
+          ? undefined
+          : ticket.writable === true
+            ? {}
+            : { quota: ticket.writable.quota, accept: ticket.writable.accept },
       expiresAt: ticket.expiresAt,
       nodeLimit: ticket.nodeLimit,
       maxNameBytes: ticket.maxNameBytes,
@@ -308,11 +311,11 @@ export class ServerPortal {
       try {
         // Create a writable ticket with wildcard scope
         const ticketResult = await this.ticketProvider.createTicket(["*"], true);
-        
+
         // Parse the endpoint URL to get baseUrl
         const url = new URL(ticketResult.endpoint);
         const baseUrl = `${url.protocol}//${url.host}/api`;
-        
+
         casContext = {
           endpoint: baseUrl,
           realm: ticketResult.ticketId,
@@ -333,7 +336,12 @@ export class ServerPortal {
     // Create BufferedCasClient if we have a context
     let cas: BufferedCasClient | undefined;
     if (casContext) {
-      cas = new BufferedCasClient(casContext.info, casContext.endpoint, casContext.realm, this.storage);
+      cas = new BufferedCasClient(
+        casContext.info,
+        casContext.endpoint,
+        casContext.realm,
+        this.storage
+      );
     }
 
     // Create a dummy CAS client if none available
@@ -461,7 +469,7 @@ export class ServerPortal {
       }
 
       const info = (await response.json()) as CasEndpointInfo;
-      
+
       // Parse endpoint URL to extract baseUrl and realm
       const url = new URL(endpointUrl);
       const match = url.pathname.match(/^\/api\/cas\/([^/]+)$/);
@@ -469,10 +477,10 @@ export class ServerPortal {
         console.error("[ServerPortal] Invalid endpoint URL format:", endpointUrl);
         return undefined;
       }
-      
+
       const realm = match[1]!;
       const baseUrl = `${url.protocol}//${url.host}/api`;
-      
+
       console.log("[ServerPortal] Successfully fetched CAS endpoint info:", {
         realm,
         actualRealm: info.realm,

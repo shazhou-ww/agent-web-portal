@@ -42,6 +42,7 @@ Use {{secure_greet}} with just a name:
 ```
 
 **Result:**
+
 ```json
 {
   "message": "Hello, Alice! (authenticated)",
@@ -61,6 +62,7 @@ Use {{secure_greet}} with a language code:
 ```
 
 **Result:**
+
 ```json
 {
   "message": "¡Hola, Carlos! (autenticado)",
@@ -73,6 +75,7 @@ Use {{secure_greet}} with a language code:
 If an agent tries to call {{secure_greet}} without authentication, the request will be rejected with an authentication error.
 
 **Error Response:**
+
 ```json
 {
   "error": {
@@ -89,10 +92,12 @@ If an agent tries to call {{secure_greet}} without authentication, the request w
 Generate a secure greeting message that confirms authentication.
 
 **Input:**
+
 - `name` (string, required): The name of the person to greet
 - `language` (string, optional): The language code (en, es, fr, de, ja). Defaults to "en"
 
 **Output:**
+
 - `message` (string): The greeting message with "(authenticated)" suffix
 - `timestamp` (string): ISO timestamp of when the greeting was generated
 

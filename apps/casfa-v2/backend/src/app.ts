@@ -5,55 +5,50 @@
  * All dependencies must be injected - no fallback logic.
  */
 
-import { createHash } from "node:crypto"
-import type { Hono } from "hono"
-import type { StorageProvider, HashProvider } from "@agent-web-portal/cas-storage-core"
-import type { Env } from "./types.ts"
-import type { AppConfig } from "./config.ts"
-
-// DB Types
-import type { TokensDb } from "./db/tokens.ts"
-import type { OwnershipDb } from "./db/ownership.ts"
-import type { CommitsDb } from "./db/commits.ts"
-import type { DepotsDb } from "./db/depots.ts"
-import type { RefCountDb } from "./db/refcount.ts"
-import type { UsageDb } from "./db/usage.ts"
-import type { UserRolesDb } from "./db/user-roles.ts"
-import type { AwpPendingDb } from "./db/awp-pending.ts"
-import type { AwpPubkeysDb } from "./db/awp-pubkeys.ts"
-
-// Services
-import type { AuthService } from "./services/auth.ts"
-
-// Middleware
-import {
-  createAuthMiddleware,
-  createTicketAuthMiddleware,
-  createRealmAccessMiddleware,
-  createWriteAccessMiddleware,
-  createAdminAccessMiddleware,
-} from "./middleware/index.ts"
-
+import { createHash } from "node:crypto";
+import type { HashProvider, StorageProvider } from "@agent-web-portal/cas-storage-core";
+import type { Hono } from "hono";
+import type { AppConfig } from "./config.ts";
 // Controllers
 import {
-  createHealthController,
-  createOAuthController,
+  createAdminController,
   createAuthClientsController,
   createAuthTicketsController,
   createAuthTokensController,
-  createAdminController,
+  createChunksController,
+  createCommitsController,
+  createDepotsController,
+  createHealthController,
+  createOAuthController,
   createRealmController,
   createTicketController,
-  createCommitsController,
-  createChunksController,
-  createDepotsController,
-} from "./controllers/index.ts"
-
+} from "./controllers/index.ts";
+import type { AwpPendingDb } from "./db/awp-pending.ts";
+import type { AwpPubkeysDb } from "./db/awp-pubkeys.ts";
+import type { CommitsDb } from "./db/commits.ts";
+import type { DepotsDb } from "./db/depots.ts";
+import type { OwnershipDb } from "./db/ownership.ts";
+import type { RefCountDb } from "./db/refcount.ts";
+// DB Types
+import type { TokensDb } from "./db/tokens.ts";
+import type { UsageDb } from "./db/usage.ts";
+import type { UserRolesDb } from "./db/user-roles.ts";
 // MCP
-import { createMcpController } from "./mcp/index.ts"
+import { createMcpController } from "./mcp/index.ts";
 
+// Middleware
+import {
+  createAdminAccessMiddleware,
+  createAuthMiddleware,
+  createRealmAccessMiddleware,
+  createTicketAuthMiddleware,
+  createWriteAccessMiddleware,
+} from "./middleware/index.ts";
 // Router
-import { createRouter } from "./router.ts"
+import { createRouter } from "./router.ts";
+// Services
+import type { AuthService } from "./services/auth.ts";
+import type { Env } from "./types.ts";
 
 // ============================================================================
 // Hash Provider (Node.js)
@@ -61,38 +56,38 @@ import { createRouter } from "./router.ts"
 
 export const createNodeHashProvider = (): HashProvider => ({
   sha256: async (data) => {
-    const hash = createHash("sha256").update(data).digest()
-    return new Uint8Array(hash)
+    const hash = createHash("sha256").update(data).digest();
+    return new Uint8Array(hash);
   },
-})
+});
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type DbInstances = {
-  tokensDb: TokensDb
-  ownershipDb: OwnershipDb
-  commitsDb: CommitsDb
-  depotsDb: DepotsDb
-  refCountDb: RefCountDb
-  usageDb: UsageDb
-  userRolesDb: UserRolesDb
-  awpPendingDb: AwpPendingDb
-  awpPubkeysDb: AwpPubkeysDb
-}
+  tokensDb: TokensDb;
+  ownershipDb: OwnershipDb;
+  commitsDb: CommitsDb;
+  depotsDb: DepotsDb;
+  refCountDb: RefCountDb;
+  usageDb: UsageDb;
+  userRolesDb: UserRolesDb;
+  awpPendingDb: AwpPendingDb;
+  awpPubkeysDb: AwpPubkeysDb;
+};
 
 /**
  * All dependencies required by the application.
  * All fields are required - no optional/fallback logic.
  */
 export type AppDependencies = {
-  config: AppConfig
-  db: DbInstances
-  storage: StorageProvider
-  authService: AuthService
-  hashProvider: HashProvider
-}
+  config: AppConfig;
+  db: DbInstances;
+  storage: StorageProvider;
+  authService: AuthService;
+  hashProvider: HashProvider;
+};
 
 // ============================================================================
 // App Factory
@@ -104,7 +99,7 @@ export type AppDependencies = {
  * This is a pure assembly function - all dependencies must be provided.
  */
 export const createApp = (deps: AppDependencies): Hono<Env> => {
-  const { config, db, storage, authService, hashProvider } = deps
+  const { config, db, storage, authService, hashProvider } = deps;
   const {
     tokensDb,
     ownershipDb,
@@ -115,7 +110,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     userRolesDb,
     awpPendingDb,
     awpPubkeysDb,
-  } = db
+  } = db;
 
   // Middleware
   const authMiddleware = createAuthMiddleware({
@@ -123,64 +118,64 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     userRolesDb,
     awpPubkeysDb,
     cognitoConfig: config.cognito,
-  })
-  const ticketAuthMiddleware = createTicketAuthMiddleware({ tokensDb })
-  const realmAccessMiddleware = createRealmAccessMiddleware()
-  const writeAccessMiddleware = createWriteAccessMiddleware()
-  const adminAccessMiddleware = createAdminAccessMiddleware()
+  });
+  const ticketAuthMiddleware = createTicketAuthMiddleware({ tokensDb });
+  const realmAccessMiddleware = createRealmAccessMiddleware();
+  const writeAccessMiddleware = createWriteAccessMiddleware();
+  const adminAccessMiddleware = createAdminAccessMiddleware();
 
   // Controllers
-  const health = createHealthController()
+  const health = createHealthController();
   const oauth = createOAuthController({
     cognitoConfig: config.cognito,
     authService,
-  })
+  });
   const authClients = createAuthClientsController({
     awpPendingDb,
     awpPubkeysDb,
-  })
+  });
   const authTickets = createAuthTicketsController({
     tokensDb,
     serverConfig: config.server,
-  })
-  const authTokens = createAuthTokensController({ tokensDb })
+  });
+  const authTokens = createAuthTokensController({ tokensDb });
   const admin = createAdminController({
     userRolesDb,
     cognitoConfig: config.cognito,
-  })
+  });
   const realm = createRealmController({
     usageDb,
     serverConfig: config.server,
-  })
+  });
   const ticket = createTicketController({
     tokensDb,
     usageDb,
-  })
+  });
   const commits = createCommitsController({
     commitsDb,
     ownershipDb,
     refCountDb,
     tokensDb,
     storage,
-  })
+  });
   const chunks = createChunksController({
     storage,
     hashProvider,
     ownershipDb,
     refCountDb,
     usageDb,
-  })
+  });
   const depots = createDepotsController({
     depotsDb,
     refCountDb,
     storage,
-  })
+  });
   const mcp = createMcpController({
     tokensDb,
     ownershipDb,
     storage,
     serverConfig: config.server,
-  })
+  });
 
   // Create router
   return createRouter({
@@ -201,5 +196,5 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     realmAccessMiddleware,
     writeAccessMiddleware,
     adminAccessMiddleware,
-  })
-}
+  });
+};

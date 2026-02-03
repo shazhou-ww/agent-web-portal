@@ -2,38 +2,38 @@
  * Reference count database operations
  */
 
-import { GetCommand, PutCommand, UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb"
-import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb"
-import type { RefCount, GcStatus } from "../types.ts"
-import { createDocClient } from "./client.ts"
+import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import type { GcStatus, RefCount } from "../types.ts";
+import { createDocClient } from "./client.ts";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type RefCountDb = {
-  getRefCount: (realm: string, key: string) => Promise<RefCount | null>
+  getRefCount: (realm: string, key: string) => Promise<RefCount | null>;
   incrementRef: (
     realm: string,
     key: string,
     physicalSize: number,
     logicalSize: number
-  ) => Promise<{ isNewToRealm: boolean }>
-  decrementRef: (realm: string, key: string) => Promise<{ newCount: number; deleted: boolean }>
-}
+  ) => Promise<{ isNewToRealm: boolean }>;
+  decrementRef: (realm: string, key: string) => Promise<{ newCount: number; deleted: boolean }>;
+};
 
 type RefCountDbConfig = {
-  tableName: string
-  client?: DynamoDBDocumentClient
-}
+  tableName: string;
+  client?: DynamoDBDocumentClient;
+};
 
 // ============================================================================
 // Factory
 // ============================================================================
 
 export const createRefCountDb = (config: RefCountDbConfig): RefCountDb => {
-  const client = config.client ?? createDocClient()
-  const tableName = config.tableName
+  const client = config.client ?? createDocClient();
+  const tableName = config.tableName;
 
   const getRefCount = async (realm: string, key: string): Promise<RefCount | null> => {
     const result = await client.send(
@@ -41,8 +41,8 @@ export const createRefCountDb = (config: RefCountDbConfig): RefCountDb => {
         TableName: tableName,
         Key: { pk: realm, sk: `REF#${key}` },
       })
-    )
-    if (!result.Item) return null
+    );
+    if (!result.Item) return null;
 
     return {
       realm: result.Item.pk,
@@ -52,8 +52,8 @@ export const createRefCountDb = (config: RefCountDbConfig): RefCountDb => {
       logicalSize: result.Item.logicalSize,
       gcStatus: result.Item.gcStatus,
       createdAt: result.Item.createdAt,
-    }
-  }
+    };
+  };
 
   const incrementRef = async (
     realm: string,
@@ -61,7 +61,7 @@ export const createRefCountDb = (config: RefCountDbConfig): RefCountDb => {
     physicalSize: number,
     logicalSize: number
   ): Promise<{ isNewToRealm: boolean }> => {
-    const now = Date.now()
+    const now = Date.now();
 
     try {
       // Try to increment existing record
@@ -77,11 +77,11 @@ export const createRefCountDb = (config: RefCountDbConfig): RefCountDb => {
             ":active": "active" as GcStatus,
           },
         })
-      )
-      return { isNewToRealm: false }
+      );
+      return { isNewToRealm: false };
     } catch (error: unknown) {
-      const err = error as { name?: string }
-      if (err.name !== "ConditionalCheckFailedException") throw error
+      const err = error as { name?: string };
+      if (err.name !== "ConditionalCheckFailedException") throw error;
     }
 
     // Create new record
@@ -99,16 +99,16 @@ export const createRefCountDb = (config: RefCountDbConfig): RefCountDb => {
         },
         ConditionExpression: "attribute_not_exists(pk)",
       })
-    )
+    );
 
-    return { isNewToRealm: true }
-  }
+    return { isNewToRealm: true };
+  };
 
   const decrementRef = async (
     realm: string,
     key: string
   ): Promise<{ newCount: number; deleted: boolean }> => {
-    const now = Date.now()
+    const now = Date.now();
 
     const result = await client.send(
       new UpdateCommand({
@@ -123,9 +123,9 @@ export const createRefCountDb = (config: RefCountDbConfig): RefCountDb => {
         },
         ReturnValues: "ALL_NEW",
       })
-    )
+    );
 
-    const newCount = result.Attributes?.count ?? 0
+    const newCount = result.Attributes?.count ?? 0;
 
     // If count reached 0, mark as pending for GC
     if (newCount === 0) {
@@ -139,15 +139,15 @@ export const createRefCountDb = (config: RefCountDbConfig): RefCountDb => {
             ":now": now,
           },
         })
-      )
+      );
     }
 
-    return { newCount, deleted: newCount === 0 }
-  }
+    return { newCount, deleted: newCount === 0 };
+  };
 
   return {
     getRefCount,
     incrementRef,
     decrementRef,
-  }
-}
+  };
+};

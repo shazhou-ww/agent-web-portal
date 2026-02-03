@@ -9,14 +9,14 @@
  *   bun run test-server.ts --port 3561
  */
 
-import type { Hono } from "hono"
-import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory"
-import type { StorageProvider } from "@agent-web-portal/cas-storage-core"
-import { createApp, createNodeHashProvider, type DbInstances } from "./src/app.ts"
-import type { AppConfig } from "./src/config.ts"
-import type { Env } from "./src/types.ts"
-import { createAllMemoryDbs, createMockAuthService, type AllDbs } from "./src/db-mock/index.ts"
-import { extractTokenId } from "./src/util/token-id.ts"
+import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
+import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory";
+import type { Hono } from "hono";
+import { createApp, createNodeHashProvider, type DbInstances } from "./src/app.ts";
+import type { AppConfig } from "./src/config.ts";
+import { type AllDbs, createAllMemoryDbs, createMockAuthService } from "./src/db-mock/index.ts";
+import type { Env } from "./src/types.ts";
+import { extractTokenId } from "./src/util/token-id.ts";
 
 // ============================================================================
 // Test Config
@@ -59,41 +59,44 @@ export const createTestConfig = (overrides?: Partial<AppConfig>): AppConfig => (
     hostedUiUrl: "https://test.auth.example.com",
     ...overrides?.cognito,
   },
-})
+});
 
 // ============================================================================
 // Test App Types
 // ============================================================================
 
 export type TestApp = {
-  app: Hono<Env>
-  db: AllDbs & { clearAll: () => void }
-  storage: StorageProvider
-  config: AppConfig
-  reset: () => void
-  helpers: TestHelpers
-}
+  app: Hono<Env>;
+  db: AllDbs & { clearAll: () => void };
+  storage: StorageProvider;
+  config: AppConfig;
+  reset: () => void;
+  helpers: TestHelpers;
+};
 
 export type TestHelpers = {
-  createTestUser: (userId: string, role?: "admin" | "authorized") => Promise<{
-    userId: string
-    token: string
-    realm: string
-  }>
+  createTestUser: (
+    userId: string,
+    role?: "admin" | "authorized"
+  ) => Promise<{
+    userId: string;
+    token: string;
+    realm: string;
+  }>;
   createTestTicket: (
     realm: string,
     issuerId: string,
     options?: { scope?: string[]; commit?: { quota?: number } }
   ) => Promise<{
-    ticketId: string
-    ticket: { realm: string; issuerId: string }
-  }>
-  authRequest: (token: string, method: string, path: string, body?: unknown) => Promise<Response>
-}
+    ticketId: string;
+    ticket: { realm: string; issuerId: string };
+  }>;
+  authRequest: (token: string, method: string, path: string, body?: unknown) => Promise<Response>;
+};
 
 export type CreateTestAppOptions = {
-  config?: Partial<AppConfig>
-}
+  config?: Partial<AppConfig>;
+};
 
 // ============================================================================
 // Test App Factory
@@ -104,22 +107,22 @@ export type CreateTestAppOptions = {
  */
 export const createTestApp = (options: CreateTestAppOptions = {}): TestApp => {
   // Test configuration
-  const config = createTestConfig(options.config)
+  const config = createTestConfig(options.config);
 
   // Mock DB
-  const db = createAllMemoryDbs()
+  const db = createAllMemoryDbs();
 
   // Mock Storage
-  const storage = createMemoryStorage()
+  const storage = createMemoryStorage();
 
   // Mock AuthService
   const authService = createMockAuthService({
     tokensDb: db.tokensDb,
     userRolesDb: db.userRolesDb,
-  })
+  });
 
   // Hash provider
-  const hashProvider = createNodeHashProvider()
+  const hashProvider = createNodeHashProvider();
 
   // Create app with all mock dependencies
   const app = createApp({
@@ -128,22 +131,22 @@ export const createTestApp = (options: CreateTestAppOptions = {}): TestApp => {
     storage,
     authService,
     hashProvider,
-  })
+  });
 
   const reset = () => {
-    db.clearAll()
-  }
+    db.clearAll();
+  };
 
   const helpers: TestHelpers = {
     createTestUser: async (userId: string, role: "admin" | "authorized" = "authorized") => {
-      await db.userRolesDb.setRole(userId, role)
-      const userToken = await db.tokensDb.createUserToken(userId, "test-refresh-token", 3600)
-      const tokenId = extractTokenId(userToken.pk)
+      await db.userRolesDb.setRole(userId, role);
+      const userToken = await db.tokensDb.createUserToken(userId, "test-refresh-token", 3600);
+      const tokenId = extractTokenId(userToken.pk);
       return {
         userId,
         token: tokenId,
         realm: `usr_${userId}`,
-      }
+      };
     },
 
     createTestTicket: async (
@@ -151,41 +154,41 @@ export const createTestApp = (options: CreateTestAppOptions = {}): TestApp => {
       issuerId: string,
       options?: { scope?: string[]; commit?: { quota?: number } }
     ) => {
-      const ticket = await db.tokensDb.createTicket(realm, issuerId, options)
-      const ticketId = extractTokenId(ticket.pk)
+      const ticket = await db.tokensDb.createTicket(realm, issuerId, options);
+      const ticketId = extractTokenId(ticket.pk);
       return {
         ticketId,
         ticket: { realm, issuerId },
-      }
+      };
     },
 
     authRequest: async (token: string, method: string, path: string, body?: unknown) => {
       const headers: Record<string, string> = {
         Authorization: `Bearer ${token}`,
-      }
+      };
       if (body !== undefined) {
-        headers["Content-Type"] = "application/json"
+        headers["Content-Type"] = "application/json";
       }
       const request = new Request(`http://localhost${path}`, {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
-      })
-      return app.fetch(request)
+      });
+      return app.fetch(request);
     },
-  }
+  };
 
-  return { app, db, storage, config, reset, helpers }
-}
+  return { app, db, storage, config, reset, helpers };
+};
 
 // ============================================================================
 // Test Server
 // ============================================================================
 
 export type TestServer = TestApp & {
-  url: string
-  stop: () => void
-}
+  url: string;
+  stop: () => void;
+};
 
 /**
  * Start a test server with in-memory databases and storage
@@ -193,47 +196,47 @@ export type TestServer = TestApp & {
 export const startTestServer = (
   options: CreateTestAppOptions & { port?: number } = {}
 ): TestServer => {
-  const testApp = createTestApp(options)
-  const port = options.port ?? 0
+  const testApp = createTestApp(options);
+  const port = options.port ?? 0;
 
   const server = Bun.serve({
     fetch: testApp.app.fetch,
     port,
-  })
+  });
 
-  const url = `http://localhost:${server.port}`
+  const url = `http://localhost:${server.port}`;
 
   return {
     ...testApp,
     url,
     stop: () => server.stop(),
-  }
-}
+  };
+};
 
 // ============================================================================
 // CLI Entry Point
 // ============================================================================
 
 if (import.meta.main) {
-  const args = Bun.argv.slice(2)
-  let port = 3560
+  const args = Bun.argv.slice(2);
+  let port = 3560;
 
   for (let i = 0; i < args.length; i++) {
-    const nextArg = args[i + 1]
+    const nextArg = args[i + 1];
     if (args[i] === "--port" && nextArg) {
-      port = Number.parseInt(nextArg, 10)
+      port = Number.parseInt(nextArg, 10);
     }
   }
 
-  const testApp = createTestApp()
+  const testApp = createTestApp();
 
   const server = Bun.serve({
     fetch: testApp.app.fetch,
     port,
-  })
+  });
 
-  console.log(`🧪 CASFA v2 Test Server running at http://localhost:${server.port}`)
-  console.log("   Using in-memory databases, storage, and auth")
-  console.log("")
-  console.log("   Press Ctrl+C to stop")
+  console.log(`🧪 CASFA v2 Test Server running at http://localhost:${server.port}`);
+  console.log("   Using in-memory databases, storage, and auth");
+  console.log("");
+  console.log("   Press Ctrl+C to stop");
 }

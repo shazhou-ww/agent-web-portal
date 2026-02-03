@@ -8,7 +8,6 @@
 import { createHash, createHash as cryptoCreateHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { decodeNode, type CasNode } from "@agent-web-portal/cas-core";
 import type {
   AuthorizedPubkey,
   PendingAuth,
@@ -21,8 +20,10 @@ import {
   validateTimestamp,
   verifySignature,
 } from "@agent-web-portal/auth";
+import { type CasNode, decodeNode } from "@agent-web-portal/cas-core";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { getCognitoUserMap } from "./src/auth/cognito-users.ts";
+import type { DepotHistoryRecord, DepotRecord } from "./src/db/index.ts";
 import {
   AwpPendingAuthStore,
   AwpPubkeyStore,
@@ -34,7 +35,6 @@ import {
   TokensDb,
   UserRolesDb,
 } from "./src/db/index.ts";
-import type { DepotRecord, DepotHistoryRecord } from "./src/db/index.ts";
 import type { CasDagNode, CasOwnership, Ticket, Token, UserToken } from "./src/types.ts";
 import { loadConfig, loadServerConfig } from "./src/types.ts";
 
@@ -287,9 +287,20 @@ interface CasStorageEntry {
 
 interface CasStorageInterface {
   exists(casKey: string): Promise<boolean>;
-  get(casKey: string): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null>;
-  put(content: Buffer, contentType?: string, metadata?: CasMetadata): Promise<{ key: string; size: number; isNew: boolean }>;
-  putWithKey(expectedKey: string, content: Buffer, contentType?: string, metadata?: CasMetadata): Promise<
+  get(
+    casKey: string
+  ): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null>;
+  put(
+    content: Buffer,
+    contentType?: string,
+    metadata?: CasMetadata
+  ): Promise<{ key: string; size: number; isNew: boolean }>;
+  putWithKey(
+    expectedKey: string,
+    content: Buffer,
+    contentType?: string,
+    metadata?: CasMetadata
+  ): Promise<
     | { key: string; size: number; isNew: boolean }
     | { error: "hash_mismatch"; expected: string; actual: string }
   >;
@@ -307,7 +318,9 @@ class MemoryCasStorage implements CasStorageInterface {
     return this.blobs.has(casKey);
   }
 
-  async get(casKey: string): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null> {
+  async get(
+    casKey: string
+  ): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null> {
     const entry = this.blobs.get(casKey);
     if (!entry) return null;
     return { content: entry.content, contentType: entry.contentType, metadata: entry.metadata };
@@ -371,7 +384,9 @@ class FileCasStorage implements CasStorageInterface {
     return fs.existsSync(this.getFilePath(casKey));
   }
 
-  async get(casKey: string): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null> {
+  async get(
+    casKey: string
+  ): Promise<{ content: Buffer; contentType: string; metadata: CasMetadata } | null> {
     const filePath = this.getFilePath(casKey);
     const metaPath = this.getMetaPath(casKey);
 
@@ -417,11 +432,18 @@ class FileCasStorage implements CasStorageInterface {
       fs.writeFileSync(filePath, content);
 
       // Write metadata file
-      fs.writeFileSync(metaPath, JSON.stringify({
-        contentType,
-        metadata: metadata ?? {},
-        createdAt: new Date().toISOString()
-      }, null, 2));
+      fs.writeFileSync(
+        metaPath,
+        JSON.stringify(
+          {
+            contentType,
+            metadata: metadata ?? {},
+            createdAt: new Date().toISOString(),
+          },
+          null,
+          2
+        )
+      );
     }
 
     return { key, size: content.length, isNew };
@@ -629,7 +651,8 @@ class MemoryCommitsDb {
 // ============================================================================
 
 // Use EMPTY_DICT from cas-core
-import { EMPTY_DICT_KEY, EMPTY_DICT_BYTES } from "@agent-web-portal/cas-core";
+import { EMPTY_DICT_BYTES, EMPTY_DICT_KEY } from "@agent-web-portal/cas-core";
+
 const EMPTY_DICT_DATA = Buffer.from(EMPTY_DICT_BYTES);
 
 interface MemoryDepotRecord {
@@ -770,7 +793,11 @@ class MemoryDepotDb {
     return { history: sorted };
   }
 
-  async getHistory(realm: string, depotId: string, version: number): Promise<MemoryDepotHistory | null> {
+  async getHistory(
+    realm: string,
+    depotId: string,
+    version: number
+  ): Promise<MemoryDepotHistory | null> {
     const historyKey = this.buildKey(realm, depotId);
     const historyList = this.history.get(historyKey) ?? [];
     return historyList.find((h) => h.version === version) ?? null;
@@ -864,8 +891,8 @@ const COGNITO_ISSUER = COGNITO_USER_POOL_ID
 // JWKS for Cognito JWT verification
 const cognitoJwks = COGNITO_USER_POOL_ID
   ? createRemoteJWKSet(new URL(`${COGNITO_ISSUER}/.well-known/jwks.json`), {
-    timeoutDuration: 10000, // 10 seconds timeout
-  })
+      timeoutDuration: 10000, // 10 seconds timeout
+    })
   : null;
 
 interface CognitoTokenPayload {
@@ -927,11 +954,7 @@ async function ensureEmptyDict(realm: string, tokenId: string): Promise<void> {
   console.log(`[ensureEmptyDict] exists=${!!exists}`);
   if (!exists) {
     console.log(`[ensureEmptyDict] storing empty dict`);
-    await casStorage.putWithKey(
-      EMPTY_DICT_KEY,
-      EMPTY_DICT_DATA,
-      "application/vnd.cas.collection"
-    );
+    await casStorage.putWithKey(EMPTY_DICT_KEY, EMPTY_DICT_DATA, "application/vnd.cas.collection");
   }
   // Ensure ownership
   const hasOwnership = await ownershipDb.hasOwnership(realm, EMPTY_DICT_KEY);
@@ -1128,7 +1151,8 @@ async function authenticateAwp(req: Request): Promise<AuthContext | null> {
 // ============================================================================
 
 const COGNITO_HOSTED_UI_URL = process.env.COGNITO_HOSTED_UI_URL ?? "";
-const COGNITO_CLIENT_ID = process.env.CASFA_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? "";
+const COGNITO_CLIENT_ID =
+  process.env.CASFA_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? "";
 
 async function handleOAuth(req: Request, path: string): Promise<Response> {
   // GET /oauth/config - Public Cognito config for frontend (no auth)
@@ -1365,15 +1389,15 @@ async function handleAuth(req: Request, path: string): Promise<Response> {
       expiresIn?: number;
     };
     // Normalize scope to string[] | undefined
-    const normalizedScope = body.scope === undefined
-      ? undefined
-      : Array.isArray(body.scope) ? body.scope : [body.scope];
+    const normalizedScope =
+      body.scope === undefined ? undefined : Array.isArray(body.scope) ? body.scope : [body.scope];
     // Normalize commit: true -> {}, false/undefined -> undefined
-    const normalizedCommit = body.commit === true
-      ? {}
-      : body.commit === false || body.commit === undefined
-        ? undefined
-        : body.commit;
+    const normalizedCommit =
+      body.commit === true
+        ? {}
+        : body.commit === false || body.commit === undefined
+          ? undefined
+          : body.commit;
     const ticket = await tokensDb.createTicket(
       auth.scope,
       auth.tokenId,
@@ -1642,7 +1666,13 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
         const collectionKey = `sha256:${hash}`;
 
         await casStorage.putWithKey(collectionKey, content, "application/vnd.cas.collection");
-        await ownershipDb.addOwnership(realm, collectionKey, auth.tokenId, "application/vnd.cas.collection", content.length);
+        await ownershipDb.addOwnership(
+          realm,
+          collectionKey,
+          auth.tokenId,
+          "application/vnd.cas.collection",
+          content.length
+        );
 
         return { key: collectionKey, size: totalSize };
       };
@@ -1763,7 +1793,9 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
       try {
         // Parse binary CAS format
         const node = decodeNode(new Uint8Array(content));
-        console.log(`[tree] decoded node kind=${node.kind}, childNames=${node.childNames?.length ?? 0}`);
+        console.log(
+          `[tree] decoded node kind=${node.kind}, childNames=${node.childNames?.length ?? 0}`
+        );
 
         if (node.kind === "dict" && node.childNames && node.children) {
           const { childNames, children } = node;
@@ -1912,7 +1944,12 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
       return errorResponse(404, "Depot not found");
     }
 
-    const { depot: updatedDepot } = await depotDb.updateRoot(realm, depotId, body.root, body.message);
+    const { depot: updatedDepot } = await depotDb.updateRoot(
+      realm,
+      depotId,
+      body.root,
+      body.message
+    );
     return jsonResponse(200, {
       depotId: updatedDepot.depotId,
       name: updatedDepot.name,

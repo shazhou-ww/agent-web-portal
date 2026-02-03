@@ -129,7 +129,7 @@ describe("Node", () => {
     it("should not have FileInfo", async () => {
       const data = new Uint8Array([1, 2, 3]);
       const result = await encodeSuccessorNode({ data }, mockHashProvider);
-      
+
       // Header(32) + data(3) = 35 (no FileInfo)
       expect(result.bytes.length).toBe(HEADER_SIZE + 3);
     });

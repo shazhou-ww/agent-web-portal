@@ -21,10 +21,12 @@ This skill provides access to FLUX, one of the most advanced AI image generation
 ## Available Tools
 
 ### Text-to-Image
+
 - {{flux_pro}}: High-quality image generation with FLUX Pro 1.1
 - {{flux_flex}}: Flexible generation with adjustable guidance scale
 
 ### Image Editing
+
 - {{flux_kontext}}: Context-aware image editing and transformation
 - {{flux_fill}}: Inpaint/fill masked regions of images
 - {{flux_expand}}: Outpaint/extend images beyond boundaries
@@ -32,14 +34,18 @@ This skill provides access to FLUX, one of the most advanced AI image generation
 ## Key Features
 
 ### Superior Quality
+
 FLUX Pro 1.1 represents the cutting edge of image generation, with:
+
 - Exceptional photorealism
 - Accurate text rendering in images
 - Complex multi-subject compositions
 - Consistent style and coherence
 
 ### Context Understanding
+
 FLUX Kontext understands image context to make intelligent edits:
+
 - Object modification while preserving surroundings
 - Style transformation with content preservation
 - Seamless blending of edited regions
@@ -106,6 +112,7 @@ Use {{flux_fill}} with a mask to fill specific areas:
 ## Parameters
 
 ### Common Parameters
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | prompt | Text description of desired output | Required |
@@ -114,6 +121,7 @@ Use {{flux_fill}} with a mask to fill specific areas:
 | output_format | png or jpeg | png |
 
 ### Generation Parameters ({{flux_pro}}, {{flux_flex}})
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | guidance | Guidance scale (1.5-5) | 3.5 |
@@ -121,6 +129,7 @@ Use {{flux_fill}} with a mask to fill specific areas:
 | safety_tolerance | Content filter level (0-6) | 2 |
 
 ### Expand Parameters ({{flux_expand}})
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | top | Pixels to expand at top | 0 |
@@ -140,6 +149,7 @@ Use {{flux_fill}} with a mask to fill specific areas:
 **⚠️ All prompts MUST be in English!**
 
 FLUX APIs only support English prompts. If the user provides a prompt in another language (e.g., Chinese, Japanese, Spanish), you MUST:
+
 1. Translate the prompt to English
 2. Enhance with descriptive keywords while preserving the original intent
 

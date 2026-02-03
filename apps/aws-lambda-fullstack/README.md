@@ -182,7 +182,7 @@ Resources:
 parameter_overrides = "CustomDomainName=\"app.example.com\" CustomDomainCertificateArn=\"arn:aws:acm:us-east-1:...\""
 ```
 
-3. Deploy and add CNAME record pointing to CloudFront domain
+1. Deploy and add CNAME record pointing to CloudFront domain
 
 ## Environment Variables
 

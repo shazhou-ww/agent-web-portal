@@ -92,21 +92,29 @@ Use {{flux_flex}} with adjustable guidance for creative freedom:
 ## Prompt Engineering Tips
 
 ### Be Descriptive
+
 More details lead to better results:
+
 - ❌ "a dog"
 - ✅ "a golden retriever puppy playing in autumn leaves, soft afternoon sunlight, shallow depth of field"
 
 ### Specify Style
+
 Include artistic style keywords:
+
 - "cinematic lighting", "studio photography", "oil painting", "watercolor", "digital art"
 - "4K", "highly detailed", "professional", "award-winning"
 
 ### Use Negative Prompts (Stability AI)
+
 With {{txt2img}}, exclude unwanted elements:
+
 - "blurry, low quality, distorted, disfigured"
 
 ### Aspect Ratios
+
 Choose dimensions that match your content:
+
 - **1024x1024**: Square format, balanced compositions
 - **1024x768**: Landscape, scenic views
 - **768x1024**: Portrait, vertical subjects
@@ -115,6 +123,7 @@ Choose dimensions that match your content:
 ## Parameters
 
 ### Common Parameters
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | prompt | Text description of the image | Required |
@@ -124,6 +133,7 @@ Choose dimensions that match your content:
 | output_format | png, jpeg, or webp | png |
 
 ### FLUX-Specific ({{flux_pro}}, {{flux_flex}})
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | prompt_upsampling | Auto-enhance prompts | false |
@@ -131,6 +141,7 @@ Choose dimensions that match your content:
 | guidance | Guidance scale ({{flux_flex}} only) | 3.5 |
 
 ### Stability-Specific ({{txt2img}})
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | negative_prompt | What to avoid | None |
@@ -158,6 +169,7 @@ The Stability AI and FLUX APIs only support English prompts. If the user provide
 User request: "画一个可爱的男孩牵着小狗在公园散步"
 
 Translated and enhanced prompt for the tool:
+
 ```json
 {
   "prompt": "A cute young boy walking a friendly dog in a sunny park, warm lighting, heartwarming scene, high quality, detailed illustration, soft colors"

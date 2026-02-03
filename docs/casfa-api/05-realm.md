@@ -225,6 +225,7 @@ Authorization: Agent {agentToken}
 - Body: 二进制节点数据
 
 节点格式遵循 cas-core 二进制格式，包含：
+
 - Magic bytes 和头部结构
 - Hash 验证
 - 子节点存在性验证

@@ -13,8 +13,8 @@ export { IndexedDBStorageProvider } from "./storage.ts";
 // Factory functions
 import {
   CasfaClient,
+  type CasfaEndpoint,
   CasfaSession,
-  CasfaEndpoint,
   type SessionAuth,
 } from "@agent-web-portal/casfa-client";
 import { IndexedDBStorageProvider } from "./storage.ts";

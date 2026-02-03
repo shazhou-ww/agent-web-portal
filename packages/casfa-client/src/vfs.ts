@@ -118,10 +118,7 @@ export class VirtualFS {
   /**
    * Create a VirtualFS from an existing dict
    */
-  static async fromDict(
-    endpoint: CasfaEndpoint,
-    rootKey: string
-  ): Promise<VirtualFS> {
+  static async fromDict(endpoint: CasfaEndpoint, rootKey: string): Promise<VirtualFS> {
     // Load the root node to verify it's a dict
     const node = await endpoint.getNode(rootKey);
     if (node.kind !== "dict") {
@@ -234,7 +231,7 @@ export class VirtualFS {
     let current = this.root;
 
     for (const segment of segments) {
-      let children = await this.getChildren(current);
+      const children = await this.getChildren(current);
 
       if (!children) {
         throw new Error(`Cannot create directory inside file: ${segment}`);
@@ -356,11 +353,7 @@ export class VirtualFS {
   /**
    * Write file content (creates parent directories as needed)
    */
-  async writeFile(
-    path: string,
-    data: Uint8Array,
-    options?: WriteFileOptions
-  ): Promise<void> {
+  async writeFile(path: string, data: Uint8Array, options?: WriteFileOptions): Promise<void> {
     const { name } = splitPath(path);
     if (!name) {
       throw new Error("Cannot write to root");

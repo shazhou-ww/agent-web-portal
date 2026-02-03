@@ -6,28 +6,28 @@
  */
 
 import {
+  type CasContext,
+  type CasNode,
+  concatBytes,
+  makeDict as coreMakeDict,
   createMemoryStorage,
   createWebCryptoHash,
-  writeFile,
-  makeDict as coreMakeDict,
   decodeNode,
-  hashToKey,
-  concatBytes,
-  type StorageProvider,
   type HashProvider,
-  type CasNode,
-  type CasContext,
+  hashToKey,
+  type StorageProvider,
+  writeFile,
 } from "@agent-web-portal/cas-core";
 
 import type {
+  CasBlobRef,
   CasfaEndpointConfig,
+  DictEntry,
   EndpointAuth,
   EndpointInfo,
   TreeNodeInfo,
   TreeResponse,
-  DictEntry,
   WriteResult,
-  CasBlobRef,
 } from "./types.ts";
 import { VirtualFS } from "./vfs.ts";
 
@@ -216,9 +216,7 @@ export class CasfaEndpoint {
     }
 
     // Normalize path
-    const segments = path
-      .split("/")
-      .filter((s) => s && s !== ".");
+    const segments = path.split("/").filter((s) => s && s !== ".");
 
     let currentKey = rootKey;
 
@@ -385,9 +383,7 @@ export class CasfaEndpoint {
     editor: (vfs: VirtualFS) => Promise<void>
   ): Promise<string> {
     // Create VFS from existing dict or empty
-    const vfs = rootKey
-      ? await VirtualFS.fromDict(this, rootKey)
-      : VirtualFS.empty(this);
+    const vfs = rootKey ? await VirtualFS.fromDict(this, rootKey) : VirtualFS.empty(this);
 
     // Run the editor
     await editor(vfs);

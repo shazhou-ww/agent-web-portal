@@ -70,6 +70,7 @@ Authorization: Bearer {adminToken}
 ```
 
 路径参数：
+
 - `userId`: 用户 ID（URL 编码）
 
 请求体：
@@ -116,6 +117,7 @@ Authorization: Bearer {adminToken}
 ```
 
 路径参数：
+
 - `userId`: 用户 ID（URL 编码）
 
 ### 响应

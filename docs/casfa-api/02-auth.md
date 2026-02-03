@@ -162,6 +162,7 @@ Authorization: Bearer {userToken}
 需要 `Authorization` header
 
 路径参数：
+
 - `pubkey`: URL 编码的公钥
 
 #### 响应

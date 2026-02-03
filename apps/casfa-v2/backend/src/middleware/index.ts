@@ -3,20 +3,20 @@
  */
 
 export {
+  type AuthMiddlewareDeps,
   createAuthMiddleware,
   createOptionalAuthMiddleware,
-  type AuthMiddlewareDeps,
-} from "./auth.ts"
+} from "./auth.ts";
 
 export {
+  createAdminAccessMiddleware,
   createRealmAccessMiddleware,
   createWriteAccessMiddleware,
-  createAdminAccessMiddleware,
-} from "./realm-access.ts"
+} from "./realm-access.ts";
 
 export {
-  createTicketAuthMiddleware,
   checkTicketReadAccess,
   checkTicketWriteQuota,
+  createTicketAuthMiddleware,
   type TicketAuthDeps,
-} from "./ticket-auth.ts"
+} from "./ticket-auth.ts";

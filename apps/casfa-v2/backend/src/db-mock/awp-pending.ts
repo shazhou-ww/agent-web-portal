@@ -2,42 +2,45 @@
  * In-memory implementation of AwpPendingDb for testing
  */
 
-import type { AwpPendingAuth } from "../types.ts"
-import type { AwpPendingDb } from "../db/awp-pending.ts"
+import type { AwpPendingDb } from "../db/awp-pending.ts";
+import type { AwpPendingAuth } from "../types.ts";
 
 // ============================================================================
 // Factory
 // ============================================================================
 
-export const createMemoryAwpPendingDb = (): AwpPendingDb & { _store: Map<string, AwpPendingAuth>; _clear: () => void } => {
-  const store = new Map<string, AwpPendingAuth>()
+export const createMemoryAwpPendingDb = (): AwpPendingDb & {
+  _store: Map<string, AwpPendingAuth>;
+  _clear: () => void;
+} => {
+  const store = new Map<string, AwpPendingAuth>();
 
   const create = async (data: AwpPendingAuth): Promise<void> => {
-    store.set(data.pubkey, data)
-  }
+    store.set(data.pubkey, data);
+  };
 
   const get = async (pubkey: string): Promise<AwpPendingAuth | null> => {
-    const pending = store.get(pubkey)
-    if (!pending) return null
+    const pending = store.get(pubkey);
+    if (!pending) return null;
 
     // Check if expired
     if (pending.expiresAt < Date.now()) {
-      store.delete(pubkey)
-      return null
+      store.delete(pubkey);
+      return null;
     }
 
-    return pending
-  }
+    return pending;
+  };
 
   const deleteEntry = async (pubkey: string): Promise<void> => {
-    store.delete(pubkey)
-  }
+    store.delete(pubkey);
+  };
 
   const validateCode = async (pubkey: string, code: string): Promise<boolean> => {
-    const pending = await get(pubkey)
-    if (!pending) return false
-    return pending.verificationCode === code
-  }
+    const pending = await get(pubkey);
+    if (!pending) return false;
+    return pending.verificationCode === code;
+  };
 
   return {
     create,
@@ -47,5 +50,5 @@ export const createMemoryAwpPendingDb = (): AwpPendingDb & { _store: Map<string,
     // Testing utilities
     _store: store,
     _clear: () => store.clear(),
-  }
-}
+  };
+};

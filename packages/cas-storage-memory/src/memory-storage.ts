@@ -4,44 +4,44 @@
  * Useful for testing and local development.
  */
 
-import type { StorageProvider } from "@agent-web-portal/cas-storage-core"
+import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 
 /**
  * Memory Storage configuration
  */
 export type MemoryStorageConfig = {
   /** Optional initial data */
-  initialData?: Map<string, Uint8Array>
-}
+  initialData?: Map<string, Uint8Array>;
+};
 
 /**
  * Create an in-memory storage provider
  */
 export const createMemoryStorage = (config: MemoryStorageConfig = {}): StorageProvider => {
-  const data = config.initialData ?? new Map<string, Uint8Array>()
+  const data = config.initialData ?? new Map<string, Uint8Array>();
 
   return {
     has: async (key) => data.has(key),
     get: async (key) => data.get(key) ?? null,
     put: async (key, value) => {
-      data.set(key, value)
+      data.set(key, value);
     },
-  }
-}
+  };
+};
 
 /**
  * Create memory storage with inspection methods (for testing)
  */
 export const createMemoryStorageWithInspection = (config: MemoryStorageConfig = {}) => {
-  const data = config.initialData ?? new Map<string, Uint8Array>()
+  const data = config.initialData ?? new Map<string, Uint8Array>();
 
   const storage: StorageProvider = {
     has: async (key) => data.has(key),
     get: async (key) => data.get(key) ?? null,
     put: async (key, value) => {
-      data.set(key, value)
+      data.set(key, value);
     },
-  }
+  };
 
   return {
     ...storage,
@@ -55,5 +55,5 @@ export const createMemoryStorageWithInspection = (config: MemoryStorageConfig = 
     delete: (key: string) => data.delete(key),
     /** Get raw data map (for inspection) */
     getData: () => data,
-  }
-}
+  };
+};

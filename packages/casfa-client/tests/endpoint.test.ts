@@ -2,9 +2,9 @@
  * Tests for CasfaEndpoint
  */
 
-import { describe, it, expect, beforeEach, mock } from "bun:test";
-import { CasfaEndpoint } from "../src/endpoint";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { createMemoryStorage, type MemoryStorage } from "@agent-web-portal/cas-core";
+import { CasfaEndpoint } from "../src/endpoint";
 import type { EndpointInfo } from "../src/types";
 
 // Mock fetch for testing

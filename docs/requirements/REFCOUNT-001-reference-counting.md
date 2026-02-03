@@ -1,7 +1,7 @@
 # REFCOUNT-001: 引用计数统一方案
 
 > 优先级：P0 - 必须完成
-> 
+>
 > 本需求整合 [GC-001](./GC-001-garbage-collection.md) 和 [QUOTA-001](./QUOTA-001-quota-management.md)
 
 ## 背景
@@ -75,6 +75,7 @@ interface RefCount {
 ```
 
 **GSI: by-gc-status**
+
 - Partition Key: `gcStatus` ("pending")
 - Sort Key: `createdAt`
 - 稀疏索引：只有 `gcStatus="pending"` 的记录被索引
@@ -342,17 +343,20 @@ CasUsageTable:
 ## 验收标准
 
 ### 引用计数
+
 - [ ] Upload 时正确建立引用（自身 + children）
 - [ ] Commit 时增加 root 引用
 - [ ] Delete commit 时减少 root 引用
 - [ ] 引用计数原子更新
 
 ### 用量统计
+
 - [ ] 能查询 realm 的 physicalBytes/logicalBytes/nodeCount
 - [ ] 新节点（isNewToRealm）正确增加用量
 - [ ] GC 删除节点后正确减少用量
 
 ### GC
+
 - [ ] 保护周期内的节点不被回收
 - [ ] 分批处理，不超时
 - [ ] 递归清理 children 引用
@@ -360,6 +364,7 @@ CasUsageTable:
 - [ ] 有 GC 执行日志
 
 ### Quota
+
 - [ ] Upload 时检查 Realm Quota
 - [ ] Commit 时检查 Ticket Quota
 - [ ] 超限返回明确错误信息

@@ -125,6 +125,7 @@ curl -X POST http://localhost:3500/api/auth/signup \
 ```
 
 Response:
+
 ```json
 {
   "userId": "abc-123-def",
@@ -145,6 +146,7 @@ curl -X POST http://localhost:3500/api/auth/login \
 ```
 
 Response:
+
 ```json
 {
   "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI...",
@@ -167,6 +169,7 @@ curl -X POST http://localhost:3500/api/blob/prepare-output \
 ```
 
 Response:
+
 ```json
 {
   "uri": "blob://generated-01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -188,6 +191,7 @@ curl -X POST http://localhost:3500/api/blob/prepare-download \
 ```
 
 Response:
+
 ```json
 {
   "presignedUrl": "https://bucket.s3.amazonaws.com/output/...",

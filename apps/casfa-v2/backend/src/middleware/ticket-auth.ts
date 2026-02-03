@@ -4,14 +4,14 @@
  * Authenticates using ticket ID from URL path.
  */
 
-import type { MiddlewareHandler } from "hono"
-import type { TokensDb } from "../db/tokens.ts"
-import type { AuthContext, Env, Ticket } from "../types.ts"
-import { fingerprintFromTicket } from "../util/fingerprint.ts"
+import type { MiddlewareHandler } from "hono";
+import type { TokensDb } from "../db/tokens.ts";
+import type { AuthContext, Env, Ticket } from "../types.ts";
+import { fingerprintFromTicket } from "../util/fingerprint.ts";
 
 export type TicketAuthDeps = {
-  tokensDb: TokensDb
-}
+  tokensDb: TokensDb;
+};
 
 /**
  * Create ticket authentication middleware
@@ -19,20 +19,20 @@ export type TicketAuthDeps = {
  * Ticket ID in path is the credential, no Authorization header needed.
  */
 export const createTicketAuthMiddleware = (deps: TicketAuthDeps): MiddlewareHandler<Env> => {
-  const { tokensDb } = deps
+  const { tokensDb } = deps;
 
   return async (c, next) => {
-    const ticketId = c.req.param("ticketId")
+    const ticketId = c.req.param("ticketId");
     if (!ticketId) {
-      return c.json({ error: "Missing ticketId" }, 400)
+      return c.json({ error: "Missing ticketId" }, 400);
     }
 
-    const ticket = await tokensDb.getTicket(ticketId)
+    const ticket = await tokensDb.getTicket(ticketId);
     if (!ticket) {
-      return c.json({ error: "Invalid or expired ticket" }, 401)
+      return c.json({ error: "Invalid or expired ticket" }, 401);
     }
 
-    const fingerprint = await fingerprintFromTicket(ticketId)
+    const fingerprint = await fingerprintFromTicket(ticketId);
 
     // Build auth context from ticket
     const auth: AuthContext = {
@@ -46,37 +46,37 @@ export const createTicketAuthMiddleware = (deps: TicketAuthDeps): MiddlewareHand
       identityType: "ticket",
       fingerprint,
       isAgent: false, // Tickets are not agents, they have even more restricted permissions
-    }
+    };
 
-    c.set("auth", auth)
-    return next()
-  }
-}
+    c.set("auth", auth);
+    return next();
+  };
+};
 
 /**
  * Check ticket read access for a specific key
  */
 export const checkTicketReadAccess = (auth: AuthContext, key: string): boolean => {
   // If no scope restriction, all reads are allowed
-  if (!auth.allowedScope) return true
+  if (!auth.allowedScope) return true;
 
   // Check if key is in allowed scope
-  return auth.allowedScope.includes(key)
-}
+  return auth.allowedScope.includes(key);
+};
 
 /**
  * Check ticket write quota
  */
 export const checkTicketWriteQuota = (auth: AuthContext, size: number): boolean => {
-  if (auth.token.type !== "ticket") return true
+  if (auth.token.type !== "ticket") return true;
 
-  const ticket = auth.token as Ticket
-  if (!ticket.commit) return false
-  if (ticket.commit.root) return false // Already committed
+  const ticket = auth.token as Ticket;
+  if (!ticket.commit) return false;
+  if (ticket.commit.root) return false; // Already committed
 
-  const quota = ticket.commit.quota
-  if (!quota) return true // No quota limit
+  const quota = ticket.commit.quota;
+  if (!quota) return true; // No quota limit
 
   // Note: This is a simplified check. Full implementation would track usage.
-  return size <= quota
-}
+  return size <= quota;
+};

@@ -2,34 +2,34 @@
  * AWP Public Keys database operations
  */
 
-import { DeleteCommand, GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb"
-import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb"
-import type { AwpPubkey } from "../types.ts"
-import { createDocClient } from "./client.ts"
+import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import type { AwpPubkey } from "../types.ts";
+import { createDocClient } from "./client.ts";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type AwpPubkeysDb = {
-  store: (data: AwpPubkey) => Promise<void>
-  lookup: (pubkey: string) => Promise<AwpPubkey | null>
-  listByUser: (userId: string) => Promise<AwpPubkey[]>
-  revoke: (pubkey: string) => Promise<void>
-}
+  store: (data: AwpPubkey) => Promise<void>;
+  lookup: (pubkey: string) => Promise<AwpPubkey | null>;
+  listByUser: (userId: string) => Promise<AwpPubkey[]>;
+  revoke: (pubkey: string) => Promise<void>;
+};
 
 type AwpPubkeysDbConfig = {
-  tableName: string
-  client?: DynamoDBDocumentClient
-}
+  tableName: string;
+  client?: DynamoDBDocumentClient;
+};
 
 // ============================================================================
 // Factory
 // ============================================================================
 
 export const createAwpPubkeysDb = (config: AwpPubkeysDbConfig): AwpPubkeysDb => {
-  const client = config.client ?? createDocClient()
-  const tableName = config.tableName
+  const client = config.client ?? createDocClient();
+  const tableName = config.tableName;
 
   const store = async (data: AwpPubkey): Promise<void> => {
     await client.send(
@@ -43,8 +43,8 @@ export const createAwpPubkeysDb = (config: AwpPubkeysDbConfig): AwpPubkeysDb => 
           ...data,
         },
       })
-    )
-  }
+    );
+  };
 
   const lookup = async (pubkey: string): Promise<AwpPubkey | null> => {
     const result = await client.send(
@@ -52,14 +52,14 @@ export const createAwpPubkeysDb = (config: AwpPubkeysDbConfig): AwpPubkeysDb => 
         TableName: tableName,
         Key: { pk: `AWP_PUBKEY#${pubkey}`, sk: "KEY" },
       })
-    )
+    );
 
-    if (!result.Item) return null
+    if (!result.Item) return null;
 
     // Check if expired
     if (result.Item.expiresAt && result.Item.expiresAt < Date.now()) {
-      await revoke(pubkey)
-      return null
+      await revoke(pubkey);
+      return null;
     }
 
     return {
@@ -68,8 +68,8 @@ export const createAwpPubkeysDb = (config: AwpPubkeysDbConfig): AwpPubkeysDb => 
       clientName: result.Item.clientName,
       createdAt: result.Item.createdAt,
       expiresAt: result.Item.expiresAt,
-    }
-  }
+    };
+  };
 
   const listByUser = async (userId: string): Promise<AwpPubkey[]> => {
     const result = await client.send(
@@ -82,9 +82,9 @@ export const createAwpPubkeysDb = (config: AwpPubkeysDbConfig): AwpPubkeysDb => 
           ":prefix": "AWP#",
         },
       })
-    )
+    );
 
-    const now = Date.now()
+    const now = Date.now();
     return (result.Items ?? [])
       .filter((item) => !item.expiresAt || item.expiresAt > now)
       .map((item) => ({
@@ -93,8 +93,8 @@ export const createAwpPubkeysDb = (config: AwpPubkeysDbConfig): AwpPubkeysDb => 
         clientName: item.clientName,
         createdAt: item.createdAt,
         expiresAt: item.expiresAt,
-      }))
-  }
+      }));
+  };
 
   const revoke = async (pubkey: string): Promise<void> => {
     await client.send(
@@ -102,13 +102,13 @@ export const createAwpPubkeysDb = (config: AwpPubkeysDbConfig): AwpPubkeysDb => 
         TableName: tableName,
         Key: { pk: `AWP_PUBKEY#${pubkey}`, sk: "KEY" },
       })
-    )
-  }
+    );
+  };
 
   return {
     store,
     lookup,
     listByUser,
     revoke,
-  }
-}
+  };
+};

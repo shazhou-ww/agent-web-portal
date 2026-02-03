@@ -7,6 +7,7 @@
 
 import {
   type ByteStream,
+  CAS_CONTENT_TYPES,
   CasClient,
   type CasEndpointInfo,
   type CasFileHandle,
@@ -20,7 +21,6 @@ import {
   type RawResponse,
   splitIntoChunks,
   type TreeNodeInfo,
-  CAS_CONTENT_TYPES,
 } from "@agent-web-portal/cas-client-core";
 
 import type { IBufferedCasClient } from "./types.ts";
@@ -73,7 +73,12 @@ export class BufferedCasClient implements IBufferedCasClient {
   // Root key of the last write operation (for single-root commit)
   private rootKey: string | null = null;
 
-  constructor(endpointInfo: CasEndpointInfo, baseUrl: string, realm: string, storage?: LocalStorageProvider) {
+  constructor(
+    endpointInfo: CasEndpointInfo,
+    baseUrl: string,
+    realm: string,
+    storage?: LocalStorageProvider
+  ) {
     this.client = CasClient.fromEndpointInfo(baseUrl, realm, endpointInfo, storage);
     this.nodeLimit = endpointInfo.nodeLimit;
 
@@ -400,12 +405,17 @@ export class BufferedCasClient implements IBufferedCasClient {
 
         // Handle missing nodes - retry after uploading missing chunks
         if (result.error === "missing_nodes" && result.missing) {
-          console.warn(`[BufferedCasClient] Missing nodes detected, retry ${retryCount + 1}/${maxRetries}:`, result.missing);
+          console.warn(
+            `[BufferedCasClient] Missing nodes detected, retry ${retryCount + 1}/${maxRetries}:`,
+            result.missing
+          );
 
           // Check if missing nodes are chunks we have
           const missingChunks = result.missing.filter((key: string) => this.pendingChunks.has(key));
           if (missingChunks.length === 0) {
-            throw new Error(`Missing nodes that are not pending chunks: ${result.missing.join(", ")}`);
+            throw new Error(
+              `Missing nodes that are not pending chunks: ${result.missing.join(", ")}`
+            );
           }
 
           // Re-upload missing chunks

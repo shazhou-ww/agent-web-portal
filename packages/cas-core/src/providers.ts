@@ -77,7 +77,10 @@ export const createMemoryStorage = (): MemoryStorage => {
  */
 export const createWebCryptoHash = (): HashProvider => ({
   sha256: async (data: Uint8Array): Promise<Uint8Array> => {
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    // Create a new ArrayBuffer copy to ensure compatibility with Web Crypto API
+    // This handles both regular ArrayBuffer and SharedArrayBuffer backing
+    const buffer = new Uint8Array(data).buffer;
+    const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
     return new Uint8Array(hashBuffer);
   },
 });

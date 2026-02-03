@@ -2,13 +2,13 @@
  * Database exports
  */
 
-export { createDynamoClient, createDocClient, resetClient } from "./client.ts"
-export { createTokensDb, type TokensDb } from "./tokens.ts"
-export { createOwnershipDb, type OwnershipDb } from "./ownership.ts"
-export { createCommitsDb, type CommitsDb } from "./commits.ts"
-export { createDepotsDb, type DepotsDb, MAIN_DEPOT_NAME } from "./depots.ts"
-export { createRefCountDb, type RefCountDb } from "./refcount.ts"
-export { createUsageDb, type UsageDb } from "./usage.ts"
-export { createUserRolesDb, type UserRolesDb, type UserRoleRecord } from "./user-roles.ts"
-export { createAwpPendingDb, type AwpPendingDb } from "./awp-pending.ts"
-export { createAwpPubkeysDb, type AwpPubkeysDb } from "./awp-pubkeys.ts"
+export { type AwpPendingDb, createAwpPendingDb } from "./awp-pending.ts";
+export { type AwpPubkeysDb, createAwpPubkeysDb } from "./awp-pubkeys.ts";
+export { createDocClient, createDynamoClient, resetClient } from "./client.ts";
+export { type CommitsDb, createCommitsDb } from "./commits.ts";
+export { createDepotsDb, type DepotsDb, MAIN_DEPOT_NAME } from "./depots.ts";
+export { createOwnershipDb, type OwnershipDb } from "./ownership.ts";
+export { createRefCountDb, type RefCountDb } from "./refcount.ts";
+export { createTokensDb, type TokensDb } from "./tokens.ts";
+export { createUsageDb, type UsageDb } from "./usage.ts";
+export { createUserRolesDb, type UserRoleRecord, type UserRolesDb } from "./user-roles.ts";

@@ -9,75 +9,71 @@
  * - CasfaClient: Full user client (extends Session with profile, tokens, clients, admin)
  */
 
-// Endpoint
-export { CasfaEndpoint } from "./endpoint.ts";
-
-// Session (base authentication layer)
-export { CasfaSession } from "./session.ts";
-
-// Client (full user features)
-export { CasfaClient } from "./client.ts";
-
-// VirtualFS (dict editing)
-export { VirtualFS } from "./vfs.ts";
-export type { FileInfo, WriteFileOptions } from "./vfs.ts";
-
-// Types
-export type {
-  // Endpoint types
-  CasfaEndpointConfig,
-  EndpointAuth,
-  EndpointInfo,
-  // Session types
-  CasfaSessionConfig,
-  SessionAuth,
-  P256SignFn,
-  // Client types
-  CasfaClientConfig,
-  // Ticket types
-  CreateTicketOptions,
-  TicketInfo,
-  // User types
-  UserProfile,
-  UsageInfo,
-  QuotaConfig,
-  UserInfo,
-  // Agent Token types
-  CreateAgentTokenOptions,
-  AgentTokenInfo,
-  // OAuth Client types
-  CreateClientOptions,
-  UpdateClientOptions,
-  ClientInfo,
-  // CAS types
-  TreeNodeInfo,
-  TreeResponse,
-  DictEntry,
-  WriteResult,
-  CasBlobRef,
-  // Depot types
-  DepotInfo,
-  CreateDepotOptions,
-  UpdateDepotOptions,
-  DepotHistoryEntry,
-  ListHistoryOptions,
-  PaginatedResult,
-} from "./types.ts";
-
 // Re-export useful types from cas-core
 export type {
-  StorageProvider,
+  CasNode,
   HashProvider,
   MemoryStorage,
-  CasNode,
   NodeKind,
+  StorageProvider,
 } from "@agent-web-portal/cas-core";
-
 // Re-export useful utilities from cas-core
 export {
   createMemoryStorage,
   createWebCryptoHash,
+  decodeNode,
   hashToKey,
   keyToHash,
-  decodeNode,
 } from "@agent-web-portal/cas-core";
+
+// Client (full user features)
+export { CasfaClient } from "./client.ts";
+// Endpoint
+export { CasfaEndpoint } from "./endpoint.ts";
+// Session (base authentication layer)
+export { CasfaSession } from "./session.ts";
+
+// Types
+export type {
+  AgentTokenInfo,
+  CasBlobRef,
+  // Client types
+  CasfaClientConfig,
+  // Endpoint types
+  CasfaEndpointConfig,
+  // Session types
+  CasfaSessionConfig,
+  ClientInfo,
+  // Agent Token types
+  CreateAgentTokenOptions,
+  // OAuth Client types
+  CreateClientOptions,
+  CreateDepotOptions,
+  // Ticket types
+  CreateTicketOptions,
+  DepotHistoryEntry,
+  // Depot types
+  DepotInfo,
+  DictEntry,
+  EndpointAuth,
+  EndpointInfo,
+  ListHistoryOptions,
+  P256SignFn,
+  PaginatedResult,
+  QuotaConfig,
+  SessionAuth,
+  TicketInfo,
+  // CAS types
+  TreeNodeInfo,
+  TreeResponse,
+  UpdateClientOptions,
+  UpdateDepotOptions,
+  UsageInfo,
+  UserInfo,
+  // User types
+  UserProfile,
+  WriteResult,
+} from "./types.ts";
+export type { FileInfo, WriteFileOptions } from "./vfs.ts";
+// VirtualFS (dict editing)
+export { VirtualFS } from "./vfs.ts";

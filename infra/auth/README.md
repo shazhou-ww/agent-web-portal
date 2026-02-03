@@ -21,14 +21,14 @@ MICROSOFT_CLIENT_ID=xxx           # Optional
 MICROSOFT_CLIENT_SECRET=xxx       # Optional
 ```
 
-2. Deploy:
+1. Deploy:
 
 ```bash
 cd infra/auth
 bun run deploy
 ```
 
-3. Configure OAuth redirect URIs in Google/Microsoft console:
+1. Configure OAuth redirect URIs in Google/Microsoft console:
 
 ```
 https://<COGNITO_DOMAIN>.auth.us-east-1.amazoncognito.com/oauth2/idpresponse

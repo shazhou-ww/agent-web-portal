@@ -282,7 +282,6 @@ export const makeDict = async (
   }
 
   const input: DictNodeInput = {
-    size: totalSize,
     children,
     childNames,
   };

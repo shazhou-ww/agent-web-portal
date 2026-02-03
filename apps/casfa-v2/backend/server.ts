@@ -7,36 +7,36 @@
  * - Cognito for authentication
  */
 
-import { createS3Storage } from "@agent-web-portal/cas-storage-s3"
-import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory"
-import { loadConfig } from "./src/config.ts"
-import { createApp, createNodeHashProvider } from "./src/app.ts"
+import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory";
+import { createS3Storage } from "@agent-web-portal/cas-storage-s3";
+import { createApp, createNodeHashProvider } from "./src/app.ts";
+import { loadConfig } from "./src/config.ts";
 
 // DB factories
 import {
-  createTokensDb,
-  createOwnershipDb,
-  createCommitsDb,
-  createDepotsDb,
-  createRefCountDb,
-  createUsageDb,
-  createUserRolesDb,
   createAwpPendingDb,
   createAwpPubkeysDb,
-} from "./src/db/index.ts"
+  createCommitsDb,
+  createDepotsDb,
+  createOwnershipDb,
+  createRefCountDb,
+  createTokensDb,
+  createUsageDb,
+  createUserRolesDb,
+} from "./src/db/index.ts";
 
 // Auth service
-import { createAuthService } from "./src/services/auth.ts"
+import { createAuthService } from "./src/services/auth.ts";
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const port = Number.parseInt(process.env.CAS_API_PORT ?? process.env.PORT ?? "3560", 10)
-const useMemoryStorage = process.env.USE_MEMORY_STORAGE === "true" || !process.env.CAS_BUCKET
+const port = Number.parseInt(process.env.CAS_API_PORT ?? process.env.PORT ?? "3560", 10);
+const useMemoryStorage = process.env.USE_MEMORY_STORAGE === "true" || !process.env.CAS_BUCKET;
 
 // Load configuration
-const config = loadConfig()
+const config = loadConfig();
 
 // ============================================================================
 // Create Dependencies
@@ -53,22 +53,22 @@ const db = {
   userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
   awpPendingDb: createAwpPendingDb({ tableName: config.db.tokensTable }),
   awpPubkeysDb: createAwpPubkeysDb({ tableName: config.db.tokensTable }),
-}
+};
 
 // Create storage (S3 or memory for local dev)
 const storage = useMemoryStorage
   ? createMemoryStorage()
-  : createS3Storage({ bucket: config.storage.bucket, prefix: config.storage.prefix })
+  : createS3Storage({ bucket: config.storage.bucket, prefix: config.storage.prefix });
 
 // Create auth service (Cognito)
 const authService = createAuthService({
   tokensDb: db.tokensDb,
   userRolesDb: db.userRolesDb,
   cognitoConfig: config.cognito,
-})
+});
 
 // Create hash provider
-const hashProvider = createNodeHashProvider()
+const hashProvider = createNodeHashProvider();
 
 // ============================================================================
 // Create App
@@ -80,17 +80,17 @@ const app = createApp({
   storage,
   authService,
   hashProvider,
-})
+});
 
 // ============================================================================
 // Start Server
 // ============================================================================
 
-console.log(`[CASFA v2] Starting server...`)
-console.log(`[CASFA v2] Listening on http://localhost:${port}`)
-console.log(`[CASFA v2] Storage: ${useMemoryStorage ? "in-memory" : "S3"}`)
+console.log(`[CASFA v2] Starting server...`);
+console.log(`[CASFA v2] Listening on http://localhost:${port}`);
+console.log(`[CASFA v2] Storage: ${useMemoryStorage ? "in-memory" : "S3"}`);
 
 Bun.serve({
   port,
   fetch: app.fetch,
-})
+});

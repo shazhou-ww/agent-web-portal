@@ -11,21 +11,25 @@
  * - Ticket management (create, list, revoke)
  */
 
-import { createWebCryptoHash, type StorageProvider, type HashProvider } from "@agent-web-portal/cas-core";
+import {
+  createWebCryptoHash,
+  type HashProvider,
+  type StorageProvider,
+} from "@agent-web-portal/cas-core";
 
 import { CasfaEndpoint } from "./endpoint.ts";
 import type {
   CasfaSessionConfig,
-  SessionAuth,
-  EndpointInfo,
-  CreateTicketOptions,
-  TicketInfo,
-  DepotInfo,
   CreateDepotOptions,
-  UpdateDepotOptions,
+  CreateTicketOptions,
   DepotHistoryEntry,
+  DepotInfo,
+  EndpointInfo,
   ListHistoryOptions,
   PaginatedResult,
+  SessionAuth,
+  TicketInfo,
+  UpdateDepotOptions,
 } from "./types.ts";
 
 /**
@@ -324,7 +328,11 @@ export class CasfaSession {
 
   protected async fetch(path: string, init?: RequestInit): Promise<Response> {
     const url = `${this.baseUrl}${path}`;
-    const headers = await this.getAuthHeaders(init?.method ?? "GET", url, init?.body as string | undefined);
+    const headers = await this.getAuthHeaders(
+      init?.method ?? "GET",
+      url,
+      init?.body as string | undefined
+    );
 
     return fetch(url, {
       ...init,

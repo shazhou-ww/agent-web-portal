@@ -13,6 +13,7 @@ This skill uses the {{greet}} tool to generate personalized greeting messages in
 ## Overview
 
 The greeting service supports the following languages:
+
 - English (en)
 - Spanish (es)
 - French (fr)
@@ -32,6 +33,7 @@ Use {{greet}} with just a name for the default English greeting:
 ```
 
 **Result:**
+
 ```json
 {
   "message": "Hello, Alice!",
@@ -51,6 +53,7 @@ Use {{greet}} with a language code:
 ```
 
 **Result:**
+
 ```json
 {
   "message": "¡Hola, Carlos!",
@@ -68,6 +71,7 @@ Use {{greet}} with a language code:
 ```
 
 **Result:**
+
 ```json
 {
   "message": "こんにちは、田中さん！",
@@ -82,9 +86,11 @@ Use {{greet}} with a language code:
 Generate a greeting message in the specified language.
 
 **Input:**
+
 - `name` (string, required): The name of the person to greet
 - `language` (string, optional): The language code (en, es, fr, de, ja). Defaults to "en"
 
 **Output:**
+
 - `message` (string): The greeting message
 - `timestamp` (string): ISO timestamp of when the greeting was generated

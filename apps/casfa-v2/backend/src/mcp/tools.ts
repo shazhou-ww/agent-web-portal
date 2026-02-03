@@ -33,7 +33,8 @@ export const MCP_TOOLS = [
   },
   {
     name: "cas_read",
-    description: "Read a blob from CAS using a ticket endpoint. Returns the blob content as base64.",
+    description:
+      "Read a blob from CAS using a ticket endpoint. Returns the blob content as base64.",
     inputSchema: {
       type: "object",
       properties: {
@@ -78,4 +79,4 @@ export const MCP_TOOLS = [
       required: ["endpoint", "content", "contentType"],
     },
   },
-] as const
+] as const;

@@ -13,6 +13,7 @@ This skill uses the {{jsonata_eval}} tool to compute state transitions for finit
 ## Overview
 
 A finite automaton is defined by:
+
 - A set of states
 - An initial state
 - A set of accepting states
@@ -118,6 +119,7 @@ Run a complete automaton simulation with acceptance check:
 ```
 
 **Result:**
+
 ```json
 {
   "final_state": "q2",

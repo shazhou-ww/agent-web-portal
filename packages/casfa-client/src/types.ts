@@ -2,7 +2,7 @@
  * CASFA Client Types
  */
 
-import type { StorageProvider, HashProvider, NodeKind } from "@agent-web-portal/cas-core";
+import type { HashProvider, NodeKind, StorageProvider } from "@agent-web-portal/cas-core";
 
 // ============================================================================
 // Endpoint Types
@@ -11,9 +11,7 @@ import type { StorageProvider, HashProvider, NodeKind } from "@agent-web-portal/
 /**
  * Endpoint authentication
  */
-export type EndpointAuth =
-  | { type: "ticket"; id: string }
-  | { type: "bearer"; token: string };
+export type EndpointAuth = { type: "ticket"; id: string } | { type: "bearer"; token: string };
 
 /**
  * Endpoint capabilities and configuration
@@ -83,9 +81,9 @@ export type P256SignFn = (
  * Session authentication - three methods supported
  */
 export type SessionAuth =
-  | { type: "user"; token: string }      // OAuth User Token (Bearer)
-  | { type: "agent"; token: string }     // Agent Token
-  | { type: "p256"; sign: P256SignFn };  // P256 signature
+  | { type: "user"; token: string } // OAuth User Token (Bearer)
+  | { type: "agent"; token: string } // Agent Token
+  | { type: "p256"; sign: P256SignFn }; // P256 signature
 
 /**
  * CasfaSession configuration
@@ -235,7 +233,7 @@ export interface CreateAgentTokenOptions {
 export interface AgentTokenInfo {
   id: string;
   label: string;
-  token?: string;  // Only returned on creation
+  token?: string; // Only returned on creation
   createdAt: string;
   expiresAt?: string;
   lastUsedAt?: string;
@@ -279,7 +277,7 @@ export interface UpdateClientOptions {
 export interface ClientInfo {
   id: string;
   name: string;
-  secret?: string;  // Only returned on creation
+  secret?: string; // Only returned on creation
   redirectUris: string[];
   scopes: string[];
   createdAt: string;

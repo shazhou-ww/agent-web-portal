@@ -335,7 +335,7 @@ async function handleRequest(request: McpRequest): Promise<void> {
           sendResponse(mcpError(id, -32603, "Failed to initialize: could not get user realm"));
           return;
         }
-        
+
         sendResponse(
           mcpSuccess(id, {
             protocolVersion: "2024-11-05",

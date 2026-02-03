@@ -13,6 +13,7 @@ This skill uses the {{jsonata_eval}} tool to perform statistical calculations an
 ## Overview
 
 JSONata provides powerful built-in functions for statistical operations:
+
 - `$sum()` - Sum of values
 - `$average()` - Arithmetic mean
 - `$count()` - Count of items
@@ -36,6 +37,7 @@ Calculate sum, average, min, max, and count for a list of numbers:
 ```
 
 **Result:**
+
 ```json
 {
   "sum": 150,
@@ -65,6 +67,7 @@ Calculate total sales from order records:
 ```
 
 **Result:**
+
 ```json
 {
   "total_sales": 725,
@@ -120,6 +123,7 @@ Calculate variance and standard deviation:
 ```
 
 **Result:**
+
 ```json
 {
   "mean": 5,
@@ -148,6 +152,7 @@ Calculate statistics for orders above a threshold:
 ```
 
 **Result:**
+
 ```json
 {
   "high_value_count": 3,
@@ -189,6 +194,7 @@ Count occurrences of each value:
 ```
 
 **Result:**
+
 ```json
 {
   "A": 4,

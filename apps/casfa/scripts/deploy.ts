@@ -57,7 +57,8 @@ function buildParameterOverrides(): string[] {
   overrides.push(`AuthStackName=${authStackName}`);
 
   // Callback base URL for production (CASFA-specific or fallback)
-  const callbackBaseUrl = process.env.CASFA_CALLBACK_BASE_URL || process.env.CALLBACK_BASE_URL || "";
+  const callbackBaseUrl =
+    process.env.CASFA_CALLBACK_BASE_URL || process.env.CALLBACK_BASE_URL || "";
   if (callbackBaseUrl) {
     overrides.push(`CallbackBaseUrl=${callbackBaseUrl}`);
   }

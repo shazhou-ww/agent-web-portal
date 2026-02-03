@@ -2,11 +2,11 @@
  * Tests for VirtualFS
  */
 
-import { describe, expect, it, beforeEach, mock } from "bun:test";
-import { VirtualFS } from "../src/vfs.ts";
-import type { CasfaEndpoint } from "../src/endpoint.ts";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { CasNode } from "@agent-web-portal/cas-core";
 import { hashToKey } from "@agent-web-portal/cas-core";
+import type { CasfaEndpoint } from "../src/endpoint.ts";
+import { VirtualFS } from "../src/vfs.ts";
 
 // ============================================================================
 // Mock Helpers
@@ -265,9 +265,7 @@ describe("VirtualFS", () => {
       const endpoint = createMockEndpoint(nodes);
       const vfs = VirtualFS.empty(endpoint);
 
-      await expect(vfs.mount("path", "sha256:nonexistent")).rejects.toThrow(
-        "Node not found"
-      );
+      await expect(vfs.mount("path", "sha256:nonexistent")).rejects.toThrow("Node not found");
     });
   });
 

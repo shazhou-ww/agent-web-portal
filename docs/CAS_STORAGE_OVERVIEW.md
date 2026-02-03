@@ -10,6 +10,7 @@ CAS（内容寻址存储）是一种以数据内容的哈希值作为地址的�
 $$\text{Key} = \text{sha256:} + \text{hex}(\text{SHA256}(\text{Content}))$$
 
 例如，内容 `"Hello, World!"` 的地址是：
+
 ```
 sha256:315f5bdb76d078c43b8ac0064e4a0164612b1fce77c869345bfc94c75894edd3
 ```
@@ -71,6 +72,7 @@ CAS 使用紧凑的二进制格式存储节点。每个节点由 **Header + 可�
 ### 节点类型判断
 
 通过 Flags 判断节点类型：
+
 - **Collection**：`HAS_NAMES` 为 1
 - **Chunk**：`HAS_NAMES` 为 0
 
@@ -83,12 +85,14 @@ CAS 使用紧凑的二进制格式存储节点。每个节点由 **Header + 可�
 Chunk 是存储原始二进制数据的节点。
 
 **结构**：
+
 - Header (flags: HAS_DATA, 可能有 HAS_TYPE)
 - Children（可选，用于 B-Tree 分片）
 - Content-Type（可选，MIME 类型）
 - Data（原始字节）
 
 **用途**：
+
 - 文件的实际内容
 - 大文件分片（多个 chunk 组成）
 
@@ -97,12 +101,14 @@ Chunk 是存储原始二进制数据的节点。
 Collection 表示一个目录结构，包含命名的子节点引用。
 
 **结构**：
+
 - Header (flags: HAS_NAMES, 可能有 HAS_TYPE)
 - Children（子节点哈希数组）
 - Names（子节点名称，与 Children 一一对应）
 - Content-Type（可选）
 
 **用途**：
+
 - 表示目录
 - 组织多个文件
 
@@ -136,6 +142,7 @@ Collection (root)
 空集合是一个特殊的 Collection，没有任何子节点。
 
 **二进制内容**（32 bytes）：
+
 ```
 Magic:       0x01534143
 Flags:       0x00000001 (HAS_NAMES)
@@ -147,6 +154,7 @@ TypeOffset:  0
 ```
 
 **固定 Key**：
+
 ```
 sha256:a78577c5cfc47ab3e4b116f01902a69e2e015b40cdef52f9b552cfb5104e769a
 ```

@@ -163,6 +163,7 @@ For local development with persistent S3 storage (instead of in-memory), you can
 1. **Start LocalStack**:
 
    **macOS / Windows / Linux:**
+
    ```bash
    docker run -d --name localstack -p 4566:4566 -e SERVICES=s3 localstack/localstack
    ```
@@ -170,27 +171,32 @@ For local development with persistent S3 storage (instead of in-memory), you can
 2. **Create S3 bucket**:
 
    **macOS / Linux:**
+
    ```bash
    AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws --endpoint-url=http://localhost:4566 --region us-east-1 s3 mb s3://awp-examples-blobs
    ```
 
    **Windows (PowerShell):**
+
    ```powershell
    $env:AWS_ACCESS_KEY_ID="test"; $env:AWS_SECRET_ACCESS_KEY="test"; aws --endpoint-url=http://localhost:4566 --region us-east-1 s3 mb s3://awp-examples-blobs
    ```
 
    **Windows (Command Prompt):**
+
    ```cmd
    set AWS_ACCESS_KEY_ID=test && set AWS_SECRET_ACCESS_KEY=test && aws --endpoint-url=http://localhost:4566 --region us-east-1 s3 mb s3://awp-examples-blobs
    ```
 
 3. **Start the server with S3 configuration**:
+
    ```bash
    # The env.json file is pre-configured for LocalStack
    bun run dev:sam
    ```
 
    The `env.json` file contains the LocalStack configuration that overrides `template.yaml` defaults:
+
    ```json
    {
      "ExamplesFunction": {
@@ -213,11 +219,13 @@ For local development with persistent S3 storage (instead of in-memory), you can
 4. **Deploy skills to LocalStack** (optional):
 
    **macOS / Linux:**
+
    ```bash
    S3_ENDPOINT=http://localhost:4566 BLOB_BUCKET=awp-examples-blobs AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test bun run deploy:skills:local
    ```
 
    **Windows (PowerShell):**
+
    ```powershell
    $env:S3_ENDPOINT="http://localhost:4566"; $env:BLOB_BUCKET="awp-examples-blobs"; $env:AWS_ACCESS_KEY_ID="test"; $env:AWS_SECRET_ACCESS_KEY="test"; bun run deploy:skills:local
    ```
@@ -225,6 +233,7 @@ For local development with persistent S3 storage (instead of in-memory), you can
 ### Verify LocalStack
 
 **macOS / Linux:**
+
 ```bash
 # List buckets
 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws --endpoint-url=http://localhost:4566 --region us-east-1 s3 ls
@@ -234,6 +243,7 @@ AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws --endpoint-url=http://loca
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 # List buckets
 $env:AWS_ACCESS_KEY_ID="test"; $env:AWS_SECRET_ACCESS_KEY="test"; aws --endpoint-url=http://localhost:4566 --region us-east-1 s3 ls

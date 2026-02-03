@@ -292,9 +292,7 @@ export class DepotDb {
           ":prefix": DEPOT_KEY_PREFIX,
         },
         Limit: limit,
-        ExclusiveStartKey: startKey
-          ? { realm, key: startKey }
-          : undefined,
+        ExclusiveStartKey: startKey ? { realm, key: startKey } : undefined,
       })
     );
 
@@ -328,8 +326,7 @@ export class DepotDb {
       new UpdateCommand({
         TableName: this.tableName,
         Key: { realm, key: this.buildDepotKey(depotId) },
-        UpdateExpression:
-          "SET #root = :root, #version = :version, #updatedAt = :updatedAt",
+        UpdateExpression: "SET #root = :root, #version = :version, #updatedAt = :updatedAt",
         ExpressionAttributeNames: {
           "#root": "root",
           "#version": "version",
@@ -438,9 +435,7 @@ export class DepotDb {
         },
         Limit: limit,
         ScanIndexForward: ascending,
-        ExclusiveStartKey: startKey
-          ? { realm, key: startKey }
-          : undefined,
+        ExclusiveStartKey: startKey ? { realm, key: startKey } : undefined,
       })
     );
 
