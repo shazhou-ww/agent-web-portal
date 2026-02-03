@@ -80,10 +80,10 @@ export type WriteResult = {
  * Convert key string to hash bytes
  */
 const keyToHashBytes = (key: string): Uint8Array => {
-  if (!key.startsWith("sha256:")) {
+  if (!key.startsWith("blake3s:")) {
     throw new Error(`Invalid key format: ${key}`);
   }
-  const hex = key.slice(7);
+  const hex = key.slice(8);
   const bytes = new Uint8Array(HASH_SIZE);
   for (let i = 0; i < HASH_SIZE; i++) {
     bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);

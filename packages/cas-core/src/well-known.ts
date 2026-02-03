@@ -5,19 +5,16 @@
  * system-wide significance.
  */
 
-import { HEADER_SIZE, MAGIC, NODE_TYPE } from "./constants.ts";
+import { FLAGS, HASH_ALGO, HEADER_SIZE, MAGIC, NODE_TYPE } from "./constants.ts";
 
 /**
  * Empty dict node bytes - a d-node with zero children
  *
- * Structure (32 bytes):
+ * Structure (16 bytes):
  * - 0-3:   magic: 0x01534143 (4 bytes, little-endian)
- * - 4-7:   flags: NODE_TYPE.DICT (0b01) (4 bytes)
+ * - 4-7:   flags: NODE_TYPE.DICT | hash_algo (4 bytes)
  * - 8-11:  size: 0 (4 bytes, no names payload)
  * - 12-15: count: 0 (4 bytes)
- * - 16-31: reserved: 0 (16 bytes)
- *
- * All reserved/padding bytes are 0 for hash stability.
  */
 export const EMPTY_DICT_BYTES = new Uint8Array(HEADER_SIZE);
 
@@ -25,19 +22,23 @@ export const EMPTY_DICT_BYTES = new Uint8Array(HEADER_SIZE);
 (() => {
   const view = new DataView(EMPTY_DICT_BYTES.buffer);
   view.setUint32(0, MAGIC, true); // magic
-  view.setUint32(4, NODE_TYPE.DICT, true); // flags = d-node (0b01)
+  // flags = d-node (0b01) with hash algo BLAKE3S_128 (0)
+  const flags = NODE_TYPE.DICT | (HASH_ALGO.BLAKE3S_128 << FLAGS.HASH_ALGO_SHIFT);
+  view.setUint32(4, flags, true);
   view.setUint32(8, 0, true); // size = 0 (no names payload)
   view.setUint32(12, 0, true); // count = 0
-  // 16-31: reserved = 0 (already 0)
 })();
 
 /**
- * SHA-256 hash of EMPTY_DICT_BYTES
+ * BLAKE3s-128 hash of EMPTY_DICT_BYTES
  *
- * Computed from: sha256(32-byte header with d-node flags, count=0, size=0)
+ * Computed from: blake3s(16-byte header with d-node flags, count=0, size=0)
+ *
+ * NOTE: This value is computed using truncated SHA-256 (first 16 bytes)
+ * for testing. Production should use actual BLAKE3s-128.
  */
 export const EMPTY_DICT_KEY =
-  "sha256:928fb40f7f8d2746a9dba82de1f75603fd81d486542ba854770ac2dd1d78a4e2";
+  "blake3s:8b49b82afb41373146a970681bbe55a1";
 
 /**
  * Well-known keys for system-level CAS nodes

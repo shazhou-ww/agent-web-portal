@@ -104,21 +104,21 @@ describe("Utils", () => {
   });
 
   describe("Hash key conversion", () => {
-    it("should create sha256: prefixed key", () => {
-      const hash = new Uint8Array(32).fill(0xab);
+    it("should create blake3s: prefixed key", () => {
+      const hash = new Uint8Array(16).fill(0xab);
       const key = hashToKey(hash);
-      expect(key).toBe("sha256:" + "ab".repeat(32));
+      expect(key).toBe("blake3s:" + "ab".repeat(16));
     });
 
     it("should extract hash from key", () => {
-      const key = "sha256:" + "cd".repeat(32);
+      const key = "blake3s:" + "cd".repeat(16);
       const hash = keyToHash(key);
-      expect(hash).toEqual(new Uint8Array(32).fill(0xcd));
+      expect(hash).toEqual(new Uint8Array(16).fill(0xcd));
     });
 
     it("should roundtrip hash", () => {
-      const original = new Uint8Array(32);
-      for (let i = 0; i < 32; i++) original[i] = i;
+      const original = new Uint8Array(16);
+      for (let i = 0; i < 16; i++) original[i] = i;
       expect(keyToHash(hashToKey(original))).toEqual(original);
     });
 

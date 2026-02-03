@@ -15,7 +15,7 @@ import type { CasHeader } from "../src/types.ts";
 
 describe("Header", () => {
   describe("encodeHeader", () => {
-    it("should produce 32 bytes", () => {
+    it("should produce 16 bytes", () => {
       const header: CasHeader = {
         magic: MAGIC,
         flags: 0,
@@ -65,18 +65,6 @@ describe("Header", () => {
       expect(view.getUint32(12, true)).toBe(42);
     });
 
-    it("should have reserved bytes = 0 at offset 16-31", () => {
-      const header: CasHeader = {
-        magic: MAGIC,
-        flags: 0b11,
-        size: 12345,
-        count: 10,
-      };
-      const bytes = encodeHeader(header);
-      for (let i = 16; i < 32; i++) {
-        expect(bytes[i]).toBe(0);
-      }
-    });
   });
 
   describe("decodeHeader", () => {
@@ -93,13 +81,13 @@ describe("Header", () => {
     });
 
     it("should throw on invalid magic", () => {
-      const bytes = new Uint8Array(32);
+      const bytes = new Uint8Array(16);
       bytes[0] = 0x00;
       expect(() => decodeHeader(bytes)).toThrow(/Invalid magic/);
     });
 
     it("should throw on buffer too small", () => {
-      const bytes = new Uint8Array(16);
+      const bytes = new Uint8Array(8);
       expect(() => decodeHeader(bytes)).toThrow(/Buffer too small/);
     });
 

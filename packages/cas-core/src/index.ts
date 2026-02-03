@@ -15,6 +15,7 @@ export {
   DEFAULT_NODE_LIMIT,
   FILEINFO_SIZE,
   FLAGS,
+  HASH_ALGO,
   HASH_SIZE,
   HEADER_SIZE,
   MAGIC,
@@ -48,7 +49,13 @@ export {
   createSuccessorHeader,
   decodeHeader,
   encodeHeader,
+  getBlockSize,
+  getExtensionCount,
+  getHashAlgo,
   getNodeType,
+  setBlockSize,
+  setExtensionCount,
+  setHashAlgo,
 } from "./header.ts";
 
 // Topology algorithms

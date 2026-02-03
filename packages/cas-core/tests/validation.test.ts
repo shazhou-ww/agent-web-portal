@@ -65,7 +65,7 @@ describe("Validation", () => {
     });
 
     it("should reject invalid magic", () => {
-      const bytes = new Uint8Array(32);
+      const bytes = new Uint8Array(16);
       bytes[0] = 0xff;
       const result = validateNodeStructure(bytes);
       expect(result.valid).toBe(false);
@@ -76,14 +76,14 @@ describe("Validation", () => {
       const encoded = await encodeFileNode(
         {
           data: new Uint8Array([1, 2, 3]),
-          children: [new Uint8Array(32)],
+          children: [new Uint8Array(16)],
           fileSize: 100,
         },
         hashProvider
       );
 
       // Truncate to remove some data
-      const truncated = encoded.bytes.slice(0, 80);
+      const truncated = encoded.bytes.slice(0, 60);
       const result = validateNodeStructure(truncated);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Length mismatch");
@@ -106,7 +106,7 @@ describe("Validation", () => {
 
     it("should reject unknown node type", () => {
       // Create a valid-looking header with node type = 0b00 (invalid)
-      const bytes = new Uint8Array(32);
+      const bytes = new Uint8Array(16);
       // Magic: "CAS\x01"
       bytes[0] = 0x43;
       bytes[1] = 0x41;
@@ -121,19 +121,23 @@ describe("Validation", () => {
       expect(result.error).toContain("Unknown node type");
     });
 
-    it("should reject reserved bytes not zero", async () => {
-      const encoded = await encodeFileNode(
-        { data: new Uint8Array([1, 2, 3]), fileSize: 3 },
-        hashProvider
-      );
+    it("should reject flags with reserved bits set (bits 16-31)", () => {
+      // Create a valid-looking f-node but with reserved flag bits set
+      const bytes = new Uint8Array(HEADER_SIZE + FILEINFO_SIZE + 3);
+      // Magic: "CAS\x01"
+      bytes[0] = 0x43;
+      bytes[1] = 0x41;
+      bytes[2] = 0x53;
+      bytes[3] = 0x01;
+      // Flags = f-node (0b11) with reserved bit 16 set
+      const view = new DataView(bytes.buffer);
+      view.setUint32(4, 0b11 | (1 << 16), true);
+      view.setUint32(8, FILEINFO_SIZE + 3, true);
+      view.setUint32(12, 0, true); // count = 0
 
-      // Corrupt reserved bytes (offset 16-31)
-      const corrupted = new Uint8Array(encoded.bytes);
-      corrupted[20] = 0xff;
-
-      const result = validateNodeStructure(corrupted);
+      const result = validateNodeStructure(bytes);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("not zero");
+      expect(result.error).toContain("reserved bits set");
     });
 
     it("should reject dict with unsorted children names", async () => {
@@ -151,32 +155,31 @@ describe("Validation", () => {
 
       // Manually corrupt the names to be unsorted by changing first name to "z.txt"
       const bytes = new Uint8Array(encoded.bytes);
-      // Names start after header(32) + children(64) = 96
+      // Names start after header(16) + children(32) = 48
       // First name: 2 bytes length + 5 bytes "a.txt"
-      bytes[98] = 0x7a; // 'z' instead of 'a'
+      bytes[50] = 0x7a; // 'z' instead of 'a'
 
       const result = validateNodeStructure(bytes);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("not sorted");
     });
 
-    it("should reject flags with unused bits set", () => {
-      // Create a valid-looking f-node but with unused flag bits set (bits 2-31)
+    it("should accept flags with valid bits set (extension, block size, hash algo)", () => {
+      // Create a valid-looking f-node with extension=0, block_size=4, hash_algo=0
       const bytes = new Uint8Array(HEADER_SIZE + FILEINFO_SIZE + 3);
       // Magic: "CAS\x01"
       bytes[0] = 0x43;
       bytes[1] = 0x41;
       bytes[2] = 0x53;
       bytes[3] = 0x01;
-      // Flags = 0b00010011 (f-node with bit 4 set, which should be 0)
-      bytes[4] = 0b00010011;
-      // size = 67 (FileInfo + 3 bytes data), count = 0
+      // Flags = f-node (0b11) with block_size=4 (bits 4-7)
       const view = new DataView(bytes.buffer);
+      view.setUint32(4, 0b11 | (4 << 4), true); // f-node with block_size=4
       view.setUint32(8, FILEINFO_SIZE + 3, true);
+      view.setUint32(12, 0, true); // count = 0
 
       const result = validateNodeStructure(bytes);
-      expect(result.valid).toBe(false);
-      expect(result.error).toContain("unused bits set");
+      expect(result.valid).toBe(true);
     });
 
     it("should reject f-node with size < FILEINFO_SIZE", () => {
@@ -187,10 +190,10 @@ describe("Validation", () => {
       bytes[1] = 0x41;
       bytes[2] = 0x53;
       bytes[3] = 0x01;
-      // Flags = 0b11 (f-node)
-      bytes[4] = 0b11;
-      // size = 10 (less than FILEINFO_SIZE=64)
+      // Flags = f-node (0b11)
       const view = new DataView(bytes.buffer);
+      view.setUint32(4, 0b11, true);
+      // size = 10 (less than FILEINFO_SIZE=64)
       view.setUint32(8, 10, true);
       view.setUint32(12, 0, true); // count = 0
 
@@ -207,8 +210,8 @@ describe("Validation", () => {
 
       // Corrupt the contentType area with non-printable character
       const corrupted = new Uint8Array(validNode.bytes);
-      // ContentType starts at Header(32) + fileSize(8) = 40
-      corrupted[40] = 0x01; // Non-printable ASCII
+      // ContentType starts at Header(16) + fileSize(8) = 24
+      corrupted[24] = 0x01; // Non-printable ASCII
 
       const result = validateNodeStructure(corrupted);
       expect(result.valid).toBe(false);
@@ -223,9 +226,9 @@ describe("Validation", () => {
 
       // Corrupt the padding area after contentType
       const corrupted = new Uint8Array(validNode.bytes);
-      // ContentType slot is 56 bytes starting at offset 40
-      // "text/plain" is 10 bytes, so padding starts at 50
-      corrupted[90] = 0xff; // Should be 0x00
+      // ContentType slot is 56 bytes starting at offset 24 (Header(16) + fileSize(8))
+      // "text/plain" is 10 bytes, so padding starts at 34
+      corrupted[74] = 0xff; // Should be 0x00 (near end of contentType area)
 
       const result = validateNodeStructure(corrupted);
       expect(result.valid).toBe(false);
@@ -247,11 +250,11 @@ describe("Validation", () => {
 
       // Corrupt second name to match first ("a.txt" -> "a.txt")
       const corrupted = new Uint8Array(validNode.bytes);
-      // Children end at 32 + 64 = 96
-      // First name: 2 bytes len + "a.txt" = 7 bytes (offset 96-102)
-      // Second name starts at 103: 2 bytes len + "b.txt"
-      // Change "b" to "a" at offset 105
-      corrupted[105] = 0x61; // 'a' instead of 'b'
+      // Children end at 16 + 32 = 48
+      // First name: 2 bytes len + "a.txt" = 7 bytes (offset 48-54)
+      // Second name starts at 55: 2 bytes len + "b.txt"
+      // Change "b" to "a" at offset 57
+      corrupted[57] = 0x61; // 'a' instead of 'b'
 
       const result = validateNodeStructure(corrupted);
       expect(result.valid).toBe(false);
@@ -278,8 +281,8 @@ describe("Validation", () => {
         hashProvider
       );
 
-      // Use wrong key
-      const wrongKey = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+      // Use wrong key (128-bit = 32 hex chars)
+      const wrongKey = "blake3s:00000000000000000000000000000000";
       const result = await validateNode(encoded.bytes, wrongKey, hashProvider);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Hash mismatch");

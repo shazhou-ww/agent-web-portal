@@ -18,14 +18,14 @@ export const MAGIC = 0x01534143;
 export const MAGIC_BYTES = new Uint8Array([0x43, 0x41, 0x53, 0x01]); // "CAS\x01"
 
 /**
- * Header size in bytes
+ * Header size in bytes (base header without extensions)
  */
-export const HEADER_SIZE = 32;
+export const HEADER_SIZE = 16;
 
 /**
- * SHA-256 hash size in bytes
+ * BLAKE3s-128 hash size in bytes
  */
-export const HASH_SIZE = 32;
+export const HASH_SIZE = 16;
 
 /**
  * FileInfo size in bytes (f-node only)
@@ -62,11 +62,40 @@ export const NODE_TYPE = {
 } as const;
 
 /**
- * Flag bit masks
+ * Flag bit masks and shifts
+ *
+ * Flags layout (32-bit):
+ * - bits 0-1:   node type (2 bits)
+ * - bits 2-3:   header extension count (2 bits, n * 16 bytes)
+ * - bits 4-7:   block size (4 bits, 2^n * KB)
+ * - bits 8-15:  hash algorithm (8 bits)
+ * - bits 16-31: reserved (must be 0)
  */
 export const FLAGS = {
   /** Node type mask (bits 0-1) */
   TYPE_MASK: 0b11,
+  /** Header extension count mask (bits 2-3) */
+  EXTENSION_MASK: 0b1100,
+  /** Header extension count shift */
+  EXTENSION_SHIFT: 2,
+  /** Block size mask (bits 4-7) */
+  BLOCK_SIZE_MASK: 0b11110000,
+  /** Block size shift */
+  BLOCK_SIZE_SHIFT: 4,
+  /** Hash algorithm mask (bits 8-15) */
+  HASH_ALGO_MASK: 0xff00,
+  /** Hash algorithm shift */
+  HASH_ALGO_SHIFT: 8,
+  /** Reserved bits mask (bits 16-31) */
+  RESERVED_MASK: 0xffff0000,
+} as const;
+
+/**
+ * Hash algorithm values (flags bits 8-15)
+ */
+export const HASH_ALGO = {
+  /** BLAKE3s-128 (default) */
+  BLAKE3S_128: 0,
 } as const;
 
 /**

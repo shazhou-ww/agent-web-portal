@@ -17,11 +17,11 @@ export type NodeKind = "dict" | "file" | "successor";
  */
 export type HashProvider = {
   /**
-   * Compute SHA-256 hash of data
+   * Compute hash of data (BLAKE3s-128 for CAS\01)
    * @param data - Input bytes
-   * @returns 32-byte hash as Uint8Array
+   * @returns 16-byte hash as Uint8Array
    */
-  sha256: (data: Uint8Array) => Promise<Uint8Array>;
+  hash: (data: Uint8Array) => Promise<Uint8Array>;
 };
 
 /**
@@ -31,7 +31,7 @@ export type HashProvider = {
 export type StorageProvider = {
   /**
    * Store data by key
-   * @param key - CAS key (e.g., "sha256:...")
+   * @param key - CAS key (e.g., "blake3s:...")
    * @param data - Raw bytes to store
    */
   put: (key: string, data: Uint8Array) => Promise<void>;
@@ -52,19 +52,25 @@ export type StorageProvider = {
 };
 
 /**
- * Parsed CAS node header (32 bytes)
+ * Parsed CAS node header (16 bytes base + optional extensions)
  *
  * Layout:
  * - 0-3:   magic (u32 LE) - 0x01534143
- * - 4-7:   flags (u32 LE) - node type (bits 0-1), reserved (bits 2-31)
+ * - 4-7:   flags (u32 LE) - see FLAGS constants for bit layout
  * - 8-11:  size (u32 LE) - payload size
  * - 12-15: count (u32 LE) - number of children
- * - 16-31: reserved (16 bytes, must be 0)
+ *
+ * Flags layout:
+ * - bits 0-1:   node type
+ * - bits 2-3:   header extension count (n * 16 bytes)
+ * - bits 4-7:   block size (2^n * KB)
+ * - bits 8-15:  hash algorithm (0 = BLAKE3s-128)
+ * - bits 16-31: reserved
  */
 export type CasHeader = {
   /** Magic number (0x01534143) */
   magic: number;
-  /** Flag bits (node type in bits 0-1) */
+  /** Flag bits (see FLAGS constants) */
   flags: number;
   /** Payload size (not including header and children) */
   size: number;
@@ -94,7 +100,7 @@ export type CasNode = {
   size: number;
   /** File info (f-node only: fileSize + contentType) */
   fileInfo?: FileInfo;
-  /** Child hashes (32 bytes each) */
+  /** Child hashes (16 bytes each) */
   children?: Uint8Array[];
   /** Child names (d-node only, sorted by UTF-8 bytes) */
   childNames?: string[];
@@ -130,7 +136,7 @@ export type SuccessorNodeInput = {
  * Dict node input for encoding (d-node)
  */
 export type DictNodeInput = {
-  /** Child hashes (32 bytes each) */
+  /** Child hashes (16 bytes each) */
   children: Uint8Array[];
   /** Child names (will be sorted by UTF-8 bytes) */
   childNames: string[];
@@ -154,6 +160,6 @@ export type LayoutNode = {
 export type EncodedNode = {
   /** Raw bytes of the encoded node */
   bytes: Uint8Array;
-  /** SHA-256 hash of the bytes */
+  /** BLAKE3s-128 hash of the bytes */
   hash: Uint8Array;
 };

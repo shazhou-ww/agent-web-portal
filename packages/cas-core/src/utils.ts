@@ -120,18 +120,18 @@ export function concatBytes(...arrays: Uint8Array[]): Uint8Array {
 }
 
 /**
- * Format hash as "sha256:XXXX" key
+ * Format hash as "blake3s:XXXX" key
  */
 export function hashToKey(hash: Uint8Array): string {
-  return `sha256:${bytesToHex(hash)}`;
+  return `blake3s:${bytesToHex(hash)}`;
 }
 
 /**
- * Extract hash bytes from "sha256:XXXX" key
+ * Extract hash bytes from "blake3s:XXXX" key
  */
 export function keyToHash(key: string): Uint8Array {
-  if (!key.startsWith("sha256:")) {
+  if (!key.startsWith("blake3s:")) {
     throw new Error(`Invalid key format: ${key}`);
   }
-  return hexToBytes(key.slice(7));
+  return hexToBytes(key.slice(8));
 }

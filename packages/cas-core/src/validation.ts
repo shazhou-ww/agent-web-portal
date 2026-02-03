@@ -5,9 +5,8 @@
  *
  * Layer 1 - Header Strong Validation:
  * - Magic bytes
- * - Flags unused bits (2-31) are zero
- * - Reserved bytes (16-31) are all zero
- * - Length consistency: buffer.length == 32 + count * 32 + size
+ * - Flags reserved bits (16-31) are zero
+ * - Length consistency: buffer.length == 16 + count * 16 + size
  * - Hash matches content
  *
  * Layer 2 - Payload Validation:
@@ -178,7 +177,7 @@ function validatePascalStringsNoExtract(
  * 6. For dicts: size equals sum of children sizes
  *
  * @param bytes - Raw node bytes
- * @param expectedKey - Expected hash key (sha256:...)
+ * @param expectedKey - Expected hash key (blake3s:...)
  * @param hashProvider - Hash provider for verification
  * @param existsChecker - Optional function to check child existence
  * @param getSize - Optional function to get child size for dict validation
@@ -232,34 +231,24 @@ export async function validateNode(
   const isDict = nodeType === NODE_TYPE.DICT;
   const isFile = nodeType === NODE_TYPE.FILE;
 
-  // 4. Validate flags unused bits are zero (bits 2-31)
-  if ((header.flags & ~FLAGS.TYPE_MASK) !== 0) {
+  // 4. Validate flags reserved bits are zero (bits 16-31)
+  if ((header.flags & FLAGS.RESERVED_MASK) !== 0) {
     return {
       valid: false,
-      error: `Flags has unused bits set: 0x${header.flags.toString(16)}`,
+      error: `Flags has reserved bits set: 0x${header.flags.toString(16)}`,
     };
   }
 
-  // 5. Validate length consistency: buffer.length == 32 + count * 32 + size
+  // 5. Validate length consistency: buffer.length == 16 + count * 16 + size
   const expectedLength = HEADER_SIZE + header.count * HASH_SIZE + header.size;
   if (bytes.length !== expectedLength) {
     return {
       valid: false,
-      error: `Length mismatch: expected ${expectedLength} (32 + ${header.count} * 32 + ${header.size}), actual=${bytes.length}`,
+      error: `Length mismatch: expected ${expectedLength} (${HEADER_SIZE} + ${header.count} * ${HASH_SIZE} + ${header.size}), actual=${bytes.length}`,
     };
   }
 
-  // 6. Validate reserved bytes are zero (bytes 16-31)
-  for (let i = 16; i < 32; i++) {
-    if (bytes[i] !== 0) {
-      return {
-        valid: false,
-        error: `Reserved byte ${i} is not zero (value=${bytes[i]})`,
-      };
-    }
-  }
-
-  // 7. Validate children section is within bounds
+  // 6. Validate children section is within bounds
   const childrenEnd = HEADER_SIZE + header.count * HASH_SIZE;
   if (childrenEnd > bytes.length) {
     return {
@@ -268,7 +257,7 @@ export async function validateNode(
     };
   }
 
-  // 8. Extract child keys
+  // 7. Extract child keys
   const childKeys: string[] = [];
   for (let i = 0; i < header.count; i++) {
     const offset = HEADER_SIZE + i * HASH_SIZE;
@@ -276,7 +265,7 @@ export async function validateNode(
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 9. Validate f-node FileInfo section (64 bytes: fileSize + contentType)
+  // 8. Validate f-node FileInfo section (64 bytes: fileSize + contentType)
   if (isFile) {
     // f-node size must be at least FILEINFO_SIZE (64 bytes)
     if (header.size < FILEINFO_SIZE) {
@@ -316,7 +305,7 @@ export async function validateNode(
     }
   }
 
-  // 10. Validate Pascal strings for d-node names
+  // 9. Validate Pascal strings for d-node names
   let childNames: string[] = [];
   if (isDict && header.count > 0) {
     // Names section starts right after children
@@ -328,7 +317,7 @@ export async function validateNode(
     childNames = names!;
   }
 
-  // 12. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
+  // 10. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
   if (isDict && childNames.length > 1) {
     const textEncoder = new TextEncoder();
     for (let i = 0; i < childNames.length - 1; i++) {
@@ -350,8 +339,8 @@ export async function validateNode(
     }
   }
 
-  // 13. Verify hash
-  const actualHash = await hashProvider.sha256(bytes);
+  // 11. Verify hash
+  const actualHash = await hashProvider.hash(bytes);
   const actualKey = hashToKey(actualHash);
   if (actualKey !== expectedKey) {
     return {
@@ -360,7 +349,7 @@ export async function validateNode(
     };
   }
 
-  // 14. Check children exist (if checker provided)
+  // 12. Check children exist (if checker provided)
   if (existsChecker && childKeys.length > 0) {
     const missing: string[] = [];
     for (const key of childKeys) {
@@ -380,7 +369,7 @@ export async function validateNode(
     }
   }
 
-  // 15. Validate dict node size (sum of children sizes)
+  // 13. Validate dict node size (sum of children sizes)
   if (isDict && getSize && childKeys.length > 0) {
     let expectedSize = 0;
     for (const key of childKeys) {
@@ -462,40 +451,30 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
   const isDict = nodeType === NODE_TYPE.DICT;
   const isFile = nodeType === NODE_TYPE.FILE;
 
-  // 4. Validate flags unused bits are zero (bits 2-31)
-  if ((header.flags & ~FLAGS.TYPE_MASK) !== 0) {
+  // 4. Validate flags reserved bits are zero (bits 16-31)
+  if ((header.flags & FLAGS.RESERVED_MASK) !== 0) {
     return {
       valid: false,
-      error: `Flags has unused bits set: 0x${header.flags.toString(16)}`,
+      error: `Flags has reserved bits set: 0x${header.flags.toString(16)}`,
     };
   }
 
-  // 5. Validate length consistency: buffer.length == 32 + count * 32 + size
+  // 5. Validate length consistency: buffer.length == 16 + count * 16 + size
   const expectedLength = HEADER_SIZE + header.count * HASH_SIZE + header.size;
   if (bytes.length !== expectedLength) {
     return {
       valid: false,
-      error: `Length mismatch: expected ${expectedLength} (32 + ${header.count} * 32 + ${header.size}), actual=${bytes.length}`,
+      error: `Length mismatch: expected ${expectedLength} (${HEADER_SIZE} + ${header.count} * ${HASH_SIZE} + ${header.size}), actual=${bytes.length}`,
     };
   }
 
-  // 6. Validate reserved bytes are zero (bytes 16-31)
-  for (let i = 16; i < 32; i++) {
-    if (bytes[i] !== 0) {
-      return {
-        valid: false,
-        error: `Reserved byte ${i} is not zero (value=${bytes[i]})`,
-      };
-    }
-  }
-
-  // 7. Validate children section
+  // 6. Validate children section
   const childrenEnd = HEADER_SIZE + header.count * HASH_SIZE;
   if (childrenEnd > bytes.length) {
     return { valid: false, error: "Children section exceeds buffer" };
   }
 
-  // 8. Extract child keys
+  // 7. Extract child keys
   const childKeys: string[] = [];
   for (let i = 0; i < header.count; i++) {
     const offset = HEADER_SIZE + i * HASH_SIZE;
@@ -503,7 +482,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 9. Validate f-node FileInfo section
+  // 8. Validate f-node FileInfo section
   if (isFile) {
     if (header.size < FILEINFO_SIZE) {
       return {
@@ -539,7 +518,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     }
   }
 
-  // 10. Validate Pascal strings for d-node names and check sorting
+  // 9. Validate Pascal strings for d-node names and check sorting
   if (isDict && header.count > 0) {
     const namesOffset = childrenEnd;
     const [valid, error, names] = validatePascalStringsWithNames(bytes, namesOffset, header.count);

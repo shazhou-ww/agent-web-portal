@@ -21,7 +21,7 @@ Authorization: Agent {agentToken}
 ## 子文档
 
 - [端点信息与使用统计](./01-endpoint.md) - Realm 基本信息和 usage 统计
-- [Commit 操作](./02-commits.md) - 创建、列出、更新、删除 Commit
+- [Ticket 管理](./02-tickets.md) - Realm 下的 Ticket 列表与管理
 - [Node 操作](./03-nodes.md) - 节点的预检查、上传、下载、元信息获取
 - [Depot 管理](./04-depots.md) - 命名存储空间的版本控制
 
@@ -34,15 +34,13 @@ Authorization: Agent {agentToken}
 | GET | `/api/realm/{realmId}` | 获取 Realm 端点信息 | Read |
 | GET | `/api/realm/{realmId}/usage` | 获取使用统计 | Read |
 
-### Commit 操作
+### Ticket 管理
 
 | 方法 | 路径 | 描述 | 权限 |
 |------|------|------|------|
-| POST | `/api/realm/{realmId}/commit` | 创建 Commit | Write |
-| GET | `/api/realm/{realmId}/commits` | 列出 Commits | Read |
-| GET | `/api/realm/{realmId}/commits/:root` | 获取 Commit 详情 | Read |
-| PATCH | `/api/realm/{realmId}/commits/:root` | 更新 Commit 元数据 | Write |
-| DELETE | `/api/realm/{realmId}/commits/:root` | 删除 Commit | Write |
+| GET | `/api/realm/{realmId}/tickets` | 列出 Realm 下所有 Tickets | Read |
+| GET | `/api/realm/{realmId}/tickets/:ticketId` | 获取 Ticket 详情 | Read |
+| DELETE | `/api/realm/{realmId}/tickets/:ticketId` | 删除 Ticket（仅 User） | Write |
 
 ### Node 操作
 
@@ -65,4 +63,4 @@ Authorization: Agent {agentToken}
 | GET | `/api/realm/{realmId}/depots/:depotId/history` | 列出 Depot 历史 | Read |
 | POST | `/api/realm/{realmId}/depots/:depotId/rollback` | 回滚到指定版本 | Write |
 
-> **注意**: Ticket 不支持 Depot 操作。
+> **注意**: Ticket 路由不支持 Depot 操作，Depot 只能通过 Realm 路由管理。

@@ -34,12 +34,6 @@ describe("Well-known Keys", () => {
       expect(view.getUint32(12, true)).toBe(0);
     });
 
-    it("should have reserved bytes = 0 at offset 16-31", () => {
-      for (let i = 16; i < 32; i++) {
-        expect(EMPTY_DICT_BYTES[i]).toBe(0);
-      }
-    });
-
     it("should decode correctly as a d-node header", () => {
       const header = decodeHeader(EMPTY_DICT_BYTES);
       expect(header.count).toBe(0);
@@ -49,16 +43,16 @@ describe("Well-known Keys", () => {
   });
 
   describe("EMPTY_DICT_KEY", () => {
-    it("should be a valid sha256 key format", () => {
-      expect(EMPTY_DICT_KEY).toMatch(/^sha256:[a-f0-9]{64}$/);
+    it("should be a valid blake3s key format", () => {
+      expect(EMPTY_DICT_KEY).toMatch(/^blake3s:[a-f0-9]{32}$/);
     });
 
-    it("should match the hash of EMPTY_DICT_BYTES", async () => {
+    it("should match the hash of EMPTY_DICT_BYTES (using truncated SHA-256 for testing)", async () => {
       const hash = await crypto.subtle.digest("SHA-256", EMPTY_DICT_BYTES);
-      const hashHex = Array.from(new Uint8Array(hash))
+      const truncatedHashHex = Array.from(new Uint8Array(hash).slice(0, 16))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      expect(EMPTY_DICT_KEY).toBe(`sha256:${hashHex}`);
+      expect(EMPTY_DICT_KEY).toBe(`blake3s:${truncatedHashHex}`);
     });
   });
 

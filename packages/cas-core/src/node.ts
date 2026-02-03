@@ -122,7 +122,7 @@ export async function encodeDictNode(
   const nodeBytes = concatBytes(headerBytes, childrenBytes, namesBytes);
 
   // Compute hash
-  const hash = await hashProvider.sha256(nodeBytes);
+  const hash = await hashProvider.hash(nodeBytes);
 
   return { bytes: nodeBytes, hash };
 }
@@ -143,11 +143,11 @@ export async function encodeSuccessorNode(
   const header = createSuccessorHeader(data.length, children.length);
   const headerBytes = encodeHeader(header);
 
-  // Combine all sections (no padding needed - Header and Children are 32-byte aligned)
+  // Combine all sections (no padding needed - Header and Children are 16-byte aligned)
   const nodeBytes = concatBytes(headerBytes, childrenBytes, data);
 
   // Compute hash
-  const hash = await hashProvider.sha256(nodeBytes);
+  const hash = await hashProvider.hash(nodeBytes);
 
   return { bytes: nodeBytes, hash };
 }
@@ -174,7 +174,7 @@ export async function encodeFileNode(
   const nodeBytes = concatBytes(headerBytes, childrenBytes, fileInfoBytes, data);
 
   // Compute hash
-  const hash = await hashProvider.sha256(nodeBytes);
+  const hash = await hashProvider.hash(nodeBytes);
 
   return { bytes: nodeBytes, hash };
 }

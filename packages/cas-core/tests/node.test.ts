@@ -16,19 +16,19 @@ import type { HashProvider } from "../src/types.ts";
 
 // Mock hash provider for testing
 const mockHashProvider: HashProvider = {
-  async sha256(data: Uint8Array): Promise<Uint8Array> {
-    // Simple mock: just return first 32 bytes or pad with zeros
+  async hash(data: Uint8Array): Promise<Uint8Array> {
+    // Simple mock: just return first 16 bytes or pad with zeros
     const hash = new Uint8Array(HASH_SIZE);
     hash.set(data.slice(0, Math.min(data.length, HASH_SIZE)));
     return hash;
   },
 };
 
-// Real hash provider using Web Crypto
+// Real hash provider using Web Crypto (truncated SHA-256 for testing)
 const realHashProvider: HashProvider = {
-  async sha256(data: Uint8Array): Promise<Uint8Array> {
+  async hash(data: Uint8Array): Promise<Uint8Array> {
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    return new Uint8Array(hashBuffer);
+    return new Uint8Array(hashBuffer).slice(0, 16);
   },
 };
 
@@ -38,7 +38,7 @@ describe("Node", () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
       const result = await encodeFileNode({ data, fileSize: 5 }, mockHashProvider);
 
-      // Header(32) + FileInfo(64) + data(5) = 101
+      // Header(16) + FileInfo(64) + data(5) = 85
       expect(result.bytes.length).toBe(HEADER_SIZE + FILEINFO_SIZE + 5);
       expect(result.hash.length).toBe(HASH_SIZE);
     });
@@ -130,7 +130,7 @@ describe("Node", () => {
       const data = new Uint8Array([1, 2, 3]);
       const result = await encodeSuccessorNode({ data }, mockHashProvider);
 
-      // Header(32) + data(3) = 35 (no FileInfo)
+      // Header(16) + data(3) = 19 (no FileInfo)
       expect(result.bytes.length).toBe(HEADER_SIZE + 3);
     });
   });
@@ -285,7 +285,7 @@ describe("Node", () => {
     });
 
     it("should return false for too small buffer", () => {
-      expect(isValidNode(new Uint8Array(16))).toBe(false);
+      expect(isValidNode(new Uint8Array(8))).toBe(false);
     });
   });
 

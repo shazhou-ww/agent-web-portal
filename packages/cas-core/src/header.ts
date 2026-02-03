@@ -1,15 +1,21 @@
 /**
  * CAS Node Header Encoding/Decoding (v2.1)
  *
- * Header layout (32 bytes):
+ * Header layout (16 bytes base + optional extensions):
  * - 0-3:   magic (u32 LE) - 0x01534143 ("CAS\x01")
- * - 4-7:   flags (u32 LE) - node type (bits 0-1), reserved (bits 2-31)
+ * - 4-7:   flags (u32 LE) - see FLAGS constants for bit layout
  * - 8-11:  size (u32 LE) - payload size
  * - 12-15: count (u32 LE) - number of children
- * - 16-31: reserved (16 bytes, must be 0)
+ *
+ * Flags layout:
+ * - bits 0-1:   node type
+ * - bits 2-3:   header extension count (n * 16 bytes)
+ * - bits 4-7:   block size (2^n * KB)
+ * - bits 8-15:  hash algorithm (0 = BLAKE3s-128)
+ * - bits 16-31: reserved
  */
 
-import { FLAGS, HEADER_SIZE, MAGIC, NODE_TYPE } from "./constants.ts";
+import { FLAGS, HASH_ALGO, HEADER_SIZE, MAGIC, NODE_TYPE } from "./constants.ts";
 import type { CasHeader } from "./types.ts";
 
 /**
@@ -23,7 +29,6 @@ export function encodeHeader(header: CasHeader): Uint8Array {
   view.setUint32(4, header.flags, true);
   view.setUint32(8, header.size, true);
   view.setUint32(12, header.count, true);
-  // Bytes 16-31 are reserved (already 0)
 
   return new Uint8Array(buffer);
 }
@@ -57,31 +62,85 @@ export function decodeHeader(buffer: Uint8Array): CasHeader {
 }
 
 /**
- * Get node type from flags
+ * Get node type from flags (bits 0-1)
  */
 export function getNodeType(flags: number): number {
   return flags & FLAGS.TYPE_MASK;
 }
 
 /**
+ * Get header extension count from flags (bits 2-3)
+ * Returns the number of 16-byte extension segments
+ */
+export function getExtensionCount(flags: number): number {
+  return (flags & FLAGS.EXTENSION_MASK) >>> FLAGS.EXTENSION_SHIFT;
+}
+
+/**
+ * Set header extension count in flags (bits 2-3)
+ * @param flags - Current flags value
+ * @param count - Extension count (0-3)
+ */
+export function setExtensionCount(flags: number, count: number): number {
+  return (flags & ~FLAGS.EXTENSION_MASK) | ((count << FLAGS.EXTENSION_SHIFT) & FLAGS.EXTENSION_MASK);
+}
+
+/**
+ * Get block size from flags (bits 4-7)
+ * Returns the exponent n where block size = 2^n * KB
+ */
+export function getBlockSize(flags: number): number {
+  return (flags & FLAGS.BLOCK_SIZE_MASK) >>> FLAGS.BLOCK_SIZE_SHIFT;
+}
+
+/**
+ * Set block size in flags (bits 4-7)
+ * @param flags - Current flags value
+ * @param size - Block size exponent (0-15)
+ */
+export function setBlockSize(flags: number, size: number): number {
+  return (flags & ~FLAGS.BLOCK_SIZE_MASK) | ((size << FLAGS.BLOCK_SIZE_SHIFT) & FLAGS.BLOCK_SIZE_MASK);
+}
+
+/**
+ * Get hash algorithm from flags (bits 8-15)
+ * 0 = BLAKE3s-128
+ */
+export function getHashAlgo(flags: number): number {
+  return (flags & FLAGS.HASH_ALGO_MASK) >>> FLAGS.HASH_ALGO_SHIFT;
+}
+
+/**
+ * Set hash algorithm in flags (bits 8-15)
+ * @param flags - Current flags value
+ * @param algo - Hash algorithm value (0 = BLAKE3s-128)
+ */
+export function setHashAlgo(flags: number, algo: number): number {
+  return (flags & ~FLAGS.HASH_ALGO_MASK) | ((algo << FLAGS.HASH_ALGO_SHIFT) & FLAGS.HASH_ALGO_MASK);
+}
+
+/**
  * Build flags for a dict node (d-node)
+ * Uses default hash algorithm (BLAKE3s-128)
  */
 export function buildDictFlags(): number {
-  return NODE_TYPE.DICT;
+  return NODE_TYPE.DICT | (HASH_ALGO.BLAKE3S_128 << FLAGS.HASH_ALGO_SHIFT);
 }
 
 /**
  * Build flags for a successor node (s-node)
+ * Uses default hash algorithm (BLAKE3s-128)
  */
 export function buildSuccessorFlags(): number {
-  return NODE_TYPE.SUCCESSOR;
+  return NODE_TYPE.SUCCESSOR | (HASH_ALGO.BLAKE3S_128 << FLAGS.HASH_ALGO_SHIFT);
 }
 
 /**
  * Build flags for a file node (f-node)
+ * Uses default hash algorithm (BLAKE3s-128)
  */
 export function buildFileFlags(): number {
-  return NODE_TYPE.FILE;
+  return NODE_TYPE.FILE | (HASH_ALGO.BLAKE3S_128 << FLAGS.HASH_ALGO_SHIFT);
 }
 
 /**

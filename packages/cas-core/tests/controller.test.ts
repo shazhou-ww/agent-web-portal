@@ -33,7 +33,7 @@ describe("Controller", () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
       const result = await writeFile(ctx, data, "application/octet-stream");
 
-      expect(result.key).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(result.key).toMatch(/^blake3s:[a-f0-9]{32}$/);
       expect(result.size).toBe(5);
       expect(result.nodeCount).toBe(1);
       expect(storage.size()).toBe(1);
@@ -128,7 +128,7 @@ describe("Controller", () => {
     });
 
     it("should return null for non-existent key", async () => {
-      const result = await readFile(ctx, "sha256:" + "a".repeat(64));
+      const result = await readFile(ctx, "blake3s:" + "a".repeat(32));
       expect(result).toBeNull();
     });
   });
@@ -144,13 +144,13 @@ describe("Controller", () => {
         { name: "file2.txt", key: file2.key },
       ]);
 
-      expect(dictKey).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(dictKey).toMatch(/^blake3s:[a-f0-9]{32}$/);
       expect(storage.size()).toBe(3); // 2 files + 1 dict
     });
 
     it("should make empty dict", async () => {
       const key = await makeDict(ctx, []);
-      expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(key).toMatch(/^blake3s:[a-f0-9]{32}$/);
     });
 
     it("should create dict with children", async () => {
@@ -256,7 +256,7 @@ describe("Controller", () => {
     });
 
     it("should return null for missing node", async () => {
-      const node = await getNode(ctx, "sha256:" + "0".repeat(64));
+      const node = await getNode(ctx, "blake3s:" + "0".repeat(32));
       expect(node).toBeNull();
     });
   });
@@ -328,7 +328,7 @@ describe("Controller", () => {
       const data = new Uint8Array([100, 200, 255]);
       const key = await putFileNode(ctx, data, "application/octet-stream");
 
-      expect(key).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(key).toMatch(/^blake3s:[a-f0-9]{32}$/);
       expect(await has(ctx, key)).toBe(true);
     });
   });
@@ -340,7 +340,7 @@ describe("Controller", () => {
     });
 
     it("should return false for non-existing key", async () => {
-      expect(await has(ctx, "sha256:" + "f".repeat(64))).toBe(false);
+      expect(await has(ctx, "blake3s:" + "f".repeat(32))).toBe(false);
     });
   });
 });

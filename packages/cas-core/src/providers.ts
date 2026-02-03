@@ -68,19 +68,23 @@ export const createMemoryStorage = (): MemoryStorage => {
 };
 
 // ============================================================================
-// Web Crypto Hash Provider
+// Web Crypto Hash Provider (Fallback for testing)
 // ============================================================================
 
 /**
- * Create a Web Crypto based hash provider
+ * Create a Web Crypto based hash provider (truncated SHA-256 for testing)
  * Works in both browser and Node.js (with Web Crypto API)
+ *
+ * NOTE: This is a fallback implementation for testing purposes.
+ * Production code should inject a proper BLAKE3s-128 implementation.
  */
 export const createWebCryptoHash = (): HashProvider => ({
-  sha256: async (data: Uint8Array): Promise<Uint8Array> => {
+  hash: async (data: Uint8Array): Promise<Uint8Array> => {
     // Create a new ArrayBuffer copy to ensure compatibility with Web Crypto API
     // This handles both regular ArrayBuffer and SharedArrayBuffer backing
     const buffer = new Uint8Array(data).buffer;
     const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
-    return new Uint8Array(hashBuffer);
+    // Truncate to 16 bytes (128 bits) to match BLAKE3s-128 output size
+    return new Uint8Array(hashBuffer).slice(0, 16);
   },
 });

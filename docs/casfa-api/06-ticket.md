@@ -1,6 +1,41 @@
 # Ticket CAS 操作 API
 
-通过 Ticket 路由访问 CAS 存储的 API。Ticket ID 在 URL 路径中作为凭证，无需 Authorization header。
+Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访问权限。Ticket ID 在 URL 路径中作为凭证，无需 Authorization header。
+
+## 核心概念
+
+### Ticket 是什么？
+
+Ticket 承载了一个具体的任务上下文：
+- **input**: 必须的输入节点，代表任务的输入数据
+- **output**: 可选的输出节点，代表任务的结果（commit 后填充）
+- **writable**: 是否可写入（上传新节点并 commit）
+
+### 生命周期
+
+```
+Active → Committed → Revoked → Deleted
+  │          │          │          │
+  │          │          │          └─ 物理删除（仅 User 可操作）
+  │          │          └─ 被撤销，不可再使用（仅 Agent 可操作）
+  │          └─ 已提交结果，output 已设置（仅 Tool 可操作）
+  └─ 活跃状态，可读取和写入
+```
+
+| 状态 | 描述 | 可执行操作 |
+|------|------|-----------|
+| `active` | 活跃状态 | 读取、写入、commit、revoke |
+| `committed` | 已提交 | 仅读取 |
+| `revoked` | 已撤销 | 无（返回 410） |
+| `deleted` | 已删除 | 无（返回 404） |
+
+### 权限控制
+
+| 操作 | 允许的调用者 |
+|------|-------------|
+| commit | Tool（通过 Ticket 凭证访问） |
+| revoke | Agent（Ticket 的 issuer） |
+| delete | User（Realm 所有者） |
 
 ## 认证
 
@@ -18,11 +53,8 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 |------|------|------|------|
 | GET | `/api/ticket/{ticketId}` | 获取 Ticket 端点信息 | - |
 | GET | `/api/ticket/{ticketId}/usage` | 获取使用统计 | Read |
-| POST | `/api/ticket/{ticketId}/commit` | 创建 Commit | Write |
-| GET | `/api/ticket/{ticketId}/commits` | 列出 Commits | Read |
-| GET | `/api/ticket/{ticketId}/commits/:root` | 获取 Commit 详情 | Read |
-| PATCH | `/api/ticket/{ticketId}/commits/:root` | 更新 Commit | Write |
-| DELETE | `/api/ticket/{ticketId}/commits/:root` | 删除 Commit | Write |
+| POST | `/api/ticket/{ticketId}/commit` | 提交结果（设置 output） | Write |
+| POST | `/api/ticket/{ticketId}/revoke` | 撤销 Ticket | Issuer |
 | POST | `/api/ticket/{ticketId}/prepare-nodes` | 预上传检查 | Write |
 | GET | `/api/ticket/{ticketId}/nodes/:key/metadata` | 获取节点元信息 | Read |
 | GET | `/api/ticket/{ticketId}/nodes/:key` | 获取节点二进制数据 | Read |
@@ -38,36 +70,116 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 
 ```json
 {
+  "ticketId": "ticket_xxx",
   "realm": "usr_xxxxxxxx",
-  "scope": ["sha256:abc123..."],
-  "commit": {
+  "status": "active",
+  "input": "blake3s:abc123...",
+  "output": null,
+  "writable": true,
+  "scope": ["blake3s:abc123..."],
+  "config": {
+    "nodeLimit": 4194304,
+    "maxNameBytes": 255,
     "quota": 10485760,
     "accept": ["image/*"]
   },
-  "expiresAt": "2025-02-02T13:00:00.000Z",
-  "nodeLimit": 4194304,
-  "maxNameBytes": 255
+  "expiresAt": "2025-02-02T13:00:00.000Z"
 }
 ```
 
 | 字段 | 描述 |
 |------|------|
+| `ticketId` | Ticket ID |
 | `realm` | Ticket 所属 Realm |
-| `scope` | 可读的 root key 列表，undefined 表示完全访问 |
-| `commit` | 提交权限配置，undefined 表示只读 |
-| `commit.quota` | 上传字节数限制 |
-| `commit.accept` | 允许的 MIME 类型 |
-| `commit.root` | 如已提交，显示提交的 root key |
+| `status` | 当前状态：`active`, `committed`, `revoked` |
+| `input` | 输入节点 key（必须） |
+| `output` | 输出节点 key（commit 后填充） |
+| `writable` | 是否可写入 |
+| `scope` | 可读的 root key 列表，包含 input 及其子节点 |
+| `config.nodeLimit` | 单个节点最大字节数 |
+| `config.maxNameBytes` | 文件名最大 UTF-8 字节数 |
+| `config.quota` | 上传字节数限制（仅 writable） |
+| `config.accept` | 允许的 MIME 类型（仅 writable） |
 | `expiresAt` | Ticket 过期时间 |
-| `nodeLimit` | 单个节点最大字节数 |
-| `maxNameBytes` | 文件名最大 UTF-8 字节数 |
 
 ### 错误
 
 | 状态码 | 描述 |
 |--------|------|
+| 404 | Ticket 不存在或已删除 |
+| 410 | Ticket 已撤销 |
+
+---
+
+## POST /api/ticket/{ticketId}/commit
+
+提交任务结果，设置 output 节点。状态从 `active` 变为 `committed`。
+
+> **权限要求**: 仅 Tool（通过 Ticket 凭证访问）可以调用此接口。
+
+### 请求
+
+```json
+{
+  "output": "blake3s:result..."
+}
+```
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| `output` | `string` | 输出节点 key（必须已上传） |
+
+### 响应
+
+成功：
+
+```json
+{
+  "success": true,
+  "status": "committed",
+  "output": "blake3s:result..."
+}
+```
+
+### 错误
+
+| 状态码 | 描述 |
+|--------|------|
+| 400 | output 节点不存在 |
+| 403 | Ticket 不可写 |
+| 409 | Ticket 已经 committed 或 revoked |
+| 410 | Ticket 已撤销 |
+
+---
+
+## POST /api/ticket/{ticketId}/revoke
+
+撤销 Ticket。状态从 `active` 或 `committed` 变为 `revoked`。
+
+> **权限要求**: 需要 Agent Token，且必须是 Ticket 的 issuer。
+
+### 请求头
+
+```http
+Authorization: Agent {agentToken}
+```
+
+### 响应
+
+```json
+{
+  "success": true,
+  "status": "revoked"
+}
+```
+
+### 错误
+
+| 状态码 | 描述 |
+|--------|------|
+| 403 | 不是 Ticket 的 issuer |
 | 404 | Ticket 不存在 |
-| 410 | Ticket 已过期 |
+| 410 | Ticket 已撤销 |
 
 ---
 
@@ -77,81 +189,69 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 
 Ticket 的读取权限由 `scope` 字段控制：
 
-- `scope` 为 undefined：可读取 Realm 内所有节点
-- `scope` 为 string[]：只能读取指定 root key 及其子节点
+- `scope` 自动包含 `input` 节点及其所有子节点
+- 如果 `output` 已设置，`scope` 也包含 `output` 及其子节点
 
 ### 写入权限
 
-Ticket 的写入权限由 `commit` 字段控制：
+Ticket 的写入权限由 `writable` 字段控制：
 
-- `commit` 为 undefined：只读，无法写入
-- `commit` 存在：可以写入，受以下限制：
+- `writable: false`：只读，无法写入
+- `writable: true`：可以写入，受以下限制：
   - `quota`：总上传字节数限制
   - `accept`：允许的 MIME 类型（如 `["image/*"]`）
-  - 一旦提交（commit），`commit.root` 会记录 root key，之后无法再次提交
+  - 只能 commit 一次，之后变为 `committed` 状态
 
 ---
 
 ## CAS 操作
 
-Ticket 路由下的 CAS 操作与 [Realm 路由](./05-realm.md) 相同，区别在于：
+### 示例：Tool 通过 Ticket 完成任务
 
-1. **认证方式不同**: Ticket ID 在路径中，无需 header
-2. **权限受限**: 受 Ticket 的 scope 和 commit 配置限制
-3. **一次性提交**: 如果 Ticket 有 commit 权限，只能提交一次
-
-### 示例：通过 Ticket 上传文件
-
-1. **获取可写 Ticket**（从创建 Ticket 的响应中获取）：
-
-   ```
-   endpoint: https://api.example.com/api/ticket/ticket_xxx
-   ```
-
-2. **预检查需要上传的节点**：
+1. **获取 Ticket 信息**：
 
    ```http
-   POST /api/ticket/ticket_xxx/prepare-nodes
-   Content-Type: application/json
-   
-   {"keys": ["sha256:abc123..."]}
+   GET /api/ticket/ticket_xxx
    ```
 
-3. **上传节点**：
+   返回 input 节点和配置信息。
+
+2. **读取输入数据**：
 
    ```http
-   PUT /api/ticket/ticket_xxx/nodes/sha256:abc123...
+   GET /api/ticket/ticket_xxx/nodes/blake3s:input.../metadata
+   GET /api/ticket/ticket_xxx/nodes/blake3s:input...
+   ```
+
+3. **上传结果节点**：
+
+   ```http
+   PUT /api/ticket/ticket_xxx/nodes/blake3s:result...
    Content-Type: application/octet-stream
    
    (二进制数据)
    ```
 
-4. **创建 commit**：
+4. **提交结果**：
 
    ```http
    POST /api/ticket/ticket_xxx/commit
    Content-Type: application/json
    
    {
-     "root": "sha256:abc123...",
-     "title": "Uploaded via ticket"
+     "output": "blake3s:result..."
    }
    ```
 
-### 示例：通过 Ticket 读取文件
+### 示例：只读 Ticket 访问数据
 
-1. **获取只读 Ticket**（带 scope 限制）
+1. **获取 Ticket 信息**，确认 input 节点
 
-2. **获取节点元信息**：
-
-   ```http
-   GET /api/ticket/ticket_xxx/nodes/sha256:root.../metadata
-   ```
-
-3. **下载节点二进制数据**：
+2. **读取节点数据**：
 
    ```http
-   GET /api/ticket/ticket_xxx/nodes/sha256:file...
+   GET /api/ticket/ticket_xxx/nodes/blake3s:input.../metadata
+   GET /api/ticket/ticket_xxx/nodes/blake3s:file...
    ```
 
 ---
@@ -161,10 +261,11 @@ Ticket 路由下的 CAS 操作与 [Realm 路由](./05-realm.md) 相同，区别�
 | 特性 | Realm 路由 | Ticket 路由 |
 |------|------------|-------------|
 | 认证方式 | Authorization header | URL 中的 Ticket ID |
-| 访问范围 | 完整 Realm | 受 scope 限制 |
-| 写入权限 | 总是可写 | 由 commit 配置控制 |
-| 有效期 | Token 有效期 | Ticket 过期时间 |
-| 适用场景 | 用户/Agent 直接访问 | 分享给第三方临时访问 |
+| 访问范围 | 完整 Realm | input/output 节点及子节点 |
+| 写入权限 | 总是可写 | 由 writable 控制 |
+| 生命周期 | Token 有效期 | Ticket 状态机 |
+| Commit | 无此概念 | 一次性提交 output |
+| 适用场景 | 用户/Agent 直接访问 | 分享给 Tool 执行任务 |
 
 ---
 
@@ -172,6 +273,9 @@ Ticket 路由下的 CAS 操作与 [Realm 路由](./05-realm.md) 相同，区别�
 
 | 状态码 | 描述 |
 |--------|------|
-| 401 | Ticket 无效或已过期 |
-| 403 | 超出 scope 或 commit 权限 |
+| 401 | Ticket 无效 |
+| 403 | 超出 scope 或 writable 权限 |
+| 404 | Ticket 不存在或已删除 |
+| 409 | 状态冲突（如已 committed） |
+| 410 | Ticket 已撤销或过期 |
 | 413 | 超出 quota 限制 |
