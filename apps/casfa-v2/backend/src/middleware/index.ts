@@ -6,6 +6,7 @@ export {
   type AuthMiddlewareDeps,
   createAuthMiddleware,
   createOptionalAuthMiddleware,
+  type JwtVerifier,
 } from "./auth.ts";
 
 export {

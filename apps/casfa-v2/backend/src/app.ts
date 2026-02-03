@@ -43,6 +43,7 @@ import {
   createRealmAccessMiddleware,
   createTicketAuthMiddleware,
   createWriteAccessMiddleware,
+  type JwtVerifier,
 } from "./middleware/index.ts";
 // Router
 import { createRouter } from "./router.ts";
@@ -87,6 +88,8 @@ export type AppDependencies = {
   storage: StorageProvider;
   authService: AuthService;
   hashProvider: HashProvider;
+  /** Optional JWT verifier for Bearer token auth. If not provided, JWT auth is disabled. */
+  jwtVerifier?: JwtVerifier;
 };
 
 // ============================================================================
@@ -99,7 +102,7 @@ export type AppDependencies = {
  * This is a pure assembly function - all dependencies must be provided.
  */
 export const createApp = (deps: AppDependencies): Hono<Env> => {
-  const { config, db, storage, authService, hashProvider } = deps;
+  const { config, db, storage, authService, hashProvider, jwtVerifier } = deps;
   const {
     tokensDb,
     ownershipDb,
@@ -117,7 +120,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     tokensDb,
     userRolesDb,
     awpPubkeysDb,
-    cognitoConfig: config.cognito,
+    jwtVerifier,
   });
   const ticketAuthMiddleware = createTicketAuthMiddleware({ tokensDb });
   const realmAccessMiddleware = createRealmAccessMiddleware();

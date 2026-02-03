@@ -3,3 +3,12 @@ node_modules/
 .turbo/
 dist/
 .next/
+
+# Skills documentation with long code examples
+apps/example-stack/skills/
+apps/image-workshop/backend/skills/
+
+# Other docs with long lines
+docs/CAS_STORAGE_OVERVIEW.md
+apps/aws-lambda-fullstack/README.md
+apps/example-stack/README.md

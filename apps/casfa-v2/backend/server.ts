@@ -1,15 +1,26 @@
 /**
- * CASFA v2 - Production/Development Server
+ * CASFA v2 - Unified Server
  *
- * This server uses real implementations:
- * - DynamoDB for database
- * - S3 for storage (or memory storage for local dev)
- * - Cognito for authentication
+ * This server uses environment variables to select implementations:
+ *
+ * Database:
+ * - DYNAMODB_ENDPOINT: DynamoDB endpoint (default: AWS, set to http://localhost:8000 for local)
+ *
+ * Storage (STORAGE_TYPE):
+ * - "s3": S3 storage (requires CAS_BUCKET)
+ * - "fs": File system storage (requires STORAGE_FS_PATH)
+ * - "memory": In-memory storage (default if no CAS_BUCKET)
+ *
+ * Authentication:
+ * - MOCK_JWT_SECRET: If set, uses mock JWT verification instead of Cognito
+ * - COGNITO_USER_POOL_ID: Cognito user pool ID (for production)
  */
 
+import { createFsStorage } from "@agent-web-portal/cas-storage-fs";
 import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory";
 import { createS3Storage } from "@agent-web-portal/cas-storage-s3";
 import { createApp, createNodeHashProvider } from "./src/app.ts";
+import { createCognitoJwtVerifier, createMockJwtVerifier } from "./src/auth/index.ts";
 import { loadConfig } from "./src/config.ts";
 
 // DB factories
@@ -33,7 +44,13 @@ import { createAuthService } from "./src/services/auth.ts";
 // ============================================================================
 
 const port = Number.parseInt(process.env.CAS_API_PORT ?? process.env.PORT ?? "3560", 10);
-const useMemoryStorage = process.env.USE_MEMORY_STORAGE === "true" || !process.env.CAS_BUCKET;
+
+// Storage configuration
+const storageType = process.env.STORAGE_TYPE ?? (process.env.CAS_BUCKET ? "s3" : "memory");
+const storageFsPath = process.env.STORAGE_FS_PATH;
+
+// JWT configuration
+const mockJwtSecret = process.env.MOCK_JWT_SECRET;
 
 // Load configuration
 const config = loadConfig();
@@ -42,7 +59,7 @@ const config = loadConfig();
 // Create Dependencies
 // ============================================================================
 
-// Create DB instances
+// Create DB instances (uses DYNAMODB_ENDPOINT if set)
 const db = {
   tokensDb: createTokensDb({ tableName: config.db.tokensTable }),
   ownershipDb: createOwnershipDb({ tableName: config.db.casRealmTable }),
@@ -55,10 +72,39 @@ const db = {
   awpPubkeysDb: createAwpPubkeysDb({ tableName: config.db.tokensTable }),
 };
 
-// Create storage (S3 or memory for local dev)
-const storage = useMemoryStorage
-  ? createMemoryStorage()
-  : createS3Storage({ bucket: config.storage.bucket, prefix: config.storage.prefix });
+// Create storage based on STORAGE_TYPE
+const createStorage = () => {
+  switch (storageType) {
+    case "fs":
+      if (!storageFsPath) {
+        throw new Error("STORAGE_FS_PATH is required when STORAGE_TYPE=fs");
+      }
+      return createFsStorage({ basePath: storageFsPath, prefix: config.storage.prefix });
+    case "memory":
+      return createMemoryStorage();
+    case "s3":
+    default:
+      return createS3Storage({ bucket: config.storage.bucket, prefix: config.storage.prefix });
+  }
+};
+
+const storage = createStorage();
+
+// Create JWT verifier based on environment
+const createJwtVerifier = () => {
+  // Mock JWT takes precedence (for testing)
+  if (mockJwtSecret) {
+    return createMockJwtVerifier(mockJwtSecret);
+  }
+  // Cognito JWT for production
+  if (config.cognito.userPoolId) {
+    return createCognitoJwtVerifier(config.cognito);
+  }
+  // No JWT verification (only stored tokens and AWP auth)
+  return undefined;
+};
+
+const jwtVerifier = createJwtVerifier();
 
 // Create auth service (Cognito)
 const authService = createAuthService({
@@ -80,15 +126,38 @@ const app = createApp({
   storage,
   authService,
   hashProvider,
+  jwtVerifier,
 });
 
 // ============================================================================
 // Start Server
 // ============================================================================
 
+const getStorageDescription = () => {
+  switch (storageType) {
+    case "fs":
+      return `file system (${storageFsPath})`;
+    case "memory":
+      return "in-memory";
+    case "s3":
+    default:
+      return `S3 (${config.storage.bucket})`;
+  }
+};
+
+const getAuthDescription = () => {
+  if (mockJwtSecret) return "Mock JWT";
+  if (config.cognito.userPoolId) return "Cognito JWT";
+  return "stored tokens only";
+};
+
 console.log(`[CASFA v2] Starting server...`);
 console.log(`[CASFA v2] Listening on http://localhost:${port}`);
-console.log(`[CASFA v2] Storage: ${useMemoryStorage ? "in-memory" : "S3"}`);
+console.log(`[CASFA v2] Storage: ${getStorageDescription()}`);
+console.log(`[CASFA v2] Auth: ${getAuthDescription()}`);
+if (process.env.DYNAMODB_ENDPOINT) {
+  console.log(`[CASFA v2] DynamoDB: ${process.env.DYNAMODB_ENDPOINT}`);
+}
 
 Bun.serve({
   port,

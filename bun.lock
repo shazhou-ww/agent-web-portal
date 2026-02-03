@@ -114,6 +114,7 @@
         "@agent-web-portal/auth": "workspace:*",
         "@agent-web-portal/cas-core": "workspace:*",
         "@agent-web-portal/cas-storage-core": "workspace:*",
+        "@agent-web-portal/cas-storage-fs": "workspace:*",
         "@agent-web-portal/cas-storage-memory": "workspace:*",
         "@agent-web-portal/cas-storage-s3": "workspace:*",
         "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
@@ -426,6 +427,16 @@
         "typescript": "^5.7.2",
       },
     },
+    "packages/cas-storage-fs": {
+      "name": "@agent-web-portal/cas-storage-fs",
+      "version": "0.1.0",
+      "dependencies": {
+        "@agent-web-portal/cas-storage-core": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.7.2",
+      },
+    },
     "packages/cas-storage-memory": {
       "name": "@agent-web-portal/cas-storage-memory",
       "version": "0.1.0",
@@ -592,6 +603,8 @@
     "@agent-web-portal/cas-core": ["@agent-web-portal/cas-core@workspace:packages/cas-core"],
 
     "@agent-web-portal/cas-storage-core": ["@agent-web-portal/cas-storage-core@workspace:packages/cas-storage-core"],
+
+    "@agent-web-portal/cas-storage-fs": ["@agent-web-portal/cas-storage-fs@workspace:packages/cas-storage-fs"],
 
     "@agent-web-portal/cas-storage-memory": ["@agent-web-portal/cas-storage-memory@workspace:packages/cas-storage-memory"],
 

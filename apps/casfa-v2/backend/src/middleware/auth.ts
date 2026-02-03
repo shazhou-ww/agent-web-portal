@@ -3,19 +3,17 @@
  *
  * Supports:
  * 1. Bearer Token (Agent Token / Ticket)
- * 2. Bearer JWT (Cognito Access Token)
+ * 2. Bearer JWT (via configurable JwtVerifier)
  * 3. AWP Signed Requests (ECDSA P-256)
  */
 
 import { createHash } from "node:crypto";
 import { AWP_AUTH_HEADERS, validateTimestamp, verifySignature } from "@agent-web-portal/auth";
 import type { MiddlewareHandler } from "hono";
-import { createRemoteJWKSet, jwtVerify } from "jose";
-import type { CognitoConfig } from "../config.ts";
 import type { AwpPubkeysDb } from "../db/awp-pubkeys.ts";
 import type { TokensDb } from "../db/tokens.ts";
 import type { UserRolesDb } from "../db/user-roles.ts";
-import type { AgentToken, AuthContext, Env, Ticket, Token, UserRole } from "../types.ts";
+import type { AgentToken, AuthContext, Env, Token } from "../types.ts";
 import {
   fingerprintFromPubkey,
   fingerprintFromToken,
@@ -26,11 +24,20 @@ import {
 // Types
 // ============================================================================
 
+/**
+ * JWT Verifier callback type
+ *
+ * Verifies a JWT token and returns the user ID and optional expiration time.
+ * Returns null if verification fails.
+ */
+export type JwtVerifier = (token: string) => Promise<{ userId: string; exp?: number } | null>;
+
 export type AuthMiddlewareDeps = {
   tokensDb: TokensDb;
   userRolesDb: UserRolesDb;
   awpPubkeysDb: AwpPubkeysDb;
-  cognitoConfig: CognitoConfig;
+  /** Optional JWT verifier callback. If not provided, JWT auth is disabled. */
+  jwtVerifier?: JwtVerifier;
 };
 
 // ============================================================================
@@ -38,13 +45,7 @@ export type AuthMiddlewareDeps = {
 // ============================================================================
 
 export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandler<Env> => {
-  const { tokensDb, userRolesDb, awpPubkeysDb, cognitoConfig } = deps;
-
-  // JWKS for Cognito JWT verification
-  const jwksUrl = cognitoConfig.userPoolId
-    ? `https://cognito-idp.${cognitoConfig.region}.amazonaws.com/${cognitoConfig.userPoolId}/.well-known/jwks.json`
-    : null;
-  const jwks = jwksUrl ? createRemoteJWKSet(new URL(jwksUrl)) : null;
+  const { tokensDb, userRolesDb, awpPubkeysDb, jwtVerifier } = deps;
 
   const applyUserRole = async (auth: AuthContext): Promise<AuthContext> => {
     if (!auth.userId) return auth;
@@ -138,23 +139,20 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
         }
       }
 
-      // Try as Cognito JWT
-      if (jwks && tokenValue) {
+      // Try as JWT using configurable verifier
+      if (jwtVerifier && tokenValue) {
         try {
-          const { payload } = await jwtVerify(tokenValue, jwks, {
-            issuer: `https://cognito-idp.${cognitoConfig.region}.amazonaws.com/${cognitoConfig.userPoolId}`,
-          });
+          const result = await jwtVerifier(tokenValue);
+          if (!result) return null;
 
-          const userId = payload.sub;
-          if (!userId) return null;
-
+          const { userId, exp } = result;
           const fingerprint = await fingerprintFromUser(userId);
           const syntheticToken: Token = {
             pk: `token#jwt_${userId}`,
             type: "user",
             userId,
             createdAt: Date.now(),
-            expiresAt: (payload.exp ?? 0) * 1000,
+            expiresAt: exp ? exp * 1000 : Date.now() + 3600000,
           };
 
           const auth: AuthContext = {
