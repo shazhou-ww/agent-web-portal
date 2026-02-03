@@ -27,7 +27,6 @@ import { type AppConfig, loadConfig } from "../src/config.ts";
 import {
   createAwpPendingDb,
   createAwpPubkeysDb,
-  createCommitsDb,
   createDepotsDb,
   createOwnershipDb,
   createRefCountDb,
@@ -164,7 +163,6 @@ export const startTestServer = (options?: { port?: number }): TestServer => {
   const db: DbInstances = {
     tokensDb: createTokensDb({ tableName: config.db.tokensTable }),
     ownershipDb: createOwnershipDb({ tableName: config.db.casRealmTable }),
-    commitsDb: createCommitsDb({ tableName: config.db.casRealmTable }),
     depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
     refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
     usageDb: createUsageDb({ tableName: config.db.usageTable }),

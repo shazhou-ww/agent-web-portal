@@ -490,6 +490,22 @@
         "typescript": "^5.3.0",
       },
     },
+    "packages/casfa-client-v2": {
+      "name": "@agent-web-portal/casfa-client-v2",
+      "version": "0.0.1",
+      "dependencies": {
+        "@agent-web-portal/casfa-protocol": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.3.0",
+      },
+      "peerDependencies": {
+        "@agent-web-portal/cas-storage-core": "workspace:*",
+      },
+      "optionalPeers": [
+        "@agent-web-portal/cas-storage-core",
+      ],
+    },
     "packages/casfa-protocol": {
       "name": "@agent-web-portal/casfa-protocol",
       "version": "0.0.1",
@@ -628,6 +644,8 @@
     "@agent-web-portal/casfa-client-browser": ["@agent-web-portal/casfa-client-browser@workspace:packages/casfa-client-browser"],
 
     "@agent-web-portal/casfa-client-nodejs": ["@agent-web-portal/casfa-client-nodejs@workspace:packages/casfa-client-nodejs"],
+
+    "@agent-web-portal/casfa-client-v2": ["@agent-web-portal/casfa-client-v2@workspace:packages/casfa-client-v2"],
 
     "@agent-web-portal/casfa-protocol": ["@agent-web-portal/casfa-protocol@workspace:packages/casfa-protocol"],
 

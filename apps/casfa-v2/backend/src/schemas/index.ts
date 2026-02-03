@@ -109,6 +109,3 @@ import { UpdateUserRoleSchema } from "@agent-web-portal/casfa-protocol";
  * @deprecated Use UpdateUserRoleSchema instead
  */
 export const AuthorizeUserSchema = UpdateUserRoleSchema;
-
-// Legacy commit schemas
-export { CommitSchema, UpdateCommitSchema } from "./commit.ts";

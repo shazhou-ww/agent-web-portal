@@ -10,7 +10,6 @@ import type { AdminController } from "./controllers/admin.ts";
 import type { AuthClientsController } from "./controllers/auth-clients.ts";
 import type { AuthTokensController } from "./controllers/auth-tokens.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
-import type { CommitsController } from "./controllers/commits.ts";
 import type { DepotsController } from "./controllers/depots.ts";
 import type { HealthController } from "./controllers/health.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
@@ -20,7 +19,6 @@ import type { McpController } from "./mcp/handler.ts";
 import {
   AwpAuthCompleteSchema,
   AwpAuthInitSchema,
-  CommitSchema,
   CreateAgentTokenSchema,
   CreateDepotSchema,
   CreateTicketSchema,
@@ -31,7 +29,6 @@ import {
   RefreshSchema,
   TicketCommitSchema,
   TokenExchangeSchema,
-  UpdateCommitSchema,
   UpdateDepotSchema,
   UpdateUserRoleSchema,
 } from "./schemas/index.ts";
@@ -50,7 +47,6 @@ export type RouterDeps = {
   admin: AdminController;
   realm: RealmController;
   tickets: TicketsController;
-  commits: CommitsController;
   chunks: ChunksController;
   depots: DepotsController;
   mcp: McpController;
@@ -181,23 +177,6 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   );
   realmRouter.post("/:realmId/tickets/:ticketId/revoke", deps.tickets.revoke);
   realmRouter.delete("/:realmId/tickets/:ticketId", deps.tickets.delete);
-
-  // Commits
-  realmRouter.get("/:realmId/commits", deps.commits.list);
-  realmRouter.post(
-    "/:realmId/commit",
-    deps.writeAccessMiddleware,
-    zValidator("json", CommitSchema),
-    deps.commits.create
-  );
-  realmRouter.get("/:realmId/commits/:root", deps.commits.get);
-  realmRouter.patch(
-    "/:realmId/commits/:root",
-    deps.writeAccessMiddleware,
-    zValidator("json", UpdateCommitSchema),
-    deps.commits.update
-  );
-  realmRouter.delete("/:realmId/commits/:root", deps.writeAccessMiddleware, deps.commits.delete);
 
   // Nodes
   realmRouter.post(

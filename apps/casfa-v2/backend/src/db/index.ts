@@ -5,7 +5,6 @@
 export { type AwpPendingDb, createAwpPendingDb } from "./awp-pending.ts";
 export { type AwpPubkeysDb, createAwpPubkeysDb } from "./awp-pubkeys.ts";
 export { createDocClient, createDynamoClient, resetClient } from "./client.ts";
-export { type CommitsDb, createCommitsDb } from "./commits.ts";
 export {
   createDepotsDb,
   type DepotsDb,

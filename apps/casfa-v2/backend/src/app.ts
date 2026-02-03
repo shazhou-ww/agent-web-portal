@@ -15,7 +15,6 @@ import {
   createAuthClientsController,
   createAuthTokensController,
   createChunksController,
-  createCommitsController,
   createDepotsController,
   createHealthController,
   createOAuthController,
@@ -24,7 +23,6 @@ import {
 import { createTicketsController } from "./controllers/tickets.ts";
 import type { AwpPendingDb } from "./db/awp-pending.ts";
 import type { AwpPubkeysDb } from "./db/awp-pubkeys.ts";
-import type { CommitsDb } from "./db/commits.ts";
 import type { DepotsDb } from "./db/depots.ts";
 import type { OwnershipDb } from "./db/ownership.ts";
 import type { RefCountDb } from "./db/refcount.ts";
@@ -68,7 +66,6 @@ export const createNodeHashProvider = (): HashProvider => ({
 export type DbInstances = {
   tokensDb: TokensDb;
   ownershipDb: OwnershipDb;
-  commitsDb: CommitsDb;
   depotsDb: DepotsDb;
   refCountDb: RefCountDb;
   usageDb: UsageDb;
@@ -105,7 +102,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const {
     tokensDb,
     ownershipDb,
-    commitsDb,
     depotsDb,
     refCountDb,
     usageDb,
@@ -149,13 +145,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     tokensDb,
     serverConfig: config.server,
   });
-  const commits = createCommitsController({
-    commitsDb,
-    ownershipDb,
-    refCountDb,
-    tokensDb,
-    storage,
-  });
   const chunks = createChunksController({
     storage,
     hashProvider,
@@ -183,7 +172,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     admin,
     realm,
     tickets,
-    commits,
     chunks,
     depots,
     mcp,
