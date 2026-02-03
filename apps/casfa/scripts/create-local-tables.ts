@@ -6,10 +6,10 @@
  *   docker compose up -d dynamodb
  *
  * Usage:
- *   DYNAMODB_ENDPOINT=http://localhost:8000 bun run scripts/create-local-tables.ts
+ *   DYNAMODB_ENDPOINT=http://localhost:9000 bun run scripts/create-local-tables.ts
  *
  * Env:
- *   DYNAMODB_ENDPOINT - default http://localhost:8000
+ *   DYNAMODB_ENDPOINT - default http://localhost:9000
  *   TOKENS_TABLE      - default awp-cas-tokens
  *   CAS_REALM_TABLE   - default awp-cas-cas-realm
  *   CAS_DAG_TABLE     - default awp-cas-cas-dag
@@ -23,7 +23,7 @@ import {
   DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
 
-const endpoint = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8000";
+const endpoint = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:9000";
 const tokensTable = process.env.TOKENS_TABLE ?? "awp-cas-tokens";
 const realmTable = process.env.CAS_REALM_TABLE ?? "awp-cas-cas-realm";
 const dagTable = process.env.CAS_DAG_TABLE ?? "awp-cas-cas-dag";

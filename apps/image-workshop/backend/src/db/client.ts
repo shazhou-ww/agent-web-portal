@@ -1,7 +1,7 @@
 /**
  * Shared DynamoDB client for Image Workshop Stack
  *
- * When DYNAMODB_ENDPOINT is set (e.g. http://localhost:8000 for local DynamoDB),
+ * When DYNAMODB_ENDPOINT is set (e.g. http://localhost:9000 for local DynamoDB),
  * uses that endpoint with dummy credentials for local development.
  */
 
