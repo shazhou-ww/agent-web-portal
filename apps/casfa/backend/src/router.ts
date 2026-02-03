@@ -1299,7 +1299,7 @@ export class Router {
       key,
       this.hashProvider,
       (childKey) => this.storageProvider.has(childKey),
-      structureResult.kind === "collection" ? getChildSize : undefined
+      structureResult.kind === "dict" ? getChildSize : undefined
     );
 
     if (!validationResult.valid) {
@@ -1308,7 +1308,7 @@ export class Router {
         return jsonResponse(200, {
           success: false,
           error: "missing_nodes",
-          missing: validationResult.childKeys?.filter(async (k) => 
+          missing: validationResult.childKeys?.filter(async (k) =>
             !(await this.storageProvider.has(k))
           ) ?? [],
         });
@@ -1318,15 +1318,15 @@ export class Router {
 
     // Calculate sizes for reference counting
     const physicalSize = bytes.length;
-    // logicalSize is only for chunks (actual data), 0 for collections
-    const logicalSize = structureResult.kind === "chunk" ? (validationResult.size ?? bytes.length) : 0;
+    // logicalSize is only for file nodes (actual data), 0 for dict nodes
+    const logicalSize = (structureResult.kind === "file" || structureResult.kind === "successor") ? (validationResult.size ?? bytes.length) : 0;
     const childKeys = validationResult.childKeys ?? [];
 
     // Check realm quota before storing
     // Estimate new physical bytes (only count if this is new to realm)
     const existingRef = await this.refCountDb.getRefCount(realm, key);
     const estimatedNewBytes = existingRef ? 0 : physicalSize;
-    
+
     if (estimatedNewBytes > 0) {
       const { allowed, usage } = await this.usageDb.checkQuota(realm, estimatedNewBytes);
       if (!allowed) {
@@ -1353,7 +1353,7 @@ export class Router {
       tokenId,
       "application/octet-stream", // Binary format
       validationResult.size ?? bytes.length,
-      validationResult.kind ?? "chunk"
+      validationResult.kind ?? "file"
     );
 
     // Increment reference count for this node
@@ -1427,7 +1427,7 @@ export class Router {
       }
 
       const key = queue.shift()!;
-      
+
       // Skip if already processed
       if (nodes[key]) continue;
 
@@ -1517,7 +1517,7 @@ export class Router {
       const node = decodeNode(bytes);
       kind = node.kind;
       size = node.size;
-      contentType = node.contentType;
+      contentType = node.fileInfo?.contentType;
     } catch {
       // If decode fails, just return raw data
     }
@@ -1781,7 +1781,7 @@ export class Router {
 
     const decoded = decodeNode(new Uint8Array(newRootResult.content));
     const physicalSize = newRootResult.content.length;
-    const logicalSize = decoded.kind === "chunk" ? decoded.size : 0;
+    const logicalSize = (decoded.kind === "file" || decoded.kind === "successor") ? decoded.size : 0;
 
     // Increment ref for new root
     await this.refCountDb.incrementRef(realm, newRoot, physicalSize, logicalSize);
@@ -1936,7 +1936,7 @@ export class Router {
 
     const decoded = decodeNode(new Uint8Array(newRootResult.content));
     const physicalSize = newRootResult.content.length;
-    const logicalSize = decoded.kind === "chunk" ? decoded.size : 0;
+    const logicalSize = (decoded.kind === "file" || decoded.kind === "successor") ? decoded.size : 0;
 
     // Increment ref for target root
     await this.refCountDb.incrementRef(realm, newRoot, physicalSize, logicalSize);

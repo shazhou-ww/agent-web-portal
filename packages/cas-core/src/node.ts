@@ -1,64 +1,73 @@
 /**
- * CAS Node Encoding/Decoding (v2)
+ * CAS Node Encoding/Decoding (v2.1)
  *
  * Node types:
  * - d-node (dict): Header + Children + Names (Pascal strings)
- * - s-node (successor): Header + Children + Data (16-byte aligned)
- * - f-node (file): Header + Children + ContentType (padded to 0/16/32/64) + Data (16-byte aligned)
+ * - s-node (successor): Header + Children + Data
+ * - f-node (file): Header + Children + FileInfo (64 bytes) + Data
  *
  * All reserved/padding bytes MUST be 0 for hash stability.
  */
 
-import { CONTENT_TYPE_LENGTH_VALUES, DATA_ALIGNMENT, FLAGS, HASH_SIZE, HEADER_SIZE, NODE_TYPE } from "./constants.ts";
+import { CONTENT_TYPE_MAX_LENGTH, FILEINFO_SIZE, HASH_SIZE, HEADER_SIZE, NODE_TYPE } from "./constants.ts";
 import {
   createDictHeader,
   createFileHeader,
   createSuccessorHeader,
   decodeHeader,
   encodeHeader,
-  getContentTypeLength,
   getNodeType,
 } from "./header.ts";
-import type { CasNode, DictNodeInput, EncodedNode, FileNodeInput, HashProvider, NodeKind, SuccessorNodeInput } from "./types.ts";
+import type { CasNode, DictNodeInput, EncodedNode, FileInfo, FileNodeInput, HashProvider, NodeKind, SuccessorNodeInput } from "./types.ts";
 import { concatBytes, decodePascalStrings, encodePascalStrings } from "./utils.ts";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 /**
- * Calculate the content-type slot size (0, 16, 32, or 64)
+ * Encode FileInfo (64 bytes): fileSize (u64 LE) + contentType (56 bytes, null-padded)
  */
-function getContentTypeSlotSize(contentType: string | undefined): 0 | 16 | 32 | 64 {
-  if (!contentType) return 0;
-  const bytes = textEncoder.encode(contentType);
-  if (bytes.length <= 16) return 16;
-  if (bytes.length <= 32) return 32;
-  if (bytes.length <= 64) return 64;
-  throw new Error(`Content-type too long: ${bytes.length} bytes (max 64)`);
-}
+function encodeFileInfo(fileSize: number, contentType: string | undefined): Uint8Array {
+  const buffer = new ArrayBuffer(FILEINFO_SIZE);
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
 
-/**
- * Encode content-type with zero padding to slot size
- */
-function encodeContentType(contentType: string, slotSize: 16 | 32 | 64): Uint8Array {
-  const bytes = textEncoder.encode(contentType);
-  if (bytes.length > slotSize) {
-    throw new Error(`Content-type too long: ${bytes.length} > ${slotSize}`);
+  // fileSize as u64 LE
+  const sizeLow = fileSize >>> 0;
+  const sizeHigh = Math.floor(fileSize / 0x100000000) >>> 0;
+  view.setUint32(0, sizeLow, true);
+  view.setUint32(4, sizeHigh, true);
+
+  // contentType (56 bytes, null-padded ASCII)
+  if (contentType) {
+    const ctBytes = textEncoder.encode(contentType);
+    if (ctBytes.length > CONTENT_TYPE_MAX_LENGTH) {
+      throw new Error(`Content-type too long: ${ctBytes.length} bytes (max ${CONTENT_TYPE_MAX_LENGTH})`);
+    }
+    bytes.set(ctBytes, 8);
   }
-  const result = new Uint8Array(slotSize); // Initialized to 0
-  result.set(bytes, 0);
-  return result;
+
+  return bytes;
 }
 
 /**
- * Decode content-type from padded slot (null-terminated or full slot)
+ * Decode FileInfo from buffer
  */
-function decodeContentType(buffer: Uint8Array, offset: number, slotSize: number): string {
-  const slice = buffer.subarray(offset, offset + slotSize);
-  // Find null terminator or use full length
-  let end = slice.indexOf(0);
-  if (end === -1) end = slotSize;
-  return textDecoder.decode(slice.subarray(0, end));
+function decodeFileInfo(buffer: Uint8Array, offset: number): FileInfo {
+  const view = new DataView(buffer.buffer, buffer.byteOffset + offset, FILEINFO_SIZE);
+
+  // fileSize as u64 LE
+  const sizeLow = view.getUint32(0, true);
+  const sizeHigh = view.getUint32(4, true);
+  const fileSize = sizeLow + sizeHigh * 0x100000000;
+
+  // contentType (56 bytes, null-terminated)
+  const ctSlice = buffer.subarray(offset + 8, offset + FILEINFO_SIZE);
+  let end = ctSlice.indexOf(0);
+  if (end === -1) end = CONTENT_TYPE_MAX_LENGTH;
+  const contentType = textDecoder.decode(ctSlice.subarray(0, end));
+
+  return { fileSize, contentType };
 }
 
 /**
@@ -92,7 +101,7 @@ export async function encodeDictNode(
   input: DictNodeInput,
   hashProvider: HashProvider
 ): Promise<EncodedNode> {
-  const { size, children, childNames } = input;
+  const { children, childNames } = input;
 
   if (children.length !== childNames.length) {
     throw new Error(`Children count mismatch: ${children.length} hashes vs ${childNames.length} names`);
@@ -105,11 +114,8 @@ export async function encodeDictNode(
   const childrenBytes = concatBytes(...sortedChildren);
   const namesBytes = encodePascalStrings(sortedNames);
 
-  // Calculate total length
-  const totalLength = HEADER_SIZE + childrenBytes.length + namesBytes.length;
-
-  // Create header
-  const header = createDictHeader(size, children.length, totalLength);
+  // Create header (size = names payload size)
+  const header = createDictHeader(namesBytes.length, children.length);
   const headerBytes = encodeHeader(header);
 
   // Combine all sections
@@ -133,23 +139,12 @@ export async function encodeSuccessorNode(
   // Encode sections
   const childrenBytes = concatBytes(...children);
 
-  // Calculate data offset with 16-byte alignment
-  const dataOffsetUnaligned = HEADER_SIZE + childrenBytes.length;
-  const dataOffset = Math.ceil(dataOffsetUnaligned / DATA_ALIGNMENT) * DATA_ALIGNMENT;
-  const paddingSize = dataOffset - dataOffsetUnaligned;
-
-  // Calculate total length
-  const totalLength = dataOffset + data.length;
-
-  // Create header
-  const header = createSuccessorHeader(data.length, children.length, totalLength);
+  // Create header (size = data size)
+  const header = createSuccessorHeader(data.length, children.length);
   const headerBytes = encodeHeader(header);
 
-  // Create padding (zeros)
-  const padding = new Uint8Array(paddingSize);
-
-  // Combine all sections
-  const nodeBytes = concatBytes(headerBytes, childrenBytes, padding, data);
+  // Combine all sections (no padding needed - Header and Children are 32-byte aligned)
+  const nodeBytes = concatBytes(headerBytes, childrenBytes, data);
 
   // Compute hash
   const hash = await hashProvider.sha256(nodeBytes);
@@ -158,107 +153,25 @@ export async function encodeSuccessorNode(
 }
 
 /**
- * Encode a successor node with explicit logical size (for B-Tree internal nodes)
- */
-export async function encodeSuccessorNodeWithSize(
-  input: SuccessorNodeInput,
-  logicalSize: number,
-  hashProvider: HashProvider
-): Promise<EncodedNode> {
-  const { data, children = [] } = input;
-
-  // Encode sections
-  const childrenBytes = concatBytes(...children);
-
-  // Calculate data offset with 16-byte alignment
-  const dataOffsetUnaligned = HEADER_SIZE + childrenBytes.length;
-  const dataOffset = Math.ceil(dataOffsetUnaligned / DATA_ALIGNMENT) * DATA_ALIGNMENT;
-  const paddingSize = dataOffset - dataOffsetUnaligned;
-
-  // Calculate total length
-  const totalLength = dataOffset + data.length;
-
-  // Create header with explicit size
-  const header = createSuccessorHeader(logicalSize, children.length, totalLength);
-  const headerBytes = encodeHeader(header);
-
-  // Create padding (zeros)
-  const padding = new Uint8Array(paddingSize);
-
-  // Combine all sections
-  const nodeBytes = concatBytes(headerBytes, childrenBytes, padding, data);
-
-  // Compute hash
-  const hash = await hashProvider.sha256(nodeBytes);
-
-  return { bytes: nodeBytes, hash };
-}
-
-/**
- * Encode a file node (f-node) - top-level file with content-type
+ * Encode a file node (f-node) - top-level file with FileInfo
  */
 export async function encodeFileNode(
   input: FileNodeInput,
   hashProvider: HashProvider
 ): Promise<EncodedNode> {
-  const { data, contentType, children = [] } = input;
-
-  // Determine content-type slot size
-  const ctSlotSize = getContentTypeSlotSize(contentType);
+  const { data, contentType, fileSize, children = [] } = input;
 
   // Encode sections
   const childrenBytes = concatBytes(...children);
-  const ctBytes = ctSlotSize > 0 ? encodeContentType(contentType!, ctSlotSize as 16 | 32 | 64) : new Uint8Array(0);
+  const fileInfoBytes = encodeFileInfo(fileSize, contentType);
 
-  // Calculate data offset - already 16-byte aligned because:
-  // Header(32) + Children(N*32) + CT(0/16/32/64) are all multiples of 16
-  const dataOffset = HEADER_SIZE + childrenBytes.length + ctBytes.length;
-
-  // Calculate total length
-  const totalLength = dataOffset + data.length;
-
-  // Create header
-  const header = createFileHeader(data.length, children.length, totalLength, ctSlotSize);
+  // Create header (size = FileInfo + data)
+  const payloadSize = FILEINFO_SIZE + data.length;
+  const header = createFileHeader(payloadSize, children.length);
   const headerBytes = encodeHeader(header);
 
   // Combine all sections
-  const nodeBytes = concatBytes(headerBytes, childrenBytes, ctBytes, data);
-
-  // Compute hash
-  const hash = await hashProvider.sha256(nodeBytes);
-
-  return { bytes: nodeBytes, hash };
-}
-
-/**
- * Encode a file node with explicit logical size (for B-Tree internal nodes)
- */
-export async function encodeFileNodeWithSize(
-  input: FileNodeInput,
-  logicalSize: number,
-  hashProvider: HashProvider
-): Promise<EncodedNode> {
-  const { data, contentType, children = [] } = input;
-
-  // Determine content-type slot size
-  const ctSlotSize = getContentTypeSlotSize(contentType);
-
-  // Encode sections
-  const childrenBytes = concatBytes(...children);
-  const ctBytes = ctSlotSize > 0 ? encodeContentType(contentType!, ctSlotSize as 16 | 32 | 64) : new Uint8Array(0);
-
-  // Calculate data offset
-  const dataOffset = HEADER_SIZE + childrenBytes.length + ctBytes.length;
-
-  // Calculate total length
-  const totalLength = dataOffset + data.length;
-
-  // Create header with explicit size
-  const header = createFileHeader(logicalSize, children.length, totalLength, ctSlotSize);
-  const headerBytes = encodeHeader(header);
-
-  // Combine all sections
-  const nodeBytes = concatBytes(headerBytes, childrenBytes, ctBytes, data);
+  const nodeBytes = concatBytes(headerBytes, childrenBytes, fileInfoBytes, data);
 
   // Compute hash
   const hash = await hashProvider.sha256(nodeBytes);
@@ -295,9 +208,8 @@ export function decodeNode(buffer: Uint8Array): CasNode {
     }
 
     case NODE_TYPE.SUCCESSOR: {
-      // s-node: parse data (16-byte aligned)
-      const dataOffset = Math.ceil(offset / DATA_ALIGNMENT) * DATA_ALIGNMENT;
-      const data = buffer.slice(dataOffset);
+      // s-node: parse data (no padding in v2.1)
+      const data = buffer.slice(offset);
       return {
         kind: "successor",
         size: header.size,
@@ -307,18 +219,14 @@ export function decodeNode(buffer: Uint8Array): CasNode {
     }
 
     case NODE_TYPE.FILE: {
-      // f-node: parse content-type and data
-      const ctLength = getContentTypeLength(header.flags);
-      let contentType: string | undefined;
-      if (ctLength > 0) {
-        contentType = decodeContentType(buffer, offset, ctLength);
-        offset += ctLength;
-      }
+      // f-node: parse FileInfo and data
+      const fileInfo = decodeFileInfo(buffer, offset);
+      offset += FILEINFO_SIZE;
       const data = buffer.slice(offset);
       return {
         kind: "file",
         size: header.size,
-        contentType,
+        fileInfo,
         children: children.length > 0 ? children : undefined,
         data,
       };

@@ -188,13 +188,21 @@ export interface CreateTicketResponse {
 // ============================================================================
 
 /**
- * Node kind in CAS structure
- * - chunk: raw data block
- * - inline-file: single-chunk file (content + metadata)
- * - file: multi-chunk file (index node)
- * - collection: directory structure
+ * Node kind in CAS binary format (aligned with cas-core)
+ * - dict: directory with sorted children
+ * - file: file node with FileInfo
+ * - successor: file continuation chunk
  */
-export type NodeKind = "chunk" | "inline-file" | "file" | "collection";
+export type NodeKind = "dict" | "file" | "successor";
+
+/**
+ * API node kind for tree responses (legacy compatibility)
+ * - collection: directory structure (API response)
+ * - file: multi-chunk file
+ * - inline-file: single-chunk file with embedded content
+ * - chunk: raw data block (internal)
+ */
+export type ApiNodeKind = "collection" | "file" | "inline-file" | "chunk";
 
 /**
  * GC status for reference count records
@@ -490,7 +498,7 @@ export interface CasEndpointInfo {
  * Contains metadata for file/inline-file/collection nodes
  */
 export interface TreeNodeInfo {
-  kind: NodeKind;
+  kind: ApiNodeKind;
   size: number;
   contentType?: string; // for file/inline-file
   children?: Record<string, string>; // for collection: name -> key

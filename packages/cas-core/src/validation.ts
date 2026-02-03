@@ -1,20 +1,26 @@
 /**
- * CAS Node Validation (v2)
+ * CAS Node Validation (v2.1)
  *
- * Strict validation for server-side use:
- * - Magic and header structure
- * - Header.length matches actual buffer length
- * - Reserved bytes are all zero
+ * Layered validation for server-side use:
+ *
+ * Layer 1 - Header Strong Validation:
+ * - Magic bytes
+ * - Flags unused bits (2-31) are zero
+ * - Reserved bytes (16-31) are all zero
+ * - Length consistency: buffer.length == 32 + count * 32 + size
  * - Hash matches content
- * - All children exist
- * - Pascal strings are valid (names, contentType)
- * - Content-type and data sections are within bounds
- * - d-node children are sorted by name (UTF-8 byte order)
- * - Size is correct for dict nodes (sum of children sizes)
+ *
+ * Layer 2 - Payload Validation:
+ * - f-node: size >= 64 (FileInfo), contentType charset
+ * - d-node: names completeness, UTF-8 validity, sorted, unique
+ * - s-node: no special validation
+ *
+ * NOT Validated:
+ * - fileSize vs actual tree data (requires traversal)
  */
 
-import { DATA_ALIGNMENT, FLAGS, HASH_SIZE, HEADER_SIZE, MAGIC_BYTES, NODE_TYPE } from "./constants.ts";
-import { decodeHeader, getContentTypeLength, getNodeType } from "./header.ts";
+import { CONTENT_TYPE_MAX_LENGTH, FILEINFO_SIZE, FLAGS, HASH_SIZE, HEADER_SIZE, MAGIC_BYTES, NODE_TYPE } from "./constants.ts";
+import { decodeHeader, getNodeType } from "./header.ts";
 import type { HashProvider, NodeKind } from "./types.ts";
 import { hashToKey } from "./utils.ts";
 
@@ -225,33 +231,32 @@ export async function validateNode(
 
   const isDict = nodeType === NODE_TYPE.DICT;
   const isFile = nodeType === NODE_TYPE.FILE;
-  const isSuccessor = nodeType === NODE_TYPE.SUCCESSOR;
 
-  // 4. Validate flags unused bits are zero (bits 4-31)
-  if ((header.flags & ~FLAGS.USED_MASK) !== 0) {
+  // 4. Validate flags unused bits are zero (bits 2-31)
+  if ((header.flags & ~FLAGS.TYPE_MASK) !== 0) {
     return {
       valid: false,
       error: `Flags has unused bits set: 0x${header.flags.toString(16)}`,
     };
   }
 
-  // 5. Validate header.length matches actual buffer length
-  if (header.length !== bytes.length) {
+  // 5. Validate length consistency: buffer.length == 32 + count * 32 + size
+  const expectedLength = HEADER_SIZE + header.count * HASH_SIZE + header.size;
+  if (bytes.length !== expectedLength) {
     return {
       valid: false,
-      error: `Length mismatch: header.length=${header.length}, actual=${bytes.length}`,
+      error: `Length mismatch: expected ${expectedLength} (32 + ${header.count} * 32 + ${header.size}), actual=${bytes.length}`,
     };
   }
 
-  // 6. Validate reserved bytes are zero (bytes 24-31)
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const reserved1 = view.getUint32(24, true);
-  const reserved2 = view.getUint32(28, true);
-  if (reserved1 !== 0 || reserved2 !== 0) {
-    return {
-      valid: false,
-      error: `Reserved bytes not zero: [${reserved1}, ${reserved2}]`,
-    };
+  // 6. Validate reserved bytes are zero (bytes 16-31)
+  for (let i = 16; i < 32; i++) {
+    if (bytes[i] !== 0) {
+      return {
+        valid: false,
+        error: `Reserved byte ${i} is not zero (value=${bytes[i]})`,
+      };
+    }
   }
 
   // 7. Validate children section is within bounds
@@ -271,44 +276,25 @@ export async function validateNode(
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 9. Validate CT_LENGTH field
-  const ctLength = getContentTypeLength(header.flags);
-
-  // 8a. For non-f-node (d-node, s-node), CT_LENGTH must be 0
-  if (!isFile && ctLength !== 0) {
-    return {
-      valid: false,
-      error: `Non-file node must have CT_LENGTH=0, got ${ctLength}`,
-    };
-  }
-
-  // 8b. For f-node, validate content-type section and minimal slot requirement
-  if (isFile && ctLength > 0) {
-    const ctEnd = childrenEnd + ctLength;
-    if (ctEnd > bytes.length) {
+  // 9. Validate f-node FileInfo section (64 bytes: fileSize + contentType)
+  if (isFile) {
+    // f-node size must be at least FILEINFO_SIZE (64 bytes)
+    if (header.size < FILEINFO_SIZE) {
       return {
         valid: false,
-        error: `Content-type section exceeds buffer (need ${ctEnd}, have ${bytes.length})`,
+        error: `f-node size too small for FileInfo: ${header.size} < ${FILEINFO_SIZE}`,
       };
     }
 
-    // Read content-type slot
-    const ctSlice = bytes.subarray(childrenEnd, ctEnd);
+    // Validate contentType in FileInfo (bytes 8-63 of payload, which is at childrenEnd)
+    const ctStart = childrenEnd + 8; // skip fileSize (8 bytes)
+    const ctSlice = bytes.subarray(ctStart, ctStart + CONTENT_TYPE_MAX_LENGTH);
 
-    // Find actual content-type length (first null or slot end)
+    // Find actual content-type length (first null or max length)
     let actualCtLen = ctSlice.indexOf(0);
-    if (actualCtLen === -1) actualCtLen = ctLength;
+    if (actualCtLen === -1) actualCtLen = CONTENT_TYPE_MAX_LENGTH;
 
-    // Check minimal slot requirement for hash uniqueness
-    const minimalSlot = actualCtLen === 0 ? 0 : actualCtLen <= 16 ? 16 : actualCtLen <= 32 ? 32 : 64;
-    if (ctLength !== minimalSlot) {
-      return {
-        valid: false,
-        error: `Content-type slot over-allocated: length ${actualCtLen} requires slot ${minimalSlot}, got ${ctLength}`,
-      };
-    }
-
-    // 8c. Validate content-type contains only printable ASCII (0x20-0x7E)
+    // Validate content-type contains only printable ASCII (0x20-0x7E)
     for (let i = 0; i < actualCtLen; i++) {
       const b = ctSlice[i]!;
       if (b < 0x20 || b > 0x7e) {
@@ -319,8 +305,8 @@ export async function validateNode(
       }
     }
 
-    // 9d. Validate all padding bytes are zero (from actualCtLen to ctLength)
-    for (let i = actualCtLen; i < ctLength; i++) {
+    // Validate all padding bytes are zero (from actualCtLen to CONTENT_TYPE_MAX_LENGTH)
+    for (let i = actualCtLen; i < CONTENT_TYPE_MAX_LENGTH; i++) {
       if (ctSlice[i] !== 0) {
         return {
           valid: false,
@@ -330,41 +316,7 @@ export async function validateNode(
     }
   }
 
-  // 10. Validate data section for f-node and s-node
-  if (isFile || isSuccessor) {
-    let dataOffset: number;
-    if (isFile) {
-      dataOffset = childrenEnd + ctLength;
-    } else {
-      // s-node: 16-byte aligned, validate padding is all zeros
-      dataOffset = Math.ceil(childrenEnd / DATA_ALIGNMENT) * DATA_ALIGNMENT;
-      for (let i = childrenEnd; i < dataOffset; i++) {
-        if (bytes[i] !== 0) {
-          return {
-            valid: false,
-            error: `Alignment padding not zero at offset ${i} (value=${bytes[i]})`,
-          };
-        }
-      }
-    }
-    if (dataOffset > bytes.length) {
-      return {
-        valid: false,
-        error: `Data offset exceeds buffer (offset=${dataOffset}, length=${bytes.length})`,
-      };
-    }
-
-    // 9b. Validate leaf node size equals data length
-    const dataLength = bytes.length - dataOffset;
-    if (header.count === 0 && header.size !== dataLength) {
-      return {
-        valid: false,
-        error: `Leaf node size mismatch: header.size=${header.size}, data.length=${dataLength}`,
-      };
-    }
-  }
-
-  // 11. Validate Pascal strings for d-node names
+  // 10. Validate Pascal strings for d-node names
   let childNames: string[] = [];
   if (isDict && header.count > 0) {
     // Names section starts right after children
@@ -509,33 +461,32 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
 
   const isDict = nodeType === NODE_TYPE.DICT;
   const isFile = nodeType === NODE_TYPE.FILE;
-  const isSuccessor = nodeType === NODE_TYPE.SUCCESSOR;
 
-  // 4. Validate flags unused bits are zero (bits 4-31)
-  if ((header.flags & ~FLAGS.USED_MASK) !== 0) {
+  // 4. Validate flags unused bits are zero (bits 2-31)
+  if ((header.flags & ~FLAGS.TYPE_MASK) !== 0) {
     return {
       valid: false,
       error: `Flags has unused bits set: 0x${header.flags.toString(16)}`,
     };
   }
 
-  // 5. Validate header.length matches actual buffer length
-  if (header.length !== bytes.length) {
+  // 5. Validate length consistency: buffer.length == 32 + count * 32 + size
+  const expectedLength = HEADER_SIZE + header.count * HASH_SIZE + header.size;
+  if (bytes.length !== expectedLength) {
     return {
       valid: false,
-      error: `Length mismatch: header.length=${header.length}, actual=${bytes.length}`,
+      error: `Length mismatch: expected ${expectedLength} (32 + ${header.count} * 32 + ${header.size}), actual=${bytes.length}`,
     };
   }
 
-  // 6. Validate reserved bytes are zero (bytes 24-31)
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const reserved1 = view.getUint32(24, true);
-  const reserved2 = view.getUint32(28, true);
-  if (reserved1 !== 0 || reserved2 !== 0) {
-    return {
-      valid: false,
-      error: `Reserved bytes not zero: [${reserved1}, ${reserved2}]`,
-    };
+  // 6. Validate reserved bytes are zero (bytes 16-31)
+  for (let i = 16; i < 32; i++) {
+    if (bytes[i] !== 0) {
+      return {
+        valid: false,
+        error: `Reserved byte ${i} is not zero (value=${bytes[i]})`,
+      };
+    }
   }
 
   // 7. Validate children section
@@ -552,44 +503,22 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 9. Validate CT_LENGTH field
-  const ctLength = getContentTypeLength(header.flags);
-
-  // 8a. For non-f-node (d-node, s-node), CT_LENGTH must be 0
-  if (!isFile && ctLength !== 0) {
-    return {
-      valid: false,
-      error: `Non-file node must have CT_LENGTH=0, got ${ctLength}`,
-    };
-  }
-
-  // 8b. For f-node, validate content-type section and minimal slot requirement
-  if (isFile && ctLength > 0) {
-    const ctEnd = childrenEnd + ctLength;
-    if (ctEnd > bytes.length) {
+  // 9. Validate f-node FileInfo section
+  if (isFile) {
+    if (header.size < FILEINFO_SIZE) {
       return {
         valid: false,
-        error: `Content-type section exceeds buffer (need ${ctEnd}, have ${bytes.length})`,
+        error: `f-node size too small for FileInfo: ${header.size} < ${FILEINFO_SIZE}`,
       };
     }
 
-    // Read content-type slot
-    const ctSlice = bytes.subarray(childrenEnd, ctEnd);
+    // Validate contentType charset
+    const ctStart = childrenEnd + 8;
+    const ctSlice = bytes.subarray(ctStart, ctStart + CONTENT_TYPE_MAX_LENGTH);
 
-    // Find actual content-type length (first null or slot end)
     let actualCtLen = ctSlice.indexOf(0);
-    if (actualCtLen === -1) actualCtLen = ctLength;
+    if (actualCtLen === -1) actualCtLen = CONTENT_TYPE_MAX_LENGTH;
 
-    // Check minimal slot requirement for hash uniqueness
-    const minimalSlot = actualCtLen === 0 ? 0 : actualCtLen <= 16 ? 16 : actualCtLen <= 32 ? 32 : 64;
-    if (ctLength !== minimalSlot) {
-      return {
-        valid: false,
-        error: `Content-type slot over-allocated: length ${actualCtLen} requires slot ${minimalSlot}, got ${ctLength}`,
-      };
-    }
-
-    // 8c. Validate content-type contains only printable ASCII (0x20-0x7E)
     for (let i = 0; i < actualCtLen; i++) {
       const b = ctSlice[i]!;
       if (b < 0x20 || b > 0x7e) {
@@ -600,8 +529,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
       }
     }
 
-    // 8d. Validate all padding bytes are zero (from actualCtLen to ctLength)
-    for (let i = actualCtLen; i < ctLength; i++) {
+    for (let i = actualCtLen; i < CONTENT_TYPE_MAX_LENGTH; i++) {
       if (ctSlice[i] !== 0) {
         return {
           valid: false,
@@ -611,41 +539,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     }
   }
 
-  // 10. Validate data section for f-node and s-node
-  if (isFile || isSuccessor) {
-    let dataOffset: number;
-    if (isFile) {
-      dataOffset = childrenEnd + ctLength;
-    } else {
-      // s-node: 16-byte aligned, validate padding is all zeros
-      dataOffset = Math.ceil(childrenEnd / DATA_ALIGNMENT) * DATA_ALIGNMENT;
-      for (let i = childrenEnd; i < dataOffset; i++) {
-        if (bytes[i] !== 0) {
-          return {
-            valid: false,
-            error: `Alignment padding not zero at offset ${i} (value=${bytes[i]})`,
-          };
-        }
-      }
-    }
-    if (dataOffset > bytes.length) {
-      return {
-        valid: false,
-        error: `Data offset exceeds buffer (offset=${dataOffset}, length=${bytes.length})`,
-      };
-    }
-
-    // 9b. Validate leaf node size equals data length
-    const dataLength = bytes.length - dataOffset;
-    if (header.count === 0 && header.size !== dataLength) {
-      return {
-        valid: false,
-        error: `Leaf node size mismatch: header.size=${header.size}, data.length=${dataLength}`,
-      };
-    }
-  }
-
-  // 11. Validate Pascal strings for d-node names and check sorting
+  // 10. Validate Pascal strings for d-node names and check sorting
   if (isDict && header.count > 0) {
     const namesOffset = childrenEnd;
     const [valid, error, names] = validatePascalStringsWithNames(bytes, namesOffset, header.count);
@@ -653,7 +547,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
       return { valid: false, error: `Invalid names: ${error}` };
     }
 
-    // 12. Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
+    // Validate d-node children are sorted by name (UTF-8 byte order) and no duplicates
     if (names!.length > 1) {
       const textEncoder = new TextEncoder();
       for (let i = 0; i < names!.length - 1; i++) {

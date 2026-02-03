@@ -1,20 +1,19 @@
 /**
  * @agent-web-portal/cas-core
  *
- * CAS binary format encoding/decoding library (v2)
+ * CAS binary format encoding/decoding library (v2.1)
  *
  * Node types:
  * - d-node (dict): directory with sorted children by name
  * - s-node (successor): file continuation chunk
- * - f-node (file): file top-level node with content-type
+ * - f-node (file): file top-level node with FileInfo
  */
 
 // Constants
 export {
-  CONTENT_TYPE_LENGTH,
-  CONTENT_TYPE_LENGTH_VALUES,
-  DATA_ALIGNMENT,
+  CONTENT_TYPE_MAX_LENGTH,
   DEFAULT_NODE_LIMIT,
+  FILEINFO_SIZE,
   FLAGS,
   HASH_SIZE,
   HEADER_SIZE,
@@ -30,6 +29,7 @@ export type {
   CasNode,
   DictNodeInput,
   EncodedNode,
+  FileInfo,
   FileNodeInput,
   HashProvider,
   LayoutNode,
@@ -48,7 +48,6 @@ export {
   createSuccessorHeader,
   decodeHeader,
   encodeHeader,
-  getContentTypeLength,
   getNodeType,
 } from "./header.ts";
 
@@ -68,9 +67,7 @@ export {
   decodeNode,
   encodeDictNode,
   encodeFileNode,
-  encodeFileNodeWithSize,
   encodeSuccessorNode,
-  encodeSuccessorNodeWithSize,
   getNodeKind,
   isValidNode,
 } from "./node.ts";

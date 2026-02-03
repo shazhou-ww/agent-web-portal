@@ -1,6 +1,6 @@
 # Content Addressed Storage (CAS) Binary Format Specification
 
-> 版本: 2.0  
+> 版本: 2.1  
 > 基于: `packages/cas-core` 实现  
 > 日期: 2026-02-03
 
@@ -32,9 +32,9 @@
 | **Merkle Tree** | 一种哈希树结构，每个非叶节点的哈希值由其子节点哈希值计算得出 |
 | **B-Tree** | 大文件拆分使用的平衡树结构，每个节点既存数据也存子节点引用 |
 | **Pascal String** | 以 u16 LE 长度前缀编码的 UTF-8 字符串 |
-| **Content-Type** | MIME 类型字符串，描述文件内容类型（如 `application/json`） |
-| **Content-Type Slot** | 固定大小的 Content-Type 存储槽（0/16/32/64 字节） |
-| **Logical Size** | 节点的逻辑大小：文件节点为原始文件字节数，目录节点为所有子节点逻辑大小之和 |
+| **Content-Type** | MIME 类型字符串，描述文件内容类型（如 `application/json`），固定 56 字节槽 |
+| **FileInfo** | f-node 的 Payload 头部，包含 fileSize (8 bytes) + contentType (56 bytes) = 64 bytes |
+| **Payload Size** | Header.size 字段的含义：Payload 部分的字节数（不含 Header 和 Children） |
 | **Node Limit** | 单个节点的最大字节数限制（默认 1 MB） |
 | **Hash Provider** | 提供 SHA-256 哈希计算的抽象接口 |
 | **Storage Provider** | 提供节点存取的抽象接口（S3、HTTP、内存等） |
@@ -212,11 +212,16 @@ Root Key = SHA-256(Header + Children + Data)
 Offset  Size   Field      Type     Description
 ────────────────────────────────────────────────────────────────
 0-3     4      magic      u32 LE   固定值 0x01534143 ("CAS\x01")
-4-7     4      flags      u32 LE   节点类型 + CT 长度编码
-8-15    8      size       u64 LE   逻辑大小
-16-19   4      count      u32 LE   子节点数量
-20-23   4      length     u32 LE   节点总字节数（含 Header）
-24-31   8      reserved   u64      保留字段（必须为 0）
+4-7     4      flags      u32 LE   节点类型（bits 0-1），其余保留
+8-11    4      size       u32 LE   Payload 大小（不含 Header 和 Children）
+12-15   4      count      u32 LE   子节点数量
+16-31   16     reserved   -        保留字段（必须全为 0）
+```
+
+**节点总大小计算**：
+```
+nodeLength = HEADER_SIZE + count × HASH_SIZE + size
+           = 32 + count × 32 + size
 ```
 
 #### 4.1.1 Magic Number
@@ -234,29 +239,18 @@ u32 LE 值: 0x01534143
 Bits 0-1:   节点类型 (TYPE_MASK = 0b11)
             01 = d-node, 10 = s-node, 11 = f-node
             
-Bits 2-3:   Content-Type 长度编码 (CT_LENGTH_MASK = 0b1100)
-            仅 f-node 使用，其他类型必须为 0
-            
-Bits 4-31:  保留位（必须为 0）
+Bits 2-31:  保留位（必须为 0）
 ```
-
-**Content-Type 长度编码**（仅 f-node）：
-
-| 编码值 | 位模式 | 实际长度 |
-|--------|--------|----------|
-| 0 | `00` | 0 字节（无 Content-Type） |
-| 1 | `01` | 16 字节 |
-| 2 | `10` | 32 字节 |
-| 3 | `11` | 64 字节 |
 
 #### 4.1.3 Size 字段
 
-- **f-node / s-node**：原始文件的总字节数（整个 B-Tree 表示的文件大小）
-- **d-node**：所有子节点 `size` 的递归总和
+`size` 表示 **Payload 大小**（不含 Header 和 Children）：
 
-#### 4.1.4 Length 字段
-
-节点的总字节数，包含 Header。用于校验数据完整性。
+| 节点类型 | Payload 内容 | size 值 |
+|----------|--------------|----------|
+| f-node | FileInfo (64) + Data | `64 + data.length` |
+| d-node | Names (Pascal strings) | `Σ(2 + name.length)` |
+| s-node | Data | `data.length` |
 
 ### 4.2 d-node 完整格式
 
@@ -296,62 +290,62 @@ Offset   Content
 ```
 ┌────────────────────────────────────────┐
 │ Header (32 bytes)                      │
+│   size = data.length                   │
 ├────────────────────────────────────────┤
 │ Children (count × 32 bytes)            │  ← SHA-256 哈希数组
-├────────────────────────────────────────┤
-│ Padding (16-byte alignment)            │  ← 填充到 16 字节边界
 ├────────────────────────────────────────┤
 │ Data (raw bytes)                       │  ← 原始文件数据片段
 └────────────────────────────────────────┘
 ```
 
-**Padding 段**：
-- 使 Data 段起始于 16 字节对齐的偏移
-- 填充字节必须为 0
-- 计算：`padding = ceil((32 + count × 32) / 16) × 16 - (32 + count × 32)`
-
 **示例**（1 个子节点，100 字节数据）：
 ```
 Offset   Content
-0-31     Header (flags=0x02, count=1, size=..., length=148)
+0-31     Header (flags=0x02, count=1, size=100)
 32-63    Child[0] hash (32 bytes)
-64-79    Padding (16 bytes of zeros for alignment)
-80-179   Data (100 bytes)
+64-163   Data (100 bytes)
 ```
+
+**注意**：s-node 不再需要 Padding，因为 Header(32) + Children(N×32) 已经是 32 的倍数。
 
 ### 4.4 f-node 完整格式
 
 ```
 ┌────────────────────────────────────────┐
 │ Header (32 bytes)                      │
+│   size = 64 + data.length              │
 ├────────────────────────────────────────┤
 │ Children (count × 32 bytes)            │  ← SHA-256 哈希数组
 ├────────────────────────────────────────┤
-│ Content-Type (0/16/32/64 bytes)        │  ← null-padded ASCII
+│ FileInfo (64 bytes)                    │  ← 文件元信息
+│   0-7:   fileSize (u64 LE)             │  ← 原始文件总大小
+│   8-63:  contentType (56 bytes)        │  ← null-padded ASCII
 ├────────────────────────────────────────┤
 │ Data (raw bytes)                       │  ← 原始文件数据片段
 └────────────────────────────────────────┘
 ```
 
-**Content-Type 段**：
-- 长度由 flags 的 bits 2-3 决定
-- 内容为 ASCII 编码的 MIME 类型
-- 不足的部分用 0x00 填充
-- 仅允许 printable ASCII (0x20-0x7E)
+**FileInfo 段（64 字节）**：
+- `fileSize` (8 bytes): 原始文件的总字节数（整个 B-Tree 表示的文件大小）
+- `contentType` (56 bytes): MIME 类型，ASCII 编码，不足部分用 0x00 填充
+  - 仅允许 printable ASCII (0x20-0x7E)
+  - 最大有效长度 56 字节（足够大多数 MIME 类型）
 
 **对齐规则**：
-- Header = 32 字节（16 的倍数）
-- Children = N × 32 字节（16 的倍数）
-- Content-Type = 0/16/32/64 字节（16 的倍数）
-- 因此 Data 段自然对齐到 16 字节边界，无需额外 padding
+- Header = 32 字节（32 的倍数）
+- Children = N × 32 字节（32 的倍数）
+- FileInfo = 64 字节（32 的倍数）
+- 因此 Data 段自然对齐到 32 字节边界
 
-**示例**（无子节点，Content-Type="application/json"，50 字节数据）：
+**示例**（无子节点，contentType="application/json"，50 字节数据）：
 ```
 Offset   Content
-0-31     Header (flags=0x07, count=0, length=98)
-         flags = 0b0111 = type=11(f-node) + ct_len=01(16 bytes)
-32-47    Content-Type: "application/json" (16 bytes, null-padded)
-48-97    Data (50 bytes)
+0-31     Header (flags=0x03, count=0, size=114)
+         flags = 0b11 = f-node
+         size = 64 + 50 = 114
+32-39    fileSize: 50 (u64 LE)
+40-95    contentType: "application/json" + zeros (56 bytes)
+96-145   Data (50 bytes)
 ```
 
 ### 4.5 Pascal String 编码
@@ -553,6 +547,7 @@ async function uploadFileNode(
   offset: number,
   contentType: string,
   layout: LayoutNode,
+  totalFileSize: number,
   isRoot: boolean
 ): Promise<Uint8Array> {  // 返回节点哈希
   
@@ -561,8 +556,8 @@ async function uploadFileNode(
   // 叶节点：直接编码上传
   if (layout.children.length === 0) {
     const encoded = isRoot
-      ? await encodeFileNodeWithSize({ data: nodeData, contentType }, totalSize, hash)
-      : await encodeSuccessorNodeWithSize({ data: nodeData }, totalSize, hash);
+      ? await encodeFileNode({ data: nodeData, contentType, fileSize: totalFileSize }, hash)
+      : await encodeSuccessorNode({ data: nodeData }, hash);
     await storage.put(hashToKey(encoded.hash), encoded.bytes);
     return encoded.hash;
   }
@@ -573,7 +568,7 @@ async function uploadFileNode(
   
   for (const childLayout of layout.children) {
     const childHash = await uploadFileNode(
-      ctx, data, childOffset, contentType, childLayout, false
+      ctx, data, childOffset, contentType, childLayout, totalFileSize, false
     );
     childHashes.push(childHash);
     childOffset += computeTotalSize(childLayout);
@@ -581,13 +576,13 @@ async function uploadFileNode(
   
   // 编码当前节点（包含子节点哈希）并上传
   const encoded = isRoot
-    ? await encodeFileNodeWithSize(
-        { data: nodeData, contentType, children: childHashes },
-        totalSize, hash
+    ? await encodeFileNode(
+        { data: nodeData, contentType, fileSize: totalFileSize, children: childHashes },
+        hash
       )
-    : await encodeSuccessorNodeWithSize(
+    : await encodeSuccessorNode(
         { data: nodeData, children: childHashes },
-        totalSize, hash
+        hash
       );
   
   await storage.put(hashToKey(encoded.hash), encoded.bytes);
@@ -639,9 +634,10 @@ async function readFileData(ctx: CasContext, node: CasNode): Promise<Uint8Array>
 
 | 限制项 | 值 | 说明 |
 |--------|-----|------|
-| **最大 Size 值** | `Number.MAX_SAFE_INTEGER` | $2^{53} - 1 \approx 9$ PB |
+| **最大 Payload Size** | $2^{32} - 1 \approx 4$ GB | u32 上限 |
+| **最大 File Size** | $2^{64} - 1$ | FileInfo.fileSize 为 u64 |
 | **最大树深度** | 10 | 硬编码安全限制 |
-| **最大 Content-Type 长度** | 64 字节 | 最大 slot 大小 |
+| **最大 Content-Type 长度** | 56 字节 | FileInfo 中固定槽大小 |
 | **最大 Pascal String 长度** | 65,535 字节 | u16 上限 |
 
 ### 6.3 单节点子节点数约束
@@ -671,87 +667,90 @@ d-node 的子节点数受限于 Pascal String 总长度：
 | 1 MB | ~1 MB | ~32 GB | ~1 PB |
 | 4 MB | ~4 MB | ~512 GB | ~64 PB |
 
-### 6.5 Size 字段精度说明
+### 6.5 Size 字段说明
 
-当前实现使用 JavaScript `number` 类型存储 size：
+**Header.size (u32)**：
+- 表示 Payload 大小，最大约 4 GB
+- 单节点通常限制在 1 MB，所以 u32 绑绑有余
+
+**FileInfo.fileSize (u64)**：
+- 表示原始文件总大小
+- 使用 JavaScript `number` 存储时上限为 `Number.MAX_SAFE_INTEGER` ≈ 9 PB
+- 二进制格式支持完整 64 位（约 16 EB）
 
 ```typescript
-// 编码：拆分为两个 u32
-const sizeLow = header.size >>> 0;
-const sizeHigh = Math.floor(header.size / 0x100000000) >>> 0;
-view.setUint32(8, sizeLow, true);
-view.setUint32(12, sizeHigh, true);
+// FileInfo.fileSize 编码（u64 LE）
+const sizeLow = fileSize >>> 0;
+const sizeHigh = Math.floor(fileSize / 0x100000000) >>> 0;
+view.setUint32(offset, sizeLow, true);
+view.setUint32(offset + 4, sizeHigh, true);
 
-// 解码：合并两个 u32
-const sizeLow = view.getUint32(8, true);
-const sizeHigh = view.getUint32(12, true);
-const size = sizeLow + sizeHigh * 0x100000000;
+// 解码
+const sizeLow = view.getUint32(offset, true);
+const sizeHigh = view.getUint32(offset + 4, true);
+const fileSize = sizeLow + sizeHigh * 0x100000000;
 ```
-
-**限制**：
-- `Number.MAX_SAFE_INTEGER = 2^53 - 1 ≈ 9 PB`
-- 超过此值会丢失精度
-
-**未来改进方向**：
-- 对于需要超过 9 PB 的场景，可引入 `BigInt` 重载
-- 二进制格式本身支持完整 64 位（约 16 EB）
 
 ---
 
 ## 7. 验证规则
 
-服务端接收节点时必须执行严格验证。以下是完整验证规则清单：
+服务端接收节点时执行分层验证。
 
-### 7.1 Header 验证
+### 7.1 Header 强校验（必须）
 
 | 规则 | 说明 |
 |------|------|
 | **Magic 验证** | 前 4 字节必须为 `0x43, 0x41, 0x53, 0x01` |
-| **Length 验证** | `header.length` 必须等于实际 buffer 长度 |
-| **Reserved 验证** | 字节 24-31 必须全为 0 |
-| **Flags 未使用位** | bits 4-31 必须全为 0 |
-| **CT_LENGTH 验证** | 非 f-node 的 CT_LENGTH 必须为 0 |
+| **Flags 验证** | bits 2-31 必须全为 0 |
+| **Reserved 验证** | 字节 16-31 必须全为 0 |
+| **长度一致性** | `buffer.length == 32 + count × 32 + size` |
+| **哈希验证** | `sha256(buffer) == expectedKey` |
 
-### 7.2 Content-Type 验证（f-node）
+### 7.2 Payload 校验
 
-| 规则 | 说明 |
-|------|------|
-| **字符集限制** | 仅允许 printable ASCII (0x20-0x7E) |
-| **Padding 验证** | 填充字节必须为 0x00 |
-| **长度一致性** | 实际 Content-Type 长度 ≤ slot 大小 |
-
-### 7.3 Alignment 验证（s-node）
+#### 7.2.1 f-node 校验
 
 | 规则 | 说明 |
 |------|------|
-| **Padding 全零** | Header + Children 后到 Data 段之间的填充必须全为 0 |
+| **size 一致性** | `size >= 64`（至少包含 FileInfo） |
+| **contentType 字符集** | 仅允许 printable ASCII (0x20-0x7E) 或 0x00 |
+| **contentType padding** | 有效字符后必须全为 0x00 |
 
-### 7.4 Pascal String 验证（d-node）
+#### 7.2.2 d-node 校验
 
 | 规则 | 说明 |
 |------|------|
+| **Names 完整性** | 能解析出恰好 `count` 个 Pascal string |
 | **UTF-8 有效性** | 使用 `fatal` 模式解码，拒绝无效 UTF-8 |
-| **长度边界** | 每个字符串不超出 buffer 边界 |
 | **排序验证** | 名称必须按 UTF-8 字节序严格升序 |
 | **唯一性验证** | 不允许重复名称 |
 
-### 7.5 语义验证
+#### 7.2.3 s-node 校验
 
-| 规则 | 说明 |
+无特殊校验（纯数据）。
+
+### 7.3 不做的校验
+
+| 项目 | 理由 |
 |------|------|
-| **叶节点 Size** | 无子节点时，`header.size == data.length` |
-| **Dict Size 一致性** | d-node 的 `size == Σ children.size` |
-| **哈希验证** | `sha256(bytes) == expectedKey` |
-| **子节点存在性** | 所有引用的子节点 Key 必须存在（可选，按需验证） |
+| **fileSize 一致性** | 需要遍历整棵 B-Tree 计算实际数据总和，代价高 |
+| **子节点存在性** | 按需验证，非上传时强制 |
 
-### 7.6 验证实现示例
+### 7.4 验证实现示例
 
 ```typescript
+const HEADER_SIZE = 32;
+const HASH_SIZE = 32;
+const FILEINFO_SIZE = 64;
+
 async function validateNode(
   buffer: Uint8Array,
   expectedKey: string,
   hashProvider: HashProvider
 ): Promise<ValidationResult> {
+  // === Layer 1: Header 强校验 ===
+  
   // 1. 验证 Magic
   if (!buffer.slice(0, 4).every((b, i) => b === MAGIC_BYTES[i])) {
     return { valid: false, error: "Invalid magic number" };
@@ -760,33 +759,47 @@ async function validateNode(
   // 2. 解码 Header
   const header = decodeHeader(buffer);
   
-  // 3. 验证 Length
-  if (header.length !== buffer.length) {
-    return { valid: false, error: `Length mismatch: ${header.length} != ${buffer.length}` };
+  // 3. 验证 Flags 未使用位 (bits 2-31)
+  if ((header.flags & ~0b11) !== 0) {
+    return { valid: false, error: "Unused flag bits are set" };
   }
   
-  // 4. 验证 Reserved 字节
-  for (let i = 24; i < 32; i++) {
+  // 4. 验证 Reserved 字节 (16-31)
+  for (let i = 16; i < 32; i++) {
     if (buffer[i] !== 0) {
       return { valid: false, error: `Reserved byte ${i} is not zero` };
     }
   }
   
-  // 5. 验证 Flags 未使用位
-  if ((header.flags & ~FLAGS.USED_MASK) !== 0) {
-    return { valid: false, error: "Unused flag bits are set" };
+  // 5. 验证长度一致性
+  const expectedLength = HEADER_SIZE + header.count * HASH_SIZE + header.size;
+  if (buffer.length !== expectedLength) {
+    return { valid: false, error: `Length mismatch: ${buffer.length} != ${expectedLength}` };
   }
   
   // 6. 验证哈希
   const hash = await hashProvider.sha256(buffer);
   const actualKey = hashToKey(hash);
   if (actualKey !== expectedKey) {
-    return { valid: false, error: `Hash mismatch: ${actualKey} != ${expectedKey}` };
+    return { valid: false, error: `Hash mismatch` };
   }
   
-  // ... 更多节点类型特定验证
+  // === Layer 2: Payload 校验 ===
+  const nodeType = header.flags & 0b11;
   
-  return { valid: true, kind: nodeType, size: header.size };
+  if (nodeType === NODE_TYPE.FILE) {
+    // f-node: 验证 contentType
+    if (header.size < FILEINFO_SIZE) {
+      return { valid: false, error: "f-node size too small for FileInfo" };
+    }
+    // contentType 字符集验证...
+  } else if (nodeType === NODE_TYPE.DICT) {
+    // d-node: 验证 names 完整性、排序、唯一性
+    // ...
+  }
+  // s-node: 无特殊校验
+  
+  return { valid: true, kind: nodeType };
 }
 ```
 
@@ -805,15 +818,14 @@ Well-Known Keys 是预计算的特殊节点，具有系统级意义。
 Offset   Content
 0-3      Magic: 0x43, 0x41, 0x53, 0x01
 4-7      Flags: 0x01, 0x00, 0x00, 0x00 (d-node)
-8-15     Size: 0x00 × 8 (size = 0)
-16-19    Count: 0x00 × 4 (count = 0)
-20-23    Length: 0x20, 0x00, 0x00, 0x00 (length = 32)
-24-31    Reserved: 0x00 × 8
+8-11     Size: 0x00, 0x00, 0x00, 0x00 (size = 0, no names)
+12-15    Count: 0x00, 0x00, 0x00, 0x00 (count = 0)
+16-31    Reserved: 0x00 × 16
 ```
 
 **Key**：
 ```
-sha256:04821167d026fa3b24e160b8f9f0ff2a342ca1f96c78c24b23e6a086b71e2391
+sha256:928fb40f7f8d2746a9dba82de1f75603fd81d486542ba854770ac2dd1d78a4e2
 ```
 
 **生成代码**：
@@ -822,12 +834,12 @@ const EMPTY_DICT_BYTES = new Uint8Array(32);
 const view = new DataView(EMPTY_DICT_BYTES.buffer);
 view.setUint32(0, 0x01534143, true);  // magic
 view.setUint32(4, 0x01, true);        // flags = d-node
-view.setUint32(16, 0, true);          // count = 0
-view.setUint32(20, 32, true);         // length = 32
+view.setUint32(8, 0, true);           // size = 0 (no names payload)
+view.setUint32(12, 0, true);          // count = 0
+// bytes 16-31 already 0 (reserved)
 
 const hash = await crypto.subtle.digest("SHA-256", EMPTY_DICT_BYTES);
 const key = "sha256:" + bytesToHex(new Uint8Array(hash));
-// -> "sha256:04821167d026fa3b24e160b8f9f0ff2a342ca1f96c78c24b23e6a086b71e2391"
 ```
 
 ### 8.2 使用场景

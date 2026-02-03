@@ -1,10 +1,10 @@
 /**
- * CAS Binary Format Types (v2)
+ * CAS Binary Format Types (v2.1)
  *
  * Node types:
  * - d-node (dict node): directory with sorted children by name
  * - s-node (successor node): file continuation chunk
- * - f-node (file node): file top-level node with content-type
+ * - f-node (file node): file top-level node with FileInfo
  */
 
 /**
@@ -56,23 +56,32 @@ export type StorageProvider = {
  *
  * Layout:
  * - 0-3:   magic (u32 LE) - 0x01534143
- * - 4-7:   flags (u32 LE) - node type and content-type length
- * - 8-15:  size (u64 LE) - logical size
- * - 16-19: count (u32 LE) - number of children
- * - 20-23: length (u32 LE) - total block length for validation
- * - 24-31: reserved
+ * - 4-7:   flags (u32 LE) - node type (bits 0-1), reserved (bits 2-31)
+ * - 8-11:  size (u32 LE) - payload size
+ * - 12-15: count (u32 LE) - number of children
+ * - 16-31: reserved (16 bytes, must be 0)
  */
 export type CasHeader = {
   /** Magic number (0x01534143) */
   magic: number;
-  /** Flag bits (node type in bits 0-1, content-type length in bits 2-3) */
+  /** Flag bits (node type in bits 0-1) */
   flags: number;
-  /** Logical size (file size for files, total size for dicts) */
+  /** Payload size (not including header and children) */
   size: number;
   /** Number of children */
   count: number;
-  /** Total block length (for validation) */
-  length: number;
+};
+
+/**
+ * File info for f-node (64 bytes)
+ * - 0-7:   fileSize (u64 LE) - original file size
+ * - 8-63:  contentType (56 bytes, null-padded ASCII)
+ */
+export type FileInfo = {
+  /** Original file size (full B-Tree file size) */
+  fileSize: number;
+  /** MIME type (max 56 bytes) */
+  contentType: string;
 };
 
 /**
@@ -81,10 +90,10 @@ export type CasHeader = {
 export type CasNode = {
   /** Node type: dict, file, or successor */
   kind: NodeKind;
-  /** Logical size */
+  /** Payload size (bytes in this node's payload section) */
   size: number;
-  /** MIME type (f-node only) */
-  contentType?: string;
+  /** File info (f-node only: fileSize + contentType) */
+  fileInfo?: FileInfo;
   /** Child hashes (32 bytes each) */
   children?: Uint8Array[];
   /** Child names (d-node only, sorted by UTF-8 bytes) */
@@ -97,9 +106,11 @@ export type CasNode = {
  * File node input for encoding (f-node)
  */
 export type FileNodeInput = {
-  /** File content type (MIME type) */
+  /** File content type (MIME type, max 56 bytes) */
   contentType?: string;
-  /** Raw data bytes */
+  /** Original file size (for B-Tree root node) */
+  fileSize: number;
+  /** Raw data bytes for this node */
   data: Uint8Array;
   /** Child chunk hashes (for B-Tree internal nodes) */
   children?: Uint8Array[];
@@ -119,8 +130,6 @@ export type SuccessorNodeInput = {
  * Dict node input for encoding (d-node)
  */
 export type DictNodeInput = {
-  /** Total size of all descendants */
-  size: number;
   /** Child hashes (32 bytes each) */
   children: Uint8Array[];
   /** Child names (will be sorted by UTF-8 bytes) */

@@ -6,7 +6,7 @@
  */
 
 import { DEFAULT_NODE_LIMIT, HASH_SIZE } from "./constants.ts";
-import { decodeNode, encodeDictNode, encodeFileNode, encodeFileNodeWithSize, encodeSuccessorNodeWithSize } from "./node.ts";
+import { decodeNode, encodeDictNode, encodeFileNode, encodeSuccessorNode } from "./node.ts";
 import { computeLayout } from "./topology.ts";
 import type {
   CasNode,
@@ -115,6 +115,7 @@ const countLayoutNodes = (layout: LayoutNode): number => {
 
 /**
  * Recursively upload a file node according to layout
+ * In v2.1: f-node stores fileSize in FileInfo, s-node has no fileSize
  */
 const uploadFileNode = async (
   ctx: CasContext,
@@ -122,6 +123,7 @@ const uploadFileNode = async (
   offset: number,
   contentType: string,
   layout: LayoutNode,
+  totalFileSize: number,
   isRoot: boolean = true
 ): Promise<Uint8Array> => {
   const { storage, hash } = ctx;
@@ -130,17 +132,15 @@ const uploadFileNode = async (
   if (layout.children.length === 0) {
     // Leaf node
     if (isRoot) {
-      const encoded = await encodeFileNodeWithSize(
-        { data: nodeData, contentType },
-        layout.dataSize,
+      const encoded = await encodeFileNode(
+        { data: nodeData, contentType, fileSize: totalFileSize },
         hash
       );
       await storage.put(hashToKey(encoded.hash), encoded.bytes);
       return encoded.hash;
     } else {
-      const encoded = await encodeSuccessorNodeWithSize(
+      const encoded = await encodeSuccessorNode(
         { data: nodeData },
-        layout.dataSize,
         hash
       );
       await storage.put(hashToKey(encoded.hash), encoded.bytes);
@@ -153,25 +153,21 @@ const uploadFileNode = async (
   let childOffset = offset + layout.dataSize;
 
   for (const childLayout of layout.children) {
-    const childHash = await uploadFileNode(ctx, data, childOffset, contentType, childLayout, false);
+    const childHash = await uploadFileNode(ctx, data, childOffset, contentType, childLayout, totalFileSize, false);
     childHashes.push(childHash);
     childOffset += computeLayoutTotalSize(childLayout);
   }
 
-  const totalSize = computeLayoutTotalSize(layout);
-
   if (isRoot) {
-    const encoded = await encodeFileNodeWithSize(
-      { data: nodeData, contentType, children: childHashes },
-      totalSize,
+    const encoded = await encodeFileNode(
+      { data: nodeData, contentType, fileSize: totalFileSize, children: childHashes },
       hash
     );
     await storage.put(hashToKey(encoded.hash), encoded.bytes);
     return encoded.hash;
   } else {
-    const encoded = await encodeSuccessorNodeWithSize(
+    const encoded = await encodeSuccessorNode(
       { data: nodeData, children: childHashes },
-      totalSize,
       hash
     );
     await storage.put(hashToKey(encoded.hash), encoded.bytes);
@@ -246,7 +242,7 @@ export const writeFile = async (
   const layout = computeLayout(size, nodeLimit);
   const nodeCount = countLayoutNodes(layout);
 
-  const rootHash = await uploadFileNode(ctx, data, 0, contentType, layout);
+  const rootHash = await uploadFileNode(ctx, data, 0, contentType, layout, size);
   const key = hashToKey(rootHash);
 
   return { key, size, nodeCount };
@@ -260,7 +256,7 @@ export const putFileNode = async (
   data: Uint8Array,
   contentType?: string
 ): Promise<string> => {
-  const encoded = await encodeFileNode({ data, contentType }, ctx.hash);
+  const encoded = await encodeFileNode({ data, contentType, fileSize: data.length }, ctx.hash);
   await ctx.storage.put(hashToKey(encoded.hash), encoded.bytes);
   return hashToKey(encoded.hash);
 };

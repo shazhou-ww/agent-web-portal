@@ -864,8 +864,8 @@ const COGNITO_ISSUER = COGNITO_USER_POOL_ID
 // JWKS for Cognito JWT verification
 const cognitoJwks = COGNITO_USER_POOL_ID
   ? createRemoteJWKSet(new URL(`${COGNITO_ISSUER}/.well-known/jwks.json`), {
-      timeoutDuration: 10000, // 10 seconds timeout
-    })
+    timeoutDuration: 10000, // 10 seconds timeout
+  })
   : null;
 
 interface CognitoTokenPayload {
@@ -1648,7 +1648,7 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
       };
 
       const rootCollection = await buildCollection(body.tree);
-      
+
       // Create commit record
       await commitsDb.create(realm, rootCollection.key, auth.tokenId, body.title);
 
@@ -1765,7 +1765,7 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
         const node = decodeNode(new Uint8Array(content));
         console.log(`[tree] decoded node kind=${node.kind}, childNames=${node.childNames?.length ?? 0}`);
 
-        if (node.kind === "collection" && node.childNames && node.children) {
+        if (node.kind === "dict" && node.childNames && node.children) {
           const { childNames, children } = node;
           const result: Record<string, unknown> = {
             kind: "collection",
@@ -1792,8 +1792,8 @@ async function handleRealm(req: Request, realmId: string, subPath: string): Prom
           return {
             kind: "file",
             key,
-            size: node.size,
-            contentType: node.contentType ?? metadata.casContentType,
+            size: node.fileInfo?.fileSize ?? node.size,
+            contentType: node.fileInfo?.contentType ?? metadata.casContentType,
           };
         }
       } catch (e) {
