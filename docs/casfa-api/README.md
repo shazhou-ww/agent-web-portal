@@ -105,8 +105,7 @@ Ticket 的 `issuerId` 根据创建方式使用不同格式：
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
 | GET | `/api/admin/users` | 列出所有用户 | Admin |
-| POST | `/api/admin/users/:userId/authorize` | 设置用户角色 | Admin |
-| DELETE | `/api/admin/users/:userId/authorize` | 撤销用户授权 | Admin |
+| PATCH | `/api/admin/users/:userId` | 修改用户角色 | Admin |
 
 ### MCP 协议 API
 

@@ -9,8 +9,7 @@
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
 | GET | `/api/admin/users` | 列出所有用户 | Admin |
-| POST | `/api/admin/users/:userId/authorize` | 设置用户角色 | Admin |
-| DELETE | `/api/admin/users/:userId/authorize` | 撤销用户授权 | Admin |
+| PATCH | `/api/admin/users/:userId` | 修改用户角色 | Admin |
 
 ---
 
@@ -57,16 +56,22 @@ Authorization: Bearer {adminToken}
 
 ---
 
-## POST /api/admin/users/:userId/authorize
+## PATCH /api/admin/users/:userId
 
-设置指定用户的角色。
+修改指定用户的角色。可用于授权、提升为管理员或封禁用户。
 
 ### 请求
 
 需要管理员认证：
 
 ```http
+PATCH /api/admin/users/user:A6JCHNMFWRT90AXMYWHJ8HKS90
 Authorization: Bearer {adminToken}
+Content-Type: application/json
+
+{
+  "role": "authorized"
+}
 ```
 
 路径参数：
@@ -75,15 +80,9 @@ Authorization: Bearer {adminToken}
 
 请求体：
 
-```json
-{
-  "role": "authorized"
-}
-```
-
 | 字段 | 类型 | 描述 |
 |------|------|------|
-| `role` | `"authorized" \| "admin"` | 要设置的角色 |
+| `role` | `"unauthorized" \| "authorized" \| "admin"` | 要设置的角色 |
 
 ### 响应
 
@@ -94,6 +93,15 @@ Authorization: Bearer {adminToken}
 }
 ```
 
+### 使用场景
+
+| 操作 | 请求体 |
+|------|--------|
+| 授权新用户 | `{"role": "authorized"}` |
+| 提升为管理员 | `{"role": "admin"}` |
+| 封禁用户 | `{"role": "unauthorized"}` |
+| 降级为普通用户 | `{"role": "authorized"}` |
+
 ### 错误
 
 | 状态码 | 描述 |
@@ -101,39 +109,7 @@ Authorization: Bearer {adminToken}
 | 400 | 请求格式错误或角色无效 |
 | 401 | 未认证 |
 | 403 | 需要管理员权限 |
-
----
-
-## DELETE /api/admin/users/:userId/authorize
-
-撤销指定用户的授权。
-
-### 请求
-
-需要管理员认证：
-
-```http
-Authorization: Bearer {adminToken}
-```
-
-路径参数：
-
-- `userId`: 用户 ID（URL 编码）
-
-### 响应
-
-```json
-{
-  "success": true
-}
-```
-
-### 错误
-
-| 状态码 | 描述 |
-|--------|------|
-| 401 | 未认证 |
-| 403 | 需要管理员权限 |
+| 404 | 用户不存在 |
 
 ---
 

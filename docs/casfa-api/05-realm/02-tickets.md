@@ -16,20 +16,53 @@ Ticket 承载了一个具体的任务上下文：
 
 ### 生命周期
 
+Ticket 的状态由两个独立字段决定：
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| `output` | `string \| null` | 结果节点，存在即表示已提交 |
+| `isRevoked` | `boolean` | 是否被撤销 |
+
+**四种组合的业务语义**：
+
+| output | isRevoked | status | 语义 | 业务场景 |
+|--------|-----------|--------|------|----------|
+| null | false | `issued` | **活跃** | Tool 正在处理任务 |
+| null | true | `revoked` | **放弃** | 任务取消，Tool 未完成就被撤销 |
+| exists | false | `committed` | **完成** | 任务成功，结果可读取 |
+| exists | true | `archived` | **归档** | 任务完成后权限收回，结果仍存在 |
+
+> **说明**: API 响应中的 `status` 是根据 `output` 和 `isRevoked` 计算出的派生字段，方便 UI 展示。
+
 ```
-Issued → Committed → Revoked → Deleted
-  │          │          │          │
-  │          │          │          └─ 物理删除（仅 User 可操作）
-  │          │          └─ 被撤销，不可再使用（仅 Issuer 可操作）
-  │          └─ 已提交结果，output 已设置（仅 Tool 可操作）
-  └─ 已发放，可读取和写入
+                      ┌───────────┐
+                      │  创建   │
+                      └────┬──────┘
+                           │
+                           ▼
+                      ┌───────────┐
+                      │  issued  │  output=null, isRevoked=false
+                      └────┬──────┘
+                 ┌─────┴─────┐
+           commit│           │revoke
+                 ▼           ▼
+          ┌───────────┐ ┌───────────┐
+          │ committed │ │  revoked  │
+          └─────┬─────┘ └───────────┘
+                │           output=null, isRevoked=true
+          revoke│
+                ▼
+          ┌───────────┐
+          │  archived │  output=exists, isRevoked=true
+          └───────────┘
 ```
 
 | 状态 | 描述 | 可执行操作 |
 |------|------|-----------|
 | `issued` | 已发放，正常使用中 | 读取、写入、commit |
 | `committed` | 已提交 | 仅读取 |
-| `revoked` | 已撤销 | 无（返回 410） |
+| `revoked` | 已撤销（未提交） | 无（返回 410） |
+| `archived` | 已归档（提交后撤销） | 无（返回 410） |
 | `deleted` | 已删除 | 无（返回 404） |
 
 > **过期处理**: Ticket 过期状态由 `expiresAt` 运行时推导。当 `Date.now() > expiresAt` 时，Ticket 视为过期，返回 `410 Gone`。
@@ -188,6 +221,7 @@ Ticket 的写入权限由 `writable` 字段控制：
       "purpose": "Generate thumbnail for uploaded image",
       "input": ["node:abc123..."],
       "output": null,
+      "isRevoked": false,
       "issuerId": "client:01HQXK5V8N3Y7M2P4R6T9W0DEF",
       "createdAt": 1738497600000,
       "expiresAt": 1738584000000
@@ -216,6 +250,7 @@ Ticket 的写入权限由 `writable` 字段控制：
   "purpose": "Generate thumbnail for uploaded image",
   "input": ["node:abc123..."],
   "output": null,
+  "isRevoked": false,
   "writable": true,
   "issuerId": "client:01HQXK5V8N3Y7M2P4R6T9W0DEF",
   "config": {
@@ -259,7 +294,8 @@ Content-Type: application/json
 {
   "success": true,
   "status": "committed",
-  "output": "node:result..."
+  "output": "node:result...",
+  "isRevoked": false
 }
 ```
 
@@ -269,14 +305,17 @@ Content-Type: application/json
 |--------|------|
 | 400 | output 节点不存在 |
 | 403 | Ticket 不可写或 ticketId 不匹配 |
-| 409 | Ticket 已经 committed 或 revoked |
+| 409 | Ticket 已经 committed |
 | 410 | Ticket 已撤销或过期 |
 
 ---
 
 ## POST /api/realm/{realmId}/tickets/:ticketId/revoke
 
-撤销指定的 Ticket。状态从 `issued` 或 `committed` 变为 `revoked`。
+撤销指定的 Ticket。
+
+- 如果 Ticket 未提交（`issued`），撤销后状态变为 `revoked`
+- 如果 Ticket 已提交（`committed`），撤销后状态变为 `archived`（结果节点保留）
 
 > **权限要求**: 需要 Bearer 或 Agent Token，且必须是 Ticket 的 issuer。
 
@@ -285,7 +324,19 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "status": "revoked"
+  "status": "revoked",
+  "isRevoked": true
+}
+```
+
+或者（归档场景）：
+
+```json
+{
+  "success": true,
+  "status": "archived",
+  "output": "node:result...",
+  "isRevoked": true
 }
 ```
 
@@ -295,7 +346,7 @@ Content-Type: application/json
 |--------|------|
 | 403 | 不是 Ticket 的 issuer |
 | 404 | Ticket 不存在 |
-| 410 | Ticket 已撤销 |
+| 409 | Ticket 已经被撤销 |
 
 ---
 
