@@ -92,7 +92,7 @@
   "refreshToken": "刷新 Token",
   "expiresAt": 1738584000000,
   "user": {
-    "id": "用户 ID",
+    "id": "user:A6JCHNMFWRT90AXMYWHJ8HKS90",
     "email": "user@example.com",
     "name": "用户名"
   },
@@ -156,8 +156,8 @@ Authorization: Bearer {userToken}
 
 ```json
 {
-  "userId": "用户 ID",
-  "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
+  "userId": "user:A6JCHNMFWRT90AXMYWHJ8HKS90",
+  "realm": "user:A6JCHNMFWRT90AXMYWHJ8HKS90",
   "role": "authorized"
 }
 ```

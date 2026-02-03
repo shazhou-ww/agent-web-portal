@@ -1,6 +1,6 @@
 # Auth 授权 API
 
-用于管理 AWP 客户端、Ticket 和 Agent Token 的 API 端点。
+用于管理 AWP 客户端和 Agent Token 的 API 端点。
 
 ## AWP 客户端管理
 

@@ -89,7 +89,7 @@ Authorization: Bearer {adminToken}
 
 ```json
 {
-  "userId": "cognito-user-id",
+  "userId": "user:A6JCHNMFWRT90AXMYWHJ8HKS90",
   "role": "authorized"
 }
 ```
@@ -124,8 +124,7 @@ Authorization: Bearer {adminToken}
 
 ```json
 {
-  "userId": "cognito-user-id",
-  "revoked": true
+  "success": true
 }
 ```
 

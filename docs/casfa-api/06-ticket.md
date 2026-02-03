@@ -81,7 +81,7 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 ```json
 {
   "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
-  "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
+  "realm": "user:A6JCHNMFWRT90AXMYWHJ8HKS90",
   "status": "active",
   "purpose": "Generate thumbnail for uploaded image",
   "input": ["node:abc123..."],

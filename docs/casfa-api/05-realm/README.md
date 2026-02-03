@@ -16,7 +16,7 @@ Authorization: Bearer {userToken}
 Authorization: Agent {agentToken}
 ```
 
-> `realmId` 格式为 `user:{ulid}`，其中 ULID 为 26 位 Crockford Base32 编码
+> `realmId` 格式为 `user:{id}`，其中 id 为 Cognito UUID 的 Crockford Base32 编码（26 位字符）
 
 ## 子文档
 
