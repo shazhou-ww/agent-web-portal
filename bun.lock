@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "agent-web-portal-monorepo",
@@ -117,6 +116,7 @@
         "@agent-web-portal/cas-storage-fs": "workspace:*",
         "@agent-web-portal/cas-storage-memory": "workspace:*",
         "@agent-web-portal/cas-storage-s3": "workspace:*",
+        "@agent-web-portal/casfa-protocol": "workspace:*",
         "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
         "@aws-sdk/client-dynamodb": "^3.975.0",
         "@aws-sdk/lib-dynamodb": "^3.975.0",
@@ -490,6 +490,17 @@
         "typescript": "^5.3.0",
       },
     },
+    "packages/casfa-protocol": {
+      "name": "@agent-web-portal/casfa-protocol",
+      "version": "0.0.1",
+      "dependencies": {
+        "zod": "^3.23.8",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.3.0",
+      },
+    },
     "packages/client": {
       "name": "@agent-web-portal/client",
       "version": "0.2.0",
@@ -617,6 +628,8 @@
     "@agent-web-portal/casfa-client-browser": ["@agent-web-portal/casfa-client-browser@workspace:packages/casfa-client-browser"],
 
     "@agent-web-portal/casfa-client-nodejs": ["@agent-web-portal/casfa-client-nodejs@workspace:packages/casfa-client-nodejs"],
+
+    "@agent-web-portal/casfa-protocol": ["@agent-web-portal/casfa-protocol@workspace:packages/casfa-protocol"],
 
     "@agent-web-portal/casfa-v2": ["@agent-web-portal/casfa-v2@workspace:apps/casfa-v2"],
 

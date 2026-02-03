@@ -13,7 +13,6 @@ import type { AppConfig } from "./config.ts";
 import {
   createAdminController,
   createAuthClientsController,
-  createAuthTicketsController,
   createAuthTokensController,
   createChunksController,
   createCommitsController,
@@ -21,8 +20,8 @@ import {
   createHealthController,
   createOAuthController,
   createRealmController,
-  createTicketController,
 } from "./controllers/index.ts";
+import { createTicketsController } from "./controllers/tickets.ts";
 import type { AwpPendingDb } from "./db/awp-pending.ts";
 import type { AwpPubkeysDb } from "./db/awp-pubkeys.ts";
 import type { CommitsDb } from "./db/commits.ts";
@@ -137,10 +136,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     awpPendingDb,
     awpPubkeysDb,
   });
-  const authTickets = createAuthTicketsController({
-    tokensDb,
-    serverConfig: config.server,
-  });
   const authTokens = createAuthTokensController({ tokensDb });
   const admin = createAdminController({
     userRolesDb,
@@ -150,9 +145,9 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     usageDb,
     serverConfig: config.server,
   });
-  const ticket = createTicketController({
+  const tickets = createTicketsController({
     tokensDb,
-    usageDb,
+    serverConfig: config.server,
   });
   const commits = createCommitsController({
     commitsDb,
@@ -170,7 +165,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   });
   const depots = createDepotsController({
     depotsDb,
-    refCountDb,
     storage,
   });
   const mcp = createMcpController({
@@ -185,11 +179,10 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     health,
     oauth,
     authClients,
-    authTickets,
     authTokens,
     admin,
     realm,
-    ticket,
+    tickets,
     commits,
     chunks,
     depots,

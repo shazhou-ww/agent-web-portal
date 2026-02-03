@@ -93,6 +93,8 @@ export async function createAllTables(): Promise<void> {
       { AttributeName: "sk", AttributeType: "S" },
       { AttributeName: "userId", AttributeType: "S" },
       { AttributeName: "createdAt", AttributeType: "N" },
+      { AttributeName: "gsi1pk", AttributeType: "S" },
+      { AttributeName: "gsi1sk", AttributeType: "S" },
     ],
     KeySchema: [
       { AttributeName: "pk", KeyType: "HASH" },
@@ -101,10 +103,18 @@ export async function createAllTables(): Promise<void> {
     BillingMode: "PAY_PER_REQUEST",
     GlobalSecondaryIndexes: [
       {
-        IndexName: "by-user",
+        IndexName: "userId-index",
         KeySchema: [
           { AttributeName: "userId", KeyType: "HASH" },
           { AttributeName: "createdAt", KeyType: "RANGE" },
+        ],
+        Projection: { ProjectionType: "ALL" },
+      },
+      {
+        IndexName: "gsi1",
+        KeySchema: [
+          { AttributeName: "gsi1pk", KeyType: "HASH" },
+          { AttributeName: "gsi1sk", KeyType: "RANGE" },
         ],
         Projection: { ProjectionType: "ALL" },
       },
@@ -117,6 +127,8 @@ export async function createAllTables(): Promise<void> {
     AttributeDefinitions: [
       { AttributeName: "realm", AttributeType: "S" },
       { AttributeName: "key", AttributeType: "S" },
+      { AttributeName: "gsi1pk", AttributeType: "S" },
+      { AttributeName: "gsi1sk", AttributeType: "S" },
     ],
     KeySchema: [
       { AttributeName: "realm", KeyType: "HASH" },
@@ -131,6 +143,14 @@ export async function createAllTables(): Promise<void> {
           { AttributeName: "realm", KeyType: "RANGE" },
         ],
         Projection: { ProjectionType: "KEYS_ONLY" },
+      },
+      {
+        IndexName: "gsi1",
+        KeySchema: [
+          { AttributeName: "gsi1pk", KeyType: "HASH" },
+          { AttributeName: "gsi1sk", KeyType: "RANGE" },
+        ],
+        Projection: { ProjectionType: "ALL" },
       },
     ],
   });

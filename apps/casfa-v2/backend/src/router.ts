@@ -8,7 +8,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { AdminController } from "./controllers/admin.ts";
 import type { AuthClientsController } from "./controllers/auth-clients.ts";
-import type { AuthTicketsController } from "./controllers/auth-tickets.ts";
 import type { AuthTokensController } from "./controllers/auth-tokens.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
 import type { CommitsController } from "./controllers/commits.ts";
@@ -16,22 +15,25 @@ import type { DepotsController } from "./controllers/depots.ts";
 import type { HealthController } from "./controllers/health.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
-import type { TicketController } from "./controllers/ticket.ts";
+import type { TicketsController } from "./controllers/tickets.ts";
 import type { McpController } from "./mcp/handler.ts";
 import {
-  AuthorizeUserSchema,
   AwpAuthCompleteSchema,
   AwpAuthInitSchema,
   CommitSchema,
   CreateAgentTokenSchema,
   CreateDepotSchema,
   CreateTicketSchema,
+  DepotCommitSchema as CommitDepotSchema,
+  ListTicketsQuerySchema,
   LoginSchema,
+  PrepareNodesSchema,
   RefreshSchema,
-  RollbackDepotSchema,
+  TicketCommitSchema,
   TokenExchangeSchema,
   UpdateCommitSchema,
   UpdateDepotSchema,
+  UpdateUserRoleSchema,
 } from "./schemas/index.ts";
 import type { Env } from "./types.ts";
 
@@ -44,11 +46,10 @@ export type RouterDeps = {
   health: HealthController;
   oauth: OAuthController;
   authClients: AuthClientsController;
-  authTickets: AuthTicketsController;
   authTokens: AuthTokensController;
   admin: AdminController;
   realm: RealmController;
-  ticket: TicketController;
+  tickets: TicketsController;
   commits: CommitsController;
   chunks: ChunksController;
   depots: DepotsController;
@@ -116,18 +117,6 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.delete("/api/auth/clients/:pubkey", deps.authMiddleware, deps.authClients.revoke);
 
   // ============================================================================
-  // Auth Routes - Tickets
-  // ============================================================================
-
-  app.post(
-    "/api/auth/ticket",
-    deps.authMiddleware,
-    zValidator("json", CreateTicketSchema),
-    deps.authTickets.create
-  );
-  app.delete("/api/auth/ticket/:id", deps.authMiddleware, deps.authTickets.revoke);
-
-  // ============================================================================
   // Auth Routes - Tokens
   // ============================================================================
 
@@ -156,18 +145,12 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     deps.adminAccessMiddleware,
     deps.admin.listUsers
   );
-  app.post(
-    "/api/admin/users/:userId/authorize",
+  app.patch(
+    "/api/admin/users/:userId",
     deps.authMiddleware,
     deps.adminAccessMiddleware,
-    zValidator("json", AuthorizeUserSchema),
-    deps.admin.authorizeUser
-  );
-  app.delete(
-    "/api/admin/users/:userId/authorize",
-    deps.authMiddleware,
-    deps.adminAccessMiddleware,
-    deps.admin.revokeUser
+    zValidator("json", UpdateUserRoleSchema),
+    deps.admin.updateRole
   );
 
   // ============================================================================
@@ -181,6 +164,23 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // Realm info
   realmRouter.get("/:realmId", deps.realm.getInfo);
   realmRouter.get("/:realmId/usage", deps.realm.getUsage);
+
+  // Tickets
+  realmRouter.post(
+    "/:realmId/tickets",
+    deps.writeAccessMiddleware,
+    zValidator("json", CreateTicketSchema),
+    deps.tickets.create
+  );
+  realmRouter.get("/:realmId/tickets", deps.tickets.list);
+  realmRouter.get("/:realmId/tickets/:ticketId", deps.tickets.get);
+  realmRouter.post(
+    "/:realmId/tickets/:ticketId/commit",
+    zValidator("json", TicketCommitSchema),
+    deps.tickets.commit
+  );
+  realmRouter.post("/:realmId/tickets/:ticketId/revoke", deps.tickets.revoke);
+  realmRouter.delete("/:realmId/tickets/:ticketId", deps.tickets.delete);
 
   // Commits
   realmRouter.get("/:realmId/commits", deps.commits.list);
@@ -199,10 +199,15 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   );
   realmRouter.delete("/:realmId/commits/:root", deps.writeAccessMiddleware, deps.commits.delete);
 
-  // Chunks
-  realmRouter.put("/:realmId/chunks/:key", deps.writeAccessMiddleware, deps.chunks.put);
-  realmRouter.get("/:realmId/chunks/:key", deps.chunks.get);
-  realmRouter.get("/:realmId/tree/:key", deps.chunks.getTree);
+  // Nodes
+  realmRouter.post(
+    "/:realmId/prepare-nodes",
+    zValidator("json", PrepareNodesSchema),
+    deps.chunks.prepareNodes
+  );
+  realmRouter.put("/:realmId/nodes/:key", deps.writeAccessMiddleware, deps.chunks.put);
+  realmRouter.get("/:realmId/nodes/:key", deps.chunks.get);
+  realmRouter.get("/:realmId/nodes/:key/metadata", deps.chunks.getMetadata);
 
   // Depots
   realmRouter.get("/:realmId/depots", deps.depots.list);
@@ -213,61 +218,21 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     deps.depots.create
   );
   realmRouter.get("/:realmId/depots/:depotId", deps.depots.get);
-  realmRouter.put(
+  realmRouter.patch(
     "/:realmId/depots/:depotId",
     deps.writeAccessMiddleware,
     zValidator("json", UpdateDepotSchema),
     deps.depots.update
   );
   realmRouter.delete("/:realmId/depots/:depotId", deps.writeAccessMiddleware, deps.depots.delete);
-  realmRouter.get("/:realmId/depots/:depotId/history", deps.depots.history);
   realmRouter.post(
-    "/:realmId/depots/:depotId/rollback",
+    "/:realmId/depots/:depotId/commit",
     deps.writeAccessMiddleware,
-    zValidator("json", RollbackDepotSchema),
-    deps.depots.rollback
+    zValidator("json", CommitDepotSchema),
+    deps.depots.commit
   );
 
   app.route("/api/realm", realmRouter);
-
-  // ============================================================================
-  // Ticket Routes
-  // ============================================================================
-
-  const ticketRouter = new Hono<Env>();
-
-  // Ticket info (no auth needed - ticket ID is the credential)
-  ticketRouter.get("/:ticketId", deps.ticket.getInfo);
-
-  // Ticket operations (ticket auth)
-  ticketRouter.use("/:ticketId/*", deps.ticketAuthMiddleware);
-  ticketRouter.get("/:ticketId/usage", deps.ticket.getUsage);
-
-  // Commits via ticket
-  ticketRouter.get("/:ticketId/commits", deps.commits.list);
-  ticketRouter.post(
-    "/:ticketId/commit",
-    deps.writeAccessMiddleware,
-    zValidator("json", CommitSchema),
-    deps.commits.create
-  );
-  ticketRouter.get("/:ticketId/commits/:root", deps.commits.get);
-  ticketRouter.patch(
-    "/:ticketId/commits/:root",
-    deps.writeAccessMiddleware,
-    zValidator("json", UpdateCommitSchema),
-    deps.commits.update
-  );
-  ticketRouter.delete("/:ticketId/commits/:root", deps.writeAccessMiddleware, deps.commits.delete);
-
-  // Chunks via ticket
-  ticketRouter.put("/:ticketId/chunks/:key", deps.writeAccessMiddleware, deps.chunks.put);
-  ticketRouter.get("/:ticketId/chunks/:key", deps.chunks.get);
-  ticketRouter.get("/:ticketId/tree/:key", deps.chunks.getTree);
-
-  // Note: Depot operations are NOT available via ticket routes
-
-  app.route("/api/ticket", ticketRouter);
 
   // ============================================================================
   // 404 Handler

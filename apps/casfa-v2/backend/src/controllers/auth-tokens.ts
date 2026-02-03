@@ -27,20 +27,21 @@ export const createAuthTokensController = (
       const auth = c.get("auth");
       const body = await c.req.json();
 
-      const token = await tokensDb.createAgentToken(auth.userId, body.name, {
+      const agentToken = await tokensDb.createAgentToken(auth.userId, body.name, {
         description: body.description,
         expiresIn: body.expiresIn,
       });
 
-      const tokenId = extractTokenId(token.pk);
+      const tokenId = extractTokenId(agentToken.pk);
 
       return c.json(
         {
-          id: tokenId,
-          name: token.name,
-          description: token.description,
-          expiresAt: new Date(token.expiresAt).toISOString(),
-          createdAt: new Date(token.createdAt).toISOString(),
+          id: `token:${tokenId}`,
+          token: `casfa_${tokenId}`,
+          name: agentToken.name,
+          description: agentToken.description,
+          expiresAt: agentToken.expiresAt,
+          createdAt: agentToken.createdAt,
         },
         201
       );
@@ -51,19 +52,25 @@ export const createAuthTokensController = (
       const tokens = await tokensDb.listAgentTokensByUser(auth.userId);
 
       return c.json({
-        tokens: tokens.map((t) => ({
-          id: extractTokenId(t.pk),
-          name: t.name,
-          description: t.description,
-          expiresAt: new Date(t.expiresAt).toISOString(),
-          createdAt: new Date(t.createdAt).toISOString(),
-        })),
+        tokens: tokens.map((t) => {
+          const tokenId = extractTokenId(t.pk);
+          return {
+            id: `token:${tokenId}`,
+            name: t.name,
+            description: t.description,
+            expiresAt: t.expiresAt,
+            createdAt: t.createdAt,
+          };
+        }),
       });
     },
 
     revoke: async (c) => {
       const auth = c.get("auth");
-      const tokenId = c.req.param("id");
+      const rawTokenId = c.req.param("id");
+
+      // Extract token ID from token:xxx format if present
+      const tokenId = rawTokenId.startsWith("token:") ? rawTokenId.slice(6) : rawTokenId;
 
       try {
         await tokensDb.revokeAgentToken(auth.userId, tokenId);

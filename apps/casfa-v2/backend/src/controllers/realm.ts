@@ -44,7 +44,7 @@ export const createRealmController = (deps: RealmControllerDeps): RealmControlle
         logicalBytes: usage.logicalBytes,
         nodeCount: usage.nodeCount,
         quotaLimit: usage.quotaLimit,
-        updatedAt: usage.updatedAt ? new Date(usage.updatedAt).toISOString() : null,
+        updatedAt: usage.updatedAt ?? Date.now(),
       });
     },
   };

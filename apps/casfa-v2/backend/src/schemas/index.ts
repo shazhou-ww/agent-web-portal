@@ -112,6 +112,3 @@ export const AuthorizeUserSchema = UpdateUserRoleSchema;
 
 // Legacy commit schemas
 export { CommitSchema, UpdateCommitSchema } from "./commit.ts";
-
-// Legacy depot schema
-export { RollbackDepotSchema } from "./depot.ts";

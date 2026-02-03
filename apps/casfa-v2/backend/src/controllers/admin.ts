@@ -9,8 +9,7 @@ import type { Env, UserRole } from "../types.ts";
 
 export type AdminController = {
   listUsers: (c: Context<Env>) => Promise<Response>;
-  authorizeUser: (c: Context<Env>) => Promise<Response>;
-  revokeUser: (c: Context<Env>) => Promise<Response>;
+  updateRole: (c: Context<Env>) => Promise<Response>;
 };
 
 type AdminControllerDeps = {
@@ -37,7 +36,7 @@ export const createAdminController = (deps: AdminControllerDeps): AdminControlle
       return c.json({ users });
     },
 
-    authorizeUser: async (c) => {
+    updateRole: async (c) => {
       const targetUserId = decodeURIComponent(c.req.param("userId"));
       const body = await c.req.json();
       const role = body.role as UserRole;
@@ -45,14 +44,6 @@ export const createAdminController = (deps: AdminControllerDeps): AdminControlle
       await userRolesDb.setRole(targetUserId, role);
 
       return c.json({ userId: targetUserId, role });
-    },
-
-    revokeUser: async (c) => {
-      const targetUserId = decodeURIComponent(c.req.param("userId"));
-
-      await userRolesDb.revoke(targetUserId);
-
-      return c.json({ userId: targetUserId, revoked: true });
     },
   };
 };

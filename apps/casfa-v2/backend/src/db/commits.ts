@@ -44,8 +44,8 @@ export const createCommitsDb = (config: CommitsDbConfig): CommitsDb => {
   const client = config.client ?? createDocClient();
   const tableName = config.tableName;
 
-  const toSk = (root: string) => `COMMIT#${root}`;
-  const fromSk = (sk: string) => sk.slice(7); // Remove "COMMIT#"
+  const toKey = (root: string) => `COMMIT#${root}`;
+  const fromKey = (key: string) => key.slice(7); // Remove "COMMIT#"
 
   const create = async (
     realm: string,
@@ -66,8 +66,8 @@ export const createCommitsDb = (config: CommitsDbConfig): CommitsDb => {
       new PutCommand({
         TableName: tableName,
         Item: {
-          pk: realm,
-          sk: toSk(root),
+          realm,
+          key: toKey(root),
           ...commit,
         },
       })
@@ -80,15 +80,15 @@ export const createCommitsDb = (config: CommitsDbConfig): CommitsDb => {
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
-        Key: { pk: realm, sk: toSk(root) },
+        Key: { realm, key: toKey(root) },
       })
     );
 
     if (!result.Item) return null;
 
     return {
-      realm: result.Item.pk,
-      root: fromSk(result.Item.sk),
+      realm: result.Item.realm as string,
+      root: fromKey(result.Item.key as string),
       title: result.Item.title,
       createdAt: result.Item.createdAt,
       createdBy: result.Item.createdBy,
@@ -104,10 +104,10 @@ export const createCommitsDb = (config: CommitsDbConfig): CommitsDb => {
       const result = await client.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: { pk: realm, sk: toSk(root) },
+          Key: { realm, key: toKey(root) },
           UpdateExpression: "SET title = :title",
           ExpressionAttributeValues: { ":title": updates.title },
-          ConditionExpression: "attribute_exists(pk)",
+          ConditionExpression: "attribute_exists(realm)",
           ReturnValues: "ALL_NEW",
         })
       );
@@ -115,8 +115,8 @@ export const createCommitsDb = (config: CommitsDbConfig): CommitsDb => {
       if (!result.Attributes) return null;
 
       return {
-        realm: result.Attributes.pk,
-        root: fromSk(result.Attributes.sk),
+        realm: result.Attributes.realm as string,
+        root: fromKey(result.Attributes.key as string),
         title: result.Attributes.title,
         createdAt: result.Attributes.createdAt,
         createdBy: result.Attributes.createdBy,
@@ -133,8 +133,8 @@ export const createCommitsDb = (config: CommitsDbConfig): CommitsDb => {
       await client.send(
         new DeleteCommand({
           TableName: tableName,
-          Key: { pk: realm, sk: toSk(root) },
-          ConditionExpression: "attribute_exists(pk)",
+          Key: { realm, key: toKey(root) },
+          ConditionExpression: "attribute_exists(realm)",
         })
       );
       return true;
@@ -152,26 +152,27 @@ export const createCommitsDb = (config: CommitsDbConfig): CommitsDb => {
     const result = await client.send(
       new QueryCommand({
         TableName: tableName,
-        KeyConditionExpression: "pk = :realm AND begins_with(sk, :prefix)",
+        KeyConditionExpression: "realm = :realm AND begins_with(#key, :prefix)",
+        ExpressionAttributeNames: { "#key": "key" },
         ExpressionAttributeValues: {
           ":realm": realm,
           ":prefix": "COMMIT#",
         },
         Limit: options.limit ?? 100,
         ScanIndexForward: false, // newest first
-        ExclusiveStartKey: options.startKey ? { pk: realm, sk: toSk(options.startKey) } : undefined,
+        ExclusiveStartKey: options.startKey ? { realm, key: toKey(options.startKey) } : undefined,
       })
     );
 
     const commits = (result.Items ?? []).map((item) => ({
-      realm: item.pk,
-      root: fromSk(item.sk),
+      realm: item.realm as string,
+      root: fromKey(item.key as string),
       title: item.title,
       createdAt: item.createdAt,
       createdBy: item.createdBy,
     }));
 
-    const nextKey = result.LastEvaluatedKey ? fromSk(result.LastEvaluatedKey.sk) : undefined;
+    const nextKey = result.LastEvaluatedKey ? fromKey(result.LastEvaluatedKey.key as string) : undefined;
 
     return { commits, nextKey };
   };

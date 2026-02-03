@@ -18,9 +18,10 @@ import type { Env, TreeNodeInfo, TreeResponse } from "../types.ts";
 import { extractTokenId } from "../util/token-id.ts";
 
 export type ChunksController = {
+  prepareNodes: (c: Context<Env>) => Promise<Response>;
   put: (c: Context<Env>) => Promise<Response>;
   get: (c: Context<Env>) => Promise<Response>;
-  getTree: (c: Context<Env>) => Promise<Response>;
+  getMetadata: (c: Context<Env>) => Promise<Response>;
 };
 
 type ChunksControllerDeps = {
@@ -38,7 +39,49 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     return c.req.param("realmId") ?? c.get("auth").realm;
   };
 
+  // Normalize node key (strip node: prefix)
+  const normalizeKey = (key: string): string => (key.startsWith("node:") ? key.slice(5) : key);
+
   return {
+    prepareNodes: async (c) => {
+      const realm = getRealm(c);
+      const body = await c.req.json();
+      const keys = body.keys as string[];
+
+      if (!keys || keys.length === 0) {
+        return c.json({ error: "invalid_request", message: "keys array is required" }, 400);
+      }
+
+      // Validate key format: node:{64 hex chars} or plain 64 hex chars
+      const validKeyRegex = /^(node:)?[0-9a-f]{64}$/i;
+      for (const key of keys) {
+        if (!validKeyRegex.test(key)) {
+          return c.json(
+            { error: "invalid_request", message: `Invalid node key format: ${key}` },
+            400
+          );
+        }
+      }
+
+      // Normalize keys (strip node: prefix for storage lookup)
+
+      // Check which nodes are missing
+      const missing: string[] = [];
+      const exists: string[] = [];
+
+      for (const key of keys) {
+        const normalizedKey = normalizeKey(key);
+        const hasNode = await ownershipDb.hasOwnership(realm, normalizedKey);
+        if (hasNode) {
+          exists.push(key);
+        } else {
+          missing.push(key);
+        }
+      }
+
+      return c.json({ missing, exists });
+    },
+
     put: async (c) => {
       const auth = c.get("auth");
       const realm = getRealm(c);
@@ -178,20 +221,20 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     },
 
     get: async (c) => {
-      const auth = c.get("auth");
       const realm = getRealm(c);
-      const key = decodeURIComponent(c.req.param("key"));
+      const rawKey = decodeURIComponent(c.req.param("key"));
+      const key = normalizeKey(rawKey);
 
       // Check ownership
       const hasAccess = await ownershipDb.hasOwnership(realm, key);
       if (!hasAccess) {
-        return c.json({ error: "Not found" }, 404);
+        return c.json({ error: "not_found", message: "Node not found" }, 404);
       }
 
       // Get content
       const bytes = await storage.get(key);
       if (!bytes) {
-        return c.json({ error: "Content not found in storage" }, 404);
+        return c.json({ error: "not_found", message: "Node content not found" }, 404);
       }
 
       // Decode metadata
@@ -218,80 +261,67 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       return new Response(bytes, { status: 200, headers });
     },
 
-    getTree: async (c) => {
+    getMetadata: async (c) => {
       const realm = getRealm(c);
-      const rootKey = decodeURIComponent(c.req.param("key"));
+      const rawKey = decodeURIComponent(c.req.param("key"));
+      const key = normalizeKey(rawKey);
 
       // Check ownership
-      const hasAccess = await ownershipDb.hasOwnership(realm, rootKey);
+      const hasAccess = await ownershipDb.hasOwnership(realm, key);
       if (!hasAccess) {
-        return c.json({ error: "Not found" }, 404);
+        return c.json({ error: "not_found", message: "Node not found" }, 404);
       }
 
-      const MAX_NODES = 1000;
-      const nodes: Record<string, TreeNodeInfo> = {};
-      const queue: string[] = [rootKey];
-      let next: string | undefined;
+      // Get content
+      const bytes = await storage.get(key);
+      if (!bytes) {
+        return c.json({ error: "not_found", message: "Node content not found" }, 404);
+      }
 
-      while (queue.length > 0) {
-        if (Object.keys(nodes).length >= MAX_NODES) {
-          next = queue[0];
-          break;
-        }
+      try {
+        const node = decodeNode(bytes);
 
-        const key = queue.shift()!;
-        if (nodes[key]) continue;
-
-        const bytes = await storage.get(key);
-        if (!bytes) continue;
-
-        try {
-          const node = decodeNode(bytes);
-
-          if (node.kind === "dict") {
-            // d-node: directory with sorted children
-            const children: Record<string, string> = {};
-            if (node.children && node.childNames) {
-              for (let i = 0; i < node.childNames.length; i++) {
-                const name = node.childNames[i];
-                const childHash = node.children[i];
-                if (name && childHash) {
-                  const childKey = hashToKey(childHash);
-                  children[name] = childKey;
-                  if (!nodes[childKey]) {
-                    queue.push(childKey);
-                  }
-                }
+        if (node.kind === "dict") {
+          // d-node: directory
+          const children: Record<string, string> = {};
+          if (node.children && node.childNames) {
+            for (let i = 0; i < node.childNames.length; i++) {
+              const name = node.childNames[i];
+              const childHash = node.children[i];
+              if (name && childHash) {
+                children[name] = hashToKey(childHash);
               }
             }
-            nodes[key] = {
-              kind: "dict",
-              size: node.size,
-              children,
-            };
-          } else if (node.kind === "file") {
-            // f-node: file top-level node
-            nodes[key] = {
-              kind: "file",
-              size: node.size,
-              contentType: node.fileInfo?.contentType,
-            };
-          } else if (node.kind === "successor") {
-            // s-node: file continuation chunk (typically not exposed in tree)
-            nodes[key] = {
-              kind: "successor",
-              size: node.size,
-            };
           }
-        } catch {
-          // Skip invalid nodes
+          return c.json({
+            kind: "dict",
+            size: node.size,
+            children,
+          });
         }
+
+        if (node.kind === "file") {
+          // f-node: file
+          return c.json({
+            kind: "file",
+            size: node.size,
+            contentType: node.fileInfo?.contentType,
+          });
+        }
+
+        if (node.kind === "successor") {
+          // s-node: continuation
+          return c.json({
+            kind: "successor",
+            size: node.size,
+            next: node.children?.[0] ? hashToKey(node.children[0]) : undefined,
+          });
+        }
+
+        return c.json({ error: "invalid_node", message: "Unknown node kind" }, 400);
+      } catch {
+        return c.json({ error: "invalid_node", message: "Failed to decode node" }, 400);
       }
-
-      const response: TreeResponse = { nodes };
-      if (next) response.next = next;
-
-      return c.json(response);
     },
   };
 };

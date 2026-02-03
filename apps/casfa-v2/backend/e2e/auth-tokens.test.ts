@@ -36,7 +36,7 @@ describe("Agent Token Management", () => {
         }),
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as {
         id: string;
         token: string;
@@ -69,7 +69,7 @@ describe("Agent Token Management", () => {
         }),
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as { expiresAt: number };
 
       // Check expiration is approximately 1 hour from now

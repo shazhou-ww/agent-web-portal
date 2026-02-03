@@ -49,8 +49,8 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
-        Key: { pk: realm, sk: `OWN#${key}` },
-        ProjectionExpression: "pk",
+        Key: { realm, key: `OWN#${key}` },
+        ProjectionExpression: "realm",
       })
     );
     return !!result.Item;
@@ -60,14 +60,14 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
-        Key: { pk: realm, sk: `OWN#${key}` },
+        Key: { realm, key: `OWN#${key}` },
       })
     );
     if (!result.Item) return null;
 
     return {
-      realm: result.Item.pk,
-      key: result.Item.sk.slice(4), // Remove "OWN#"
+      realm: result.Item.realm,
+      key: (result.Item.key as string).slice(4), // Remove "OWN#"
       kind: result.Item.kind,
       createdAt: result.Item.createdAt,
       createdBy: result.Item.createdBy,
@@ -88,8 +88,8 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
       new PutCommand({
         TableName: tableName,
         Item: {
-          pk: realm,
-          sk: `OWN#${key}`,
+          realm,
+          key: `OWN#${key}`,
           kind,
           createdAt: Date.now(),
           createdBy,
@@ -107,21 +107,22 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
     const result = await client.send(
       new QueryCommand({
         TableName: tableName,
-        KeyConditionExpression: "pk = :realm AND begins_with(sk, :prefix)",
+        KeyConditionExpression: "realm = :realm AND begins_with(#key, :prefix)",
+        ExpressionAttributeNames: { "#key": "key" },
         ExpressionAttributeValues: {
           ":realm": realm,
           ":prefix": "OWN#",
         },
         Limit: options.limit ?? 100,
         ExclusiveStartKey: options.startKey
-          ? { pk: realm, sk: `OWN#${options.startKey}` }
+          ? { realm, key: `OWN#${options.startKey}` }
           : undefined,
       })
     );
 
     const items = (result.Items ?? []).map((item) => ({
-      realm: item.pk,
-      key: item.sk.slice(4),
+      realm: item.realm as string,
+      key: (item.key as string).slice(4),
       kind: item.kind,
       createdAt: item.createdAt,
       createdBy: item.createdBy,
@@ -129,7 +130,7 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
       size: item.size,
     }));
 
-    const nextKey = result.LastEvaluatedKey?.sk?.slice(4);
+    const nextKey = result.LastEvaluatedKey?.key?.slice(4);
 
     return { items, nextKey };
   };
@@ -138,7 +139,7 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
     await client.send(
       new DeleteCommand({
         TableName: tableName,
-        Key: { pk: realm, sk: `OWN#${key}` },
+        Key: { realm, key: `OWN#${key}` },
       })
     );
   };

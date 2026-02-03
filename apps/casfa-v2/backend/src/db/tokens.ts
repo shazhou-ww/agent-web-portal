@@ -27,6 +27,8 @@ import { createDocClient } from "./client.ts";
 export type TokensDb = {
   getToken: (tokenId: string) => Promise<Token | null>;
   getTicket: (ticketId: string) => Promise<Ticket | null>;
+  /** Get ticket without expiry filtering - used for auth to distinguish 401 vs 410 */
+  getTicketRaw: (ticketId: string) => Promise<Ticket | null>;
   createUserToken: (userId: string, refreshToken: string, expiresIn?: number) => Promise<UserToken>;
   createAgentToken: (
     userId: string,
@@ -38,6 +40,7 @@ export type TokensDb = {
     issuerId: string,
     options?: {
       scope?: string[];
+      purpose?: string;
       commit?: { quota?: number; accept?: string[] };
       expiresIn?: number;
       issuerFingerprint?: string;
@@ -53,6 +56,10 @@ export type TokensDb = {
   revokeTicket: (realm: string, ticketId: string, agentFingerprint?: string) => Promise<void>;
   deleteToken: (tokenId: string) => Promise<void>;
   listAgentTokensByUser: (userId: string) => Promise<AgentToken[]>;
+  listTicketsByRealm: (
+    realm: string,
+    options?: { limit?: number; cursor?: string }
+  ) => Promise<{ tickets: Ticket[]; nextCursor?: string; hasMore: boolean }>;
 };
 
 type TokensDbConfig = {
@@ -92,6 +99,20 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     const token = await getToken(ticketId);
     if (!token || token.type !== "ticket") return null;
     return token as Ticket;
+  };
+
+  /** Get ticket without expiry filtering - used for auth to distinguish 401 vs 410 */
+  const getTicketRaw = async (ticketId: string): Promise<Ticket | null> => {
+    const result = await client.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { pk: toTokenPk(ticketId), sk: "TOKEN" },
+      })
+    );
+
+    if (!result.Item) return null;
+    if (result.Item.type !== "ticket") return null;
+    return result.Item as Ticket;
   };
 
   const createUserToken = async (
@@ -149,16 +170,17 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     issuerId: string,
     options?: {
       scope?: string[];
+      purpose?: string;
       commit?: { quota?: number; accept?: string[] };
       expiresIn?: number;
       issuerFingerprint?: string;
     }
   ): Promise<Ticket> => {
-    const { scope, commit, expiresIn, issuerFingerprint } = options ?? {};
+    const { scope, purpose, commit, expiresIn, issuerFingerprint } = options ?? {};
     const serverConfig = loadServerConfig();
     const ticketId = generateTicketId();
     const now = Date.now();
-    const requestedExpiresIn = expiresIn ?? 3600;
+    const requestedExpiresIn = expiresIn ?? 86400; // Default 24 hours
     const cappedExpiresIn = Math.min(requestedExpiresIn, serverConfig.maxTicketTtl);
     const expiresAt = now + cappedExpiresIn * 1000;
 
@@ -169,14 +191,19 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
       realm,
       issuerId,
       issuerFingerprint,
+      purpose,
       scope,
       commit,
       createdAt: now,
       expiresAt,
+      isRevoked: false,
       config: {
         nodeLimit: serverConfig.nodeLimit,
         maxNameBytes: serverConfig.maxNameBytes,
       },
+      // GSI for realm queries
+      gsi1pk: `REALM#${realm}`,
+      gsi1sk: `TICKET#${ticketId}`,
     };
 
     await client.send(new PutCommand({ TableName: tableName, Item: ticket }));
@@ -260,12 +287,56 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
       }
     }
 
-    await deleteToken(ticketId);
+    // Mark as revoked instead of deleting
+    await client.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { pk: toTokenPk(ticketId), sk: "TOKEN" },
+        UpdateExpression: "SET isRevoked = :true",
+        ExpressionAttributeValues: { ":true": true },
+      })
+    );
+  };
+
+  const listTicketsByRealm = async (
+    realm: string,
+    options?: { limit?: number; cursor?: string }
+  ): Promise<{ tickets: Ticket[]; nextCursor?: string; hasMore: boolean }> => {
+    const limit = options?.limit ?? 100;
+
+    const result = await client.send(
+      new QueryCommand({
+        TableName: tableName,
+        IndexName: "gsi1",
+        KeyConditionExpression: "gsi1pk = :pk AND begins_with(gsi1sk, :prefix)",
+        ExpressionAttributeValues: {
+          ":pk": `REALM#${realm}`,
+          ":prefix": "TICKET#",
+        },
+        Limit: limit + 1,
+        ExclusiveStartKey: options?.cursor
+          ? JSON.parse(Buffer.from(options.cursor, "base64").toString())
+          : undefined,
+        ScanIndexForward: false, // Newest first
+      })
+    );
+
+    const items = (result.Items ?? []) as Ticket[];
+    const hasMore = items.length > limit;
+    const tickets = hasMore ? items.slice(0, limit) : items;
+
+    let nextCursor: string | undefined;
+    if (hasMore && result.LastEvaluatedKey) {
+      nextCursor = Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString("base64");
+    }
+
+    return { tickets, nextCursor, hasMore };
   };
 
   return {
     getToken,
     getTicket,
+    getTicketRaw,
     createUserToken,
     createAgentToken,
     createTicket,
@@ -274,5 +345,6 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     revokeTicket,
     deleteToken,
     listAgentTokensByUser,
+    listTicketsByRealm,
   };
 };

@@ -73,12 +73,21 @@ export type Ticket = BaseToken & {
    * - User Token: undefined (created by user directly)
    */
   issuerFingerprint?: string;
+  /** Human-readable task description */
+  purpose?: string;
+  /** Input node keys (readable scope) */
   scope?: string[];
+  /** Write permission config */
   commit?: CommitConfig;
+  /** Whether ticket is revoked */
+  isRevoked?: boolean;
   config: {
     nodeLimit: number;
     maxNameBytes: number;
   };
+  /** GSI for realm queries */
+  gsi1pk?: string;
+  gsi1sk?: string;
 };
 
 export type Token = UserToken | AgentToken | Ticket;
@@ -169,21 +178,12 @@ export type RealmUsage = {
 export type Depot = {
   realm: string;
   depotId: string;
-  name: string;
+  title: string;
   root: string;
-  version: number;
+  maxHistory: number;
+  history: string[];
   createdAt: number;
   updatedAt: number;
-  description?: string;
-};
-
-export type DepotHistory = {
-  realm: string;
-  depotId: string;
-  version: number;
-  root: string;
-  createdAt: number;
-  message?: string;
 };
 
 // ============================================================================

@@ -1,46 +1,83 @@
 /**
  * Depots controller
+ *
+ * Handles depot CRUD operations.
+ * Ticket authentication is not allowed for depot operations.
  */
 
-import { decodeNode, EMPTY_DICT_BYTES, EMPTY_DICT_KEY } from "@agent-web-portal/cas-core";
+import { EMPTY_DICT_KEY } from "@agent-web-portal/cas-core";
 import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 import type { Context } from "hono";
-import type { DepotsDb, MAIN_DEPOT_NAME } from "../db/depots.ts";
-import type { RefCountDb } from "../db/refcount.ts";
+import { DEFAULT_MAX_HISTORY, type DepotsDb, MAIN_DEPOT_TITLE, SYSTEM_MAX_HISTORY } from "../db/depots.ts";
 import type { Env } from "../types.ts";
+
+// ============================================================================
+// Types
+// ============================================================================
 
 export type DepotsController = {
   list: (c: Context<Env>) => Promise<Response>;
   create: (c: Context<Env>) => Promise<Response>;
   get: (c: Context<Env>) => Promise<Response>;
   update: (c: Context<Env>) => Promise<Response>;
+  commit: (c: Context<Env>) => Promise<Response>;
   delete: (c: Context<Env>) => Promise<Response>;
-  history: (c: Context<Env>) => Promise<Response>;
-  rollback: (c: Context<Env>) => Promise<Response>;
 };
 
 type DepotsControllerDeps = {
   depotsDb: DepotsDb;
-  refCountDb: RefCountDb;
   storage: StorageProvider;
 };
 
+// ============================================================================
+// Helpers
+// ============================================================================
+
+const formatDepotId = (depotId: string): string =>
+  depotId.startsWith("depot:") ? depotId : `depot:${depotId}`;
+
+const formatRoot = (root: string): string => (root.startsWith("node:") ? root : `node:${root}`);
+
+const formatDepotResponse = (depot: {
+  depotId: string;
+  title: string;
+  root: string;
+  maxHistory: number;
+  history: string[];
+  createdAt: number;
+  updatedAt: number;
+}) => ({
+  depotId: formatDepotId(depot.depotId),
+  title: depot.title,
+  root: formatRoot(depot.root),
+  maxHistory: depot.maxHistory,
+  history: depot.history.map(formatRoot),
+  createdAt: depot.createdAt,
+  updatedAt: depot.updatedAt,
+});
+
+// ============================================================================
+// Factory
+// ============================================================================
+
 export const createDepotsController = (deps: DepotsControllerDeps): DepotsController => {
-  const { depotsDb, refCountDb, storage } = deps;
+  const { depotsDb, storage } = deps;
 
   const getRealm = (c: Context<Env>): string => {
     return c.req.param("realmId") ?? c.get("auth").realm;
   };
 
-  const ensureEmptyDict = async (): Promise<void> => {
-    const exists = await storage.has(EMPTY_DICT_KEY);
-    if (!exists) {
-      await storage.put(EMPTY_DICT_KEY, EMPTY_DICT_BYTES);
-    }
+  const isTicketAuth = (c: Context<Env>): boolean => {
+    return c.get("auth").identityType === "ticket";
   };
 
   return {
     list: async (c) => {
+      // Tickets cannot access depots
+      if (isTicketAuth(c)) {
+        return c.json({ error: "Tickets cannot access depot operations" }, 403);
+      }
+
       const realm = getRealm(c);
       const limit = Number.parseInt(c.req.query("limit") ?? "100", 10);
       const cursor = c.req.query("cursor");
@@ -48,58 +85,49 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       const result = await depotsDb.list(realm, { limit, startKey: cursor });
 
       return c.json({
-        depots: result.depots.map((d) => ({
-          depotId: d.depotId,
-          name: d.name,
-          root: d.root,
-          version: d.version,
-          createdAt: new Date(d.createdAt).toISOString(),
-          updatedAt: new Date(d.updatedAt).toISOString(),
-          description: d.description,
-        })),
-        cursor: result.nextKey,
+        depots: result.depots.map(formatDepotResponse),
+        nextCursor: result.nextKey,
+        hasMore: result.hasMore,
       });
     },
 
     create: async (c) => {
-      const realm = getRealm(c);
-      const body = await c.req.json();
-      const { name, description } = body;
-
-      // Check if exists
-      const existing = await depotsDb.getByName(realm, name);
-      if (existing) {
-        return c.json({ error: `Depot with name '${name}' already exists` }, 409);
+      if (isTicketAuth(c)) {
+        return c.json({ error: "Tickets cannot access depot operations" }, 403);
       }
 
-      // Ensure empty dict exists
-      await ensureEmptyDict();
+      const realm = getRealm(c);
+      const body = await c.req.json();
+      const { title, maxHistory = DEFAULT_MAX_HISTORY } = body;
 
-      // Increment ref for empty dict
-      await refCountDb.incrementRef(realm, EMPTY_DICT_KEY, EMPTY_DICT_BYTES.length, 0);
+      // Validate maxHistory
+      if (maxHistory > SYSTEM_MAX_HISTORY) {
+        return c.json({ error: `maxHistory cannot exceed ${SYSTEM_MAX_HISTORY}` }, 400);
+      }
 
-      // Create depot
+      // Check title uniqueness
+      if (title) {
+        const existing = await depotsDb.getByTitle(realm, title);
+        if (existing) {
+          return c.json({ error: `Depot with title '${title}' already exists` }, 409);
+        }
+      }
+
+      // Create depot with empty dict as initial root
       const depot = await depotsDb.create(realm, {
-        name,
+        title: title ?? `Depot ${Date.now()}`,
         root: EMPTY_DICT_KEY,
-        description,
+        maxHistory,
       });
 
-      return c.json(
-        {
-          depotId: depot.depotId,
-          name: depot.name,
-          root: depot.root,
-          version: depot.version,
-          createdAt: new Date(depot.createdAt).toISOString(),
-          updatedAt: new Date(depot.updatedAt).toISOString(),
-          description: depot.description,
-        },
-        201
-      );
+      return c.json(formatDepotResponse(depot), 201);
     },
 
     get: async (c) => {
+      if (isTicketAuth(c)) {
+        return c.json({ error: "Tickets cannot access depot operations" }, 403);
+      }
+
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
 
@@ -108,178 +136,96 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
         return c.json({ error: "Depot not found" }, 404);
       }
 
-      return c.json({
-        depotId: depot.depotId,
-        name: depot.name,
-        root: depot.root,
-        version: depot.version,
-        createdAt: new Date(depot.createdAt).toISOString(),
-        updatedAt: new Date(depot.updatedAt).toISOString(),
-        description: depot.description,
-      });
+      return c.json(formatDepotResponse(depot));
     },
 
     update: async (c) => {
+      if (isTicketAuth(c)) {
+        return c.json({ error: "Tickets cannot access depot operations" }, 403);
+      }
+
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
       const body = await c.req.json();
-      const { root: newRoot, message } = body;
+      const { title, maxHistory } = body;
 
-      // Get current depot
-      const depot = await depotsDb.get(realm, depotId);
+      // Validate maxHistory
+      if (maxHistory !== undefined && maxHistory > SYSTEM_MAX_HISTORY) {
+        return c.json({ error: `maxHistory cannot exceed ${SYSTEM_MAX_HISTORY}` }, 400);
+      }
+
+      const depot = await depotsDb.update(realm, depotId, { title, maxHistory });
       if (!depot) {
         return c.json({ error: "Depot not found" }, 404);
       }
 
-      const oldRoot = depot.root;
+      return c.json(formatDepotResponse(depot));
+    },
 
-      // Verify new root exists
-      const exists = await storage.has(newRoot);
+    commit: async (c) => {
+      if (isTicketAuth(c)) {
+        return c.json({ error: "Tickets cannot access depot operations" }, 403);
+      }
+
+      const realm = getRealm(c);
+      const depotId = decodeURIComponent(c.req.param("depotId"));
+
+      // First check if depot exists
+      const existingDepot = await depotsDb.get(realm, depotId);
+      if (!existingDepot) {
+        return c.json({ error: "Depot not found" }, 404);
+      }
+
+      const body = await c.req.json();
+      const { root: newRoot } = body;
+
+      if (!newRoot) {
+        return c.json({ error: "root is required" }, 400);
+      }
+
+      // Normalize root (remove node: prefix if present)
+      const normalizedRoot = newRoot.startsWith("node:") ? newRoot.slice(5) : newRoot;
+
+      // Validate root format (should be a valid hash)
+      if (!/^[a-zA-Z0-9_-]{20,}$/.test(normalizedRoot)) {
+        return c.json({ error: "Invalid root key format" }, 400);
+      }
+
+      // Check if new root exists in storage
+      const exists = await storage.has(normalizedRoot);
       if (!exists) {
-        return c.json({ error: "New root node does not exist" }, 400);
+        return c.json({ error: "Root node does not exist" }, 400);
       }
 
-      // Get new root info
-      const newRootBytes = await storage.get(newRoot);
-      if (!newRootBytes) {
-        return c.json({ error: "Failed to read new root node" }, 400);
+      const depot = await depotsDb.commit(realm, depotId, normalizedRoot);
+      if (!depot) {
+        return c.json({ error: "Depot not found" }, 404);
       }
 
-      const decoded = decodeNode(newRootBytes);
-      const physicalSize = newRootBytes.length;
-      const logicalSize = decoded.kind !== "dict" ? decoded.size : 0;
-
-      // Update refs
-      await refCountDb.incrementRef(realm, newRoot, physicalSize, logicalSize);
-      await refCountDb.decrementRef(realm, oldRoot);
-
-      // Update depot
-      const { depot: updatedDepot } = await depotsDb.updateRoot(realm, depotId, newRoot, message);
-
-      return c.json({
-        depotId: updatedDepot.depotId,
-        name: updatedDepot.name,
-        root: updatedDepot.root,
-        version: updatedDepot.version,
-        createdAt: new Date(updatedDepot.createdAt).toISOString(),
-        updatedAt: new Date(updatedDepot.updatedAt).toISOString(),
-        description: updatedDepot.description,
-      });
+      return c.json(formatDepotResponse(depot));
     },
 
     delete: async (c) => {
+      if (isTicketAuth(c)) {
+        return c.json({ error: "Tickets cannot access depot operations" }, 403);
+      }
+
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
 
+      // Get depot first to check if it's main
       const depot = await depotsDb.get(realm, depotId);
       if (!depot) {
         return c.json({ error: "Depot not found" }, 404);
       }
 
-      if (depot.name === "main") {
+      if (depot.title === MAIN_DEPOT_TITLE) {
         return c.json({ error: "Cannot delete the main depot" }, 403);
       }
 
-      // Decrement ref for current root
-      await refCountDb.decrementRef(realm, depot.root);
-
-      // Delete depot
       await depotsDb.delete(realm, depotId);
 
-      return c.json({ deleted: true });
-    },
-
-    history: async (c) => {
-      const realm = getRealm(c);
-      const depotId = decodeURIComponent(c.req.param("depotId"));
-      const limit = Number.parseInt(c.req.query("limit") ?? "50", 10);
-      const cursor = c.req.query("cursor");
-
-      // Verify depot exists
-      const depot = await depotsDb.get(realm, depotId);
-      if (!depot) {
-        return c.json({ error: "Depot not found" }, 404);
-      }
-
-      const result = await depotsDb.listHistory(realm, depotId, { limit, startKey: cursor });
-
-      return c.json({
-        history: result.history.map((h) => ({
-          version: h.version,
-          root: h.root,
-          createdAt: new Date(h.createdAt).toISOString(),
-          message: h.message,
-        })),
-        cursor: result.nextKey,
-      });
-    },
-
-    rollback: async (c) => {
-      const realm = getRealm(c);
-      const depotId = decodeURIComponent(c.req.param("depotId"));
-      const body = await c.req.json();
-      const { version } = body;
-
-      // Get current depot
-      const depot = await depotsDb.get(realm, depotId);
-      if (!depot) {
-        return c.json({ error: "Depot not found" }, 404);
-      }
-
-      // Get history record
-      const historyRecord = await depotsDb.getHistory(realm, depotId, version);
-      if (!historyRecord) {
-        return c.json({ error: `Version ${version} not found` }, 404);
-      }
-
-      const oldRoot = depot.root;
-      const newRoot = historyRecord.root;
-
-      // Skip if same
-      if (oldRoot === newRoot) {
-        return c.json({
-          depotId: depot.depotId,
-          name: depot.name,
-          root: depot.root,
-          version: depot.version,
-          createdAt: new Date(depot.createdAt).toISOString(),
-          updatedAt: new Date(depot.updatedAt).toISOString(),
-          description: depot.description,
-          message: "Already at this version",
-        });
-      }
-
-      // Get target root info
-      const newRootBytes = await storage.get(newRoot);
-      if (!newRootBytes) {
-        return c.json({ error: "Failed to read target root node" }, 500);
-      }
-
-      const decoded = decodeNode(newRootBytes);
-      const physicalSize = newRootBytes.length;
-      const logicalSize = decoded.kind !== "dict" ? decoded.size : 0;
-
-      // Update refs
-      await refCountDb.incrementRef(realm, newRoot, physicalSize, logicalSize);
-      await refCountDb.decrementRef(realm, oldRoot);
-
-      // Update depot
-      const { depot: updatedDepot } = await depotsDb.updateRoot(
-        realm,
-        depotId,
-        newRoot,
-        `Rollback to version ${version}`
-      );
-
-      return c.json({
-        depotId: updatedDepot.depotId,
-        name: updatedDepot.name,
-        root: updatedDepot.root,
-        version: updatedDepot.version,
-        createdAt: new Date(updatedDepot.createdAt).toISOString(),
-        updatedAt: new Date(updatedDepot.updatedAt).toISOString(),
-        description: updatedDepot.description,
-      });
+      return c.json({ success: true });
     },
   };
 };

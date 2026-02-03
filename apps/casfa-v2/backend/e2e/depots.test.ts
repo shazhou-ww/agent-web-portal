@@ -99,7 +99,7 @@ describe("Depot Management", () => {
         }),
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as {
         depotId: string;
         title: string;
@@ -130,7 +130,7 @@ describe("Depot Management", () => {
         }),
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as { maxHistory: number };
       expect(data.maxHistory).toBe(20); // Default value
     });

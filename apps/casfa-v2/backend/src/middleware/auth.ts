@@ -80,13 +80,43 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
 
     const [scheme, tokenValue] = parts;
 
-    // Agent Token: "Agent {token}"
+    // Ticket Token: "Ticket {ticketId}" (format: ticket:xxx or raw xxx)
+    if (scheme === "Ticket" && tokenValue) {
+      const rawTicketId = tokenValue.startsWith("ticket:") ? tokenValue.slice(7) : tokenValue;
+      // Use getTicketRaw to get ticket even if expired (for 410 vs 401 distinction)
+      const ticket = await tokensDb.getTicketRaw(rawTicketId);
+      if (!ticket) return null;
+
+      // Check if expired or revoked - return special marker for 410
+      if (ticket.expiresAt < Date.now() || ticket.isRevoked) {
+        return { expired: true } as unknown as AuthContext;
+      }
+
+      const fingerprint = await fingerprintFromToken(rawTicketId);
+      const auth: AuthContext = {
+        token: ticket,
+        userId: ticket.issuerId,
+        realm: ticket.realm,
+        canRead: true,
+        canWrite: !!ticket.commit && !ticket.commit.root,
+        canIssueTicket: false,
+        allowedScope: ticket.scope,
+        identityType: "ticket",
+        fingerprint,
+        isAgent: false,
+      };
+      return auth; // Don't apply user role for tickets
+    }
+
+    // Agent Token: "Agent {token}" (token format: casfa_xxx or raw xxx)
     if (scheme === "Agent" && tokenValue) {
-      const token = await tokensDb.getToken(tokenValue);
+      // Extract token ID from casfa_ prefix if present
+      const rawTokenId = tokenValue.startsWith("casfa_") ? tokenValue.slice(6) : tokenValue;
+      const token = await tokensDb.getToken(rawTokenId);
       if (!token || token.type !== "agent") return null;
 
       const agentToken = token as AgentToken;
-      const fingerprint = await fingerprintFromToken(tokenValue);
+      const fingerprint = await fingerprintFromToken(rawTokenId);
       const auth: AuthContext = {
         token,
         userId: agentToken.userId,
@@ -261,6 +291,10 @@ export const createAuthMiddleware = (deps: AuthMiddlewareDeps): MiddlewareHandle
     if (authHeader) {
       const auth = await authenticateBearer(authHeader);
       if (auth) {
+        // Check for expired/revoked ticket marker
+        if ((auth as unknown as { expired?: boolean }).expired) {
+          return c.json({ error: "gone", message: "Ticket expired or revoked" }, 410);
+        }
         c.set("auth", auth);
         return next();
       }
