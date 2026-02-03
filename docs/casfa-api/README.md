@@ -75,7 +75,7 @@ CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的�
 
 ### Realm CAS 操作 API
 
-[详细文档](./05-realm/)
+[详细文档](./05-realm/README.md)
 
 需要 `Authorization` header（User/Agent Token）
 
