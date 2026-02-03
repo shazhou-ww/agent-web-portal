@@ -49,11 +49,11 @@ export {
   createSuccessorHeader,
   decodeHeader,
   encodeHeader,
-  getBlockSize,
+  getBlockSizeLimit,
   getExtensionCount,
   getHashAlgo,
   getNodeType,
-  setBlockSize,
+  setBlockSizeLimit,
   setExtensionCount,
   setHashAlgo,
 } from "./header.ts";

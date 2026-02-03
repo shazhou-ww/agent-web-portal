@@ -86,20 +86,21 @@ export function setExtensionCount(flags: number, count: number): number {
 }
 
 /**
- * Get block size from flags (bits 4-7)
- * Returns the exponent n where block size = 2^n * KB
+ * Get block size limit from flags (bits 4-7)
+ * Returns the exponent n where block size limit = 2^n * KB
+ * This is a system-wide configuration, not the actual size of individual blocks.
  */
-export function getBlockSize(flags: number): number {
+export function getBlockSizeLimit(flags: number): number {
   return (flags & FLAGS.BLOCK_SIZE_MASK) >>> FLAGS.BLOCK_SIZE_SHIFT;
 }
 
 /**
- * Set block size in flags (bits 4-7)
+ * Set block size limit in flags (bits 4-7)
  * @param flags - Current flags value
- * @param size - Block size exponent (0-15)
+ * @param limit - Block size limit exponent (0-15), e.g. 12 for 4 MB
  */
-export function setBlockSize(flags: number, size: number): number {
-  return (flags & ~FLAGS.BLOCK_SIZE_MASK) | ((size << FLAGS.BLOCK_SIZE_SHIFT) & FLAGS.BLOCK_SIZE_MASK);
+export function setBlockSizeLimit(flags: number, limit: number): number {
+  return (flags & ~FLAGS.BLOCK_SIZE_MASK) | ((limit << FLAGS.BLOCK_SIZE_SHIFT) & FLAGS.BLOCK_SIZE_MASK);
 }
 
 /**
