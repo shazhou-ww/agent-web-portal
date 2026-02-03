@@ -32,13 +32,13 @@ Authorization: Bearer {adminToken}
 {
   "users": [
     {
-      "userId": "cognito-user-id",
+      "userId": "user:A6JCHNMFWRT90AXMYWHJ8HKS90",
       "role": "authorized",
       "email": "user@example.com",
       "name": "用户名"
     },
     {
-      "userId": "another-user-id",
+      "userId": "user:B7KDJOQGXSU01BYNZXIK9ILT01",
       "role": "admin",
       "email": "admin@example.com",
       "name": "管理员"

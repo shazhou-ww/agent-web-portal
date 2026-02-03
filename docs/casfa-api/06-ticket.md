@@ -45,7 +45,7 @@ Active → Committed → Revoked → Deleted
 | 创建方式 | 格式 | 说明 |
 |---------|------|------|
 | P256 Client | `client:{hash}` | 公钥的 Blake3s 哈希 |
-| User Token | `user:{ulid}` | 用户 ID 的标准表达 |
+| User Token | `user:{id}` | Cognito UUID 的 Base32 编码 |
 | Agent Token | `token:{hash}` | Token 值的 Blake3s 哈希 |
 
 ## 认证

@@ -49,7 +49,7 @@ Depot 维护一个 `history` 栈，记录最近的 root 版本：
       "updatedAt": 1738497600000
     }
   ],
-  "cursor": "下一页游标"
+  "nextCursor": "下一页游标"
 }
 ```
 

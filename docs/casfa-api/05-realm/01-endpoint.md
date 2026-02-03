@@ -13,7 +13,6 @@
 ```json
 {
   "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
-  "commit": {},
   "nodeLimit": 4194304,
   "maxNameBytes": 255
 }
@@ -22,8 +21,6 @@
 | 字段 | 描述 |
 |------|------|
 | `realm` | Realm 标识 |
-| `scope` | 可读范围（undefined 表示完全访问） |
-| `commit` | 提交权限配置（undefined 表示只读） |
 | `nodeLimit` | 单个节点最大字节数 |
 | `maxNameBytes` | 文件名最大 UTF-8 字节数 |
 

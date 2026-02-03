@@ -10,13 +10,14 @@ CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的�
 
 所有 128 位标识符使用 Crockford Base32 编码，固定 26 位字符。
 
-| 类型 | 格式 | 示例 |
-|------|------|------|
-| User ID | `user:{ulid}` | `user:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
-| Ticket ID | `ticket:{ulid}` | `ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
-| Depot ID | `depot:{ulid}` | `depot:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
-| Token ID | `token:{hash}` | `token:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
-| Node Key | `node:{hash}` | `node:abc123...` |
+| 类型 | 来源 | 格式 | 示例 |
+|------|------|------|------|
+| User ID | Cognito UUID | `user:{base32(uuid)}` | `user:A6JCHNMFWRT90AXMYWHJ8HKS90` |
+| Ticket ID | 新创建 (ULID) | `ticket:{ulid}` | `ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
+| Depot ID | 新创建 (ULID) | `depot:{ulid}` | `depot:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
+| Client ID | P256 公钥 | `client:{blake3s(pubkey)}` | `client:A6JCHNMFWRT90AXMYWHJ8HKS90` |
+| Token ID | Token 值 | `token:{blake3s(token)}` | `token:A6JCHNMFWRT90AXMYWHJ8HKS90` |
+| Node Key | 内容 | `node:{blake3(content)}` | `node:abc123...` |
 
 ### Agent Token 格式
 
@@ -33,8 +34,8 @@ Ticket 的 `issuerId` 根据创建方式使用不同格式：
 
 | 创建方式 | 格式 | 说明 |
 |---------|------|------|
-| P256 Client | `client:{hash}` | `CrockfordB32(blake3s(pubkey))` |
-| User Token | `user:{ulid}` | 用户 ID 的标准表达 |
+| P256 Client | `client:{hash}` | 公钥的 Blake3s 哈希 |
+| User Token | `user:{id}` | Cognito UUID 的 Base32 编码 |
 | Agent Token | `token:{hash}` | Token 值的 Blake3s 哈希 |
 
 > **注意**: 
@@ -75,13 +76,6 @@ Ticket 的 `issuerId` 根据创建方式使用不同格式：
 | POST | `/api/auth/clients/complete` | 完成客户端授权 | User Token |
 | GET | `/api/auth/clients` | 列出已授权的 AWP 客户端 | User Token |
 | DELETE | `/api/auth/clients/:pubkey` | 撤销 AWP 客户端 | User Token |
-
-#### Ticket 管理
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| POST | `/api/auth/ticket` | 创建 Ticket | Agent/User Token |
-| DELETE | `/api/auth/ticket/:id` | 撤销 Ticket | Agent/User Token |
 
 #### Agent Token 管理
 

@@ -142,6 +142,7 @@ Authorization: Bearer {userToken}
 {
   "clients": [
     {
+      "clientId": "client:01HQXK5V8N3Y7M2P4R6T9W0DEF",
       "pubkey": "P256 公钥",
       "clientName": "My Agent",
       "createdAt": 1738497600000,
@@ -178,86 +179,6 @@ Authorization: Bearer {userToken}
 | 状态码 | 描述 |
 |--------|------|
 | 404 | 客户端不存在或无权限 |
-
----
-
-## Ticket 管理
-
-Ticket 是临时访问凭证，可以限制访问范围和权限。
-
-### 端点列表
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| POST | `/api/auth/ticket` | 创建 Ticket | Agent/User Token |
-| DELETE | `/api/auth/ticket/:id` | 撤销 Ticket | Agent/User Token |
-
----
-
-### POST /api/auth/ticket
-
-创建一个新的 Ticket。
-
-#### 请求
-
-需要 `Authorization` header（支持 User Token 或 Agent Token）
-
-```json
-{
-  "input": ["node:xxx", "node:yyy"],
-  "writable": {
-    "quota": 10485760,
-    "accept": ["image/*", "application/json"]
-  },
-  "expiresIn": 3600
-}
-```
-
-| 字段 | 类型 | 描述 |
-|------|------|------|
-| `input` | `string[]?` | 输入节点 key 数组，未指定则可读全部 |
-| `writable` | `object?` | 写入权限配置，未指定则只读 |
-| `writable.quota` | `number?` | 上传字节数限制 |
-| `writable.accept` | `string[]?` | 允许的 MIME 类型 |
-| `expiresIn` | `number?` | 有效期（秒），默认 3600 |
-
-#### 响应
-
-```json
-{
-  "id": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
-  "endpoint": "https://api.example.com/api/ticket/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
-  "expiresAt": 1738501200000,
-  "realm": "user:01HQXK5V8N3Y7M2P4R6T9W0XYZ",
-  "input": ["node:xxx"],
-  "writable": {
-    "quota": 10485760,
-    "accept": ["image/*"]
-  },
-  "config": {
-    "nodeLimit": 4194304,
-    "maxNameBytes": 255
-  }
-}
-```
-
----
-
-### DELETE /api/auth/ticket/:id
-
-撤销指定的 Ticket。
-
-#### 请求
-
-需要 `Authorization` header
-
-#### 响应
-
-```json
-{
-  "success": true
-}
-```
 
 ---
 
