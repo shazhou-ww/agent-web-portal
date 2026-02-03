@@ -40,6 +40,7 @@ Authorization: Agent {agentToken}
 |------|------|------|------|
 | GET | `/api/realm/{realmId}/tickets` | 列出 Realm 下所有 Tickets | Read |
 | GET | `/api/realm/{realmId}/tickets/:ticketId` | 获取 Ticket 详情 | Read |
+| POST | `/api/realm/{realmId}/tickets/:ticketId/revoke` | 撤销 Ticket（仅 Issuer） | Write |
 | DELETE | `/api/realm/{realmId}/tickets/:ticketId` | 删除 Ticket（仅 User） | Write |
 
 ### Node 操作

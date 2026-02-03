@@ -7,7 +7,8 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
 ### Ticket 是什么？
 
 Ticket 承载了一个具体的任务上下文：
-- **input**: 必须的输入节点，代表任务的输入数据
+- **purpose**: 人类可读的任务描述，说明这个 ticket 的目的（创建时指定）
+- **input**: 输入节点数组，代表任务的一个或多个输入数据（同时也是可读取的 scope）
 - **output**: 可选的输出节点，代表任务的结果（commit 后填充）
 - **writable**: 是否可写入（上传新节点并 commit）
 
@@ -54,7 +55,6 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 | GET | `/api/ticket/{ticketId}` | 获取 Ticket 端点信息 | - |
 | GET | `/api/ticket/{ticketId}/usage` | 获取使用统计 | Read |
 | POST | `/api/ticket/{ticketId}/commit` | 提交结果（设置 output） | Write |
-| POST | `/api/ticket/{ticketId}/revoke` | 撤销 Ticket | Issuer |
 | POST | `/api/ticket/{ticketId}/prepare-nodes` | 预上传检查 | Write |
 | GET | `/api/ticket/{ticketId}/nodes/:key/metadata` | 获取节点元信息 | Read |
 | GET | `/api/ticket/{ticketId}/nodes/:key` | 获取节点二进制数据 | Read |
@@ -73,10 +73,10 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
   "ticketId": "ticket_xxx",
   "realm": "usr_xxxxxxxx",
   "status": "active",
-  "input": "blake3s:abc123...",
+  "purpose": "Generate thumbnail for uploaded image",
+  "input": ["blake3s:abc123..."],
   "output": null,
   "writable": true,
-  "scope": ["blake3s:abc123..."],
   "config": {
     "nodeLimit": 4194304,
     "maxNameBytes": 255,
@@ -92,10 +92,10 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 | `ticketId` | Ticket ID |
 | `realm` | Ticket 所属 Realm |
 | `status` | 当前状态：`active`, `committed`, `revoked` |
-| `input` | 输入节点 key（必须） |
+| `purpose` | 人类可读的任务描述（创建时指定） |
+| `input` | 输入节点 key 数组，同时也是可读取的 scope（包含所有 input 及其子节点） |
 | `output` | 输出节点 key（commit 后填充） |
 | `writable` | 是否可写入 |
-| `scope` | 可读的 root key 列表，包含 input 及其子节点 |
 | `config.nodeLimit` | 单个节点最大字节数 |
 | `config.maxNameBytes` | 文件名最大 UTF-8 字节数 |
 | `config.quota` | 上传字节数限制（仅 writable） |
@@ -152,45 +152,14 @@ Ticket 路由不需要 Authorization header，Ticket ID 本身就是凭证：
 
 ---
 
-## POST /api/ticket/{ticketId}/revoke
-
-撤销 Ticket。状态从 `active` 或 `committed` 变为 `revoked`。
-
-> **权限要求**: 需要 Agent Token，且必须是 Ticket 的 issuer。
-
-### 请求头
-
-```http
-Authorization: Agent {agentToken}
-```
-
-### 响应
-
-```json
-{
-  "success": true,
-  "status": "revoked"
-}
-```
-
-### 错误
-
-| 状态码 | 描述 |
-|--------|------|
-| 403 | 不是 Ticket 的 issuer |
-| 404 | Ticket 不存在 |
-| 410 | Ticket 已撤销 |
-
----
-
 ## Ticket 权限说明
 
 ### 读取权限
 
-Ticket 的读取权限由 `scope` 字段控制：
+Ticket 的读取权限由 `input` 字段控制：
 
-- `scope` 自动包含 `input` 节点及其所有子节点
-- 如果 `output` 已设置，`scope` 也包含 `output` 及其子节点
+- `input` 数组中的所有节点及其子节点都可读取
+- 如果 `output` 已设置，`output` 及其子节点也可读取
 
 ### 写入权限
 
@@ -214,13 +183,15 @@ Ticket 的写入权限由 `writable` 字段控制：
    GET /api/ticket/ticket_xxx
    ```
 
-   返回 input 节点和配置信息。
+   返回 input 节点数组和配置信息。
 
-2. **读取输入数据**：
+2. **读取输入数据**（遍历 input 数组中的所有节点）：
 
    ```http
-   GET /api/ticket/ticket_xxx/nodes/blake3s:input.../metadata
-   GET /api/ticket/ticket_xxx/nodes/blake3s:input...
+   GET /api/ticket/ticket_xxx/nodes/blake3s:input1.../metadata
+   GET /api/ticket/ticket_xxx/nodes/blake3s:input1...
+   GET /api/ticket/ticket_xxx/nodes/blake3s:input2.../metadata
+   GET /api/ticket/ticket_xxx/nodes/blake3s:input2...
    ```
 
 3. **上传结果节点**：
@@ -245,9 +216,9 @@ Ticket 的写入权限由 `writable` 字段控制：
 
 ### 示例：只读 Ticket 访问数据
 
-1. **获取 Ticket 信息**，确认 input 节点
+1. **获取 Ticket 信息**，确认 input 节点数组
 
-2. **读取节点数据**：
+2. **读取节点数据**（可访问任意 input 及其子节点）：
 
    ```http
    GET /api/ticket/ticket_xxx/nodes/blake3s:input.../metadata
@@ -274,7 +245,7 @@ Ticket 的写入权限由 `writable` 字段控制：
 | 状态码 | 描述 |
 |--------|------|
 | 401 | Ticket 无效 |
-| 403 | 超出 scope 或 writable 权限 |
+| 403 | 超出 input 范围或 writable 权限 |
 | 404 | Ticket 不存在或已删除 |
 | 409 | 状态冲突（如已 committed） |
 | 410 | Ticket 已撤销或过期 |
