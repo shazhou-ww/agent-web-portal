@@ -39,9 +39,22 @@ Ticket 的 `issuerId` 根据创建方式使用不同格式：
 | Agent Token | `token:{hash}` | Token 值的 Blake3s 哈希 |
 
 > **注意**: 
-> - 所有时间戳使用 epoch 毫秒格式（如 `1738497600000`）
 > - Node Key 使用统一的 hash 算法，不带算法前缀
 > - Realm ID 等同于 User ID
+
+## 时间格式规范
+
+| 类型 | 格式 | 单位 | 示例 |
+|------|------|------|------|
+| 时间戳 | Unix epoch | 毫秒 (int64) | `1738497600000` (2025-02-02T08:00:00Z) |
+| 持续时间 | 整数 | 秒 (int32) | `3600` (1 小时) |
+
+### 字段命名约定
+
+| 后缀 | 类型 | 示例 |
+|------|------|------|
+| `*At` | 时间戳（毫秒） | `createdAt`, `expiresAt`, `updatedAt` |
+| `*In` | 持续时间（秒） | `expiresIn` |
 
 ## 路由表
 
@@ -192,12 +205,49 @@ X-AWP-Signature: {signature}
 
 ```json
 {
-  "error": "错误描述",
+  "error": "错误代码",
+  "message": "人类可读的错误描述",
   "details": { ... }
 }
 ```
 
-常见 HTTP 状态码：
+### 错误响应字段
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| `error` | `string` | 错误代码（机器可读，如 `invalid_request`, `missing_nodes`） |
+| `message` | `string` | 错误描述（人类可读） |
+| `details` | `object?` | 可选的附加信息 |
+
+### 错误代码列表
+
+| 错误代码 | HTTP 状态码 | 描述 |
+|---------|------------|------|
+| `invalid_request` | 400 | 请求参数错误 |
+| `unauthorized` | 401 | 未认证或 Token 无效 |
+| `forbidden` | 403 | 权限不足 |
+| `not_found` | 404 | 资源不存在 |
+| `conflict` | 409 | 资源状态冲突 |
+| `gone` | 410 | 资源已过期或已撤销 |
+| `quota_exceeded` | 413 | 超出配额限制 |
+| `missing_nodes` | 400 | 引用的节点不存在 |
+| `internal_error` | 500 | 服务器内部错误 |
+
+### 示例
+
+节点缺失错误：
+
+```json
+{
+  "error": "missing_nodes",
+  "message": "Referenced nodes are not present in storage",
+  "details": {
+    "missing": ["node:abc123...", "node:def456..."]
+  }
+}
+```
+
+### HTTP 状态码
 
 | 状态码 | 描述 |
 |--------|------|
@@ -209,6 +259,72 @@ X-AWP-Signature: {signature}
 | 410 | 资源已过期（如 Ticket） |
 | 413 | 超出配额限制 |
 | 500 | 服务器内部错误 |
+
+## 限流策略
+
+为保护服务稳定性，API 实施以下限流策略：
+
+| 端点类别 | 限制 | 窗口 | 维度 |
+|---------|------|------|------|
+| OAuth 端点 | 10 req | 1 min | Per IP |
+| Auth 轮询 (`/status`) | 1 req | 5 sec | Per pubkey |
+| Realm 操作 | 100 req | 1 min | Per user |
+| Node 上传 | 60 req | 1 min | Per realm |
+| MCP 调用 | 300 req | 1 min | Per token |
+| Admin 操作 | 30 req | 1 min | Per admin |
+
+### 限流响应
+
+超出限制时返回 `429 Too Many Requests`：
+
+```json
+{
+  "error": "rate_limit_exceeded",
+  "message": "Too many requests",
+  "details": {
+    "retryAfter": 30
+  }
+}
+```
+
+响应头包含限流信息：
+
+```http
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1738497660
+Retry-After: 30
+```
+
+## 幂等性保证
+
+### 幂等操作
+
+以下操作是幂等的，可以安全重试：
+
+| 操作 | 幂等性 | 说明 |
+|------|--------|------|
+| `GET` 所有端点 | ✅ 幂等 | 读取操作 |
+| `PUT /nodes/:key` | ✅ 幂等 | 相同内容产生相同 key |
+| `POST /prepare-nodes` | ✅ 幂等 | 检查 + touch 操作 |
+| `DELETE` 资源 | ✅ 幂等 | 重复删除返回成功 |
+
+### 非幂等操作
+
+以下操作不是幂等的，重复调用可能产生不同结果：
+
+| 操作 | 幂等性 | 说明 |
+|------|--------|------|
+| `POST /tickets` | ❌ 非幂等 | 每次创建新 Ticket |
+| `POST /tokens` | ❌ 非幂等 | 每次创建新 Token |
+| `POST /depots/:id/commit` | ❌ 非幂等 | 改变 history 栈 |
+| `POST /ticket/:id/commit` | ⚠️ 仅一次 | 成功后不可重复 |
+
+### 重试建议
+
+1. **网络错误**: 幂等操作可直接重试，非幂等操作需检查资源状态
+2. **5xx 错误**: 使用指数退避重试（1s, 2s, 4s...）
+3. **429 错误**: 等待 `Retry-After` 指定的秒数后重试
 
 ## 相关文档
 

@@ -9,7 +9,9 @@
 
 ## POST /api/realm/{realmId}/prepare-nodes
 
-预上传检查：提交一个 key 列表，服务端返回哪些节点需要上传。对于已存在的节点，会 touch 其生命周期，防止被 GC 回收。
+预上传检查：提交一个 key 列表，服务端返回哪些节点需要上传。
+
+> **重要**: 此操作具有副作用。对于已存在的节点，会 **touch 其生命周期**（更新 `lastAccessedAt` 时间戳），防止被 GC 回收。这意味着即使只是检查节点存在性，也会影响节点的 GC 优先级。
 
 ### 请求
 
@@ -32,6 +34,10 @@
 |------|------|
 | `missing` | 需要上传的节点 key 列表 |
 | `exists` | 已存在的节点 key 列表（已 touch 生命周期） |
+
+### 幂等性
+
+此操作是幂等的，可以安全重试。多次调用对同一节点的效果等同于单次调用。
 
 ---
 
@@ -111,13 +117,23 @@ Successor 节点 (s-node)：
 
 ### 请求
 
-- Content-Type: `application/octet-stream`
-- Body: 二进制节点数据
+**请求头**:
+
+| Header | 类型 | 描述 |
+|--------|------|------|
+| `Content-Type` | `string` | 必须为 `application/octet-stream` |
+| `Content-Length` | `number` | 请求体字节数 |
+| `Content-MD5` | `string?` | 可选，Base64 编码的 MD5 校验和 |
+| `X-CAS-Blake3` | `string?` | 可选，Hex 编码的 Blake3 校验和 |
+
+> **校验和验证**: 如果提供了 `Content-MD5` 或 `X-CAS-Blake3`，服务端会验证上传内容的完整性。验证失败返回 `400 Bad Request`。
+
+**请求体**: 二进制节点数据
 
 节点格式遵循 cas-core 二进制格式，包含：
 
 - Magic bytes 和头部结构
-- Hash 验证
+- Hash 验证（节点 key = content hash）
 - 子节点存在性验证
 
 ### 响应
@@ -138,17 +154,21 @@ Successor 节点 (s-node)：
 
 ### 错误
 
-| 状态码 | 描述 |
-|--------|------|
-| 400 | 节点格式无效 |
-| 403 | 配额超限 |
+| 状态码 | 错误代码 | 描述 |
+|--------|---------|------|
+| 400 | `invalid_request` | 节点格式无效 |
+| 400 | `checksum_mismatch` | 校验和不匹配 |
+| 400 | `missing_nodes` | 引用的子节点不存在 |
+| 413 | `quota_exceeded` | 配额超限 |
 
-子节点缺失时返回：
+子节点缺失错误示例：
 
 ```json
 {
-  "success": false,
   "error": "missing_nodes",
-  "missing": ["node:xxx...", "node:yyy..."]
+  "message": "Referenced child nodes are not present in storage",
+  "details": {
+    "missing": ["node:xxx...", "node:yyy..."]
+  }
 }
 ```

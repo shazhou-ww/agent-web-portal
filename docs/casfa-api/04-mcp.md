@@ -2,6 +2,17 @@
 
 CASFA 提供 MCP (Model Context Protocol) 兼容的 JSON-RPC 端点，让传统 MCP 客户端可以与 CAS 交互。
 
+> **注意**: CASFA 实现的是 MCP 协议子集，仅支持 `tools` 能力。不支持 `resources/*`、`prompts/*` 和 `completion/*` 方法。
+
+## 支持的能力
+
+| 能力 | 支持状态 | 说明 |
+|------|----------|------|
+| `tools` | ✅ 支持 | CAS 操作工具（读写、Ticket 管理） |
+| `resources` | ❌ 不支持 | 未实现 |
+| `prompts` | ❌ 不支持 | 未实现 |
+| `logging` | ❌ 不支持 | 未实现 |
+
 ## 端点
 
 | 方法 | 路径 | 描述 | 认证 |

@@ -49,9 +49,16 @@ Depot 维护一个 `history` 栈，记录最近的 root 版本：
       "updatedAt": 1738497600000
     }
   ],
-  "nextCursor": "下一页游标"
+  "nextCursor": "下一页游标",
+  "hasMore": true
 }
 ```
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| `depots` | `Depot[]` | Depot 列表 |
+| `nextCursor` | `string?` | 下一页游标（无更多数据时省略） |
+| `hasMore` | `boolean` | 是否还有更多数据 |
 
 ---
 
