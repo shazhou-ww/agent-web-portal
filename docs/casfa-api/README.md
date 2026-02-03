@@ -15,8 +15,27 @@ CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的�
 | User ID | `user:{ulid}` | `user:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
 | Ticket ID | `ticket:{ulid}` | `ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
 | Depot ID | `depot:{ulid}` | `depot:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
-| Agent ID | `agent:{ulid}` | `agent:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
+| Token ID | `token:{hash}` | `token:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
 | Node Key | `node:{hash}` | `node:abc123...` |
+
+### Agent Token 格式
+
+| 字段 | 格式 | 说明 |
+|------|------|------|
+| Token 值 | `casfa_{base32}` | 240-bit 随机数，Crockford Base32 编码（48 字符） |
+| Token ID | `token:{hash}` | Token 值的 Blake3s 哈希 |
+
+> 服务端不保存 Token 值，仅保存 Token ID（hash）。Token 值仅在创建时返回一次。
+
+### Issuer ID 格式
+
+Ticket 的 `issuerId` 根据创建方式使用不同格式：
+
+| 创建方式 | 格式 | 说明 |
+|---------|------|------|
+| P256 Client | `client:{hash}` | `CrockfordB32(blake3s(pubkey))` |
+| User Token | `user:{ulid}` | 用户 ID 的标准表达 |
+| Agent Token | `token:{hash}` | Token 值的 Blake3s 哈希 |
 
 > **注意**: 
 > - 所有时间戳使用 epoch 毫秒格式（如 `1738497600000`）
@@ -100,22 +119,16 @@ CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的�
 |------|------|------|------|
 | GET | `/api/realm/{realmId}` | 获取 Realm 端点信息 | User/Agent Token |
 | GET | `/api/realm/{realmId}/usage` | 获取 Realm 使用统计 | User/Agent Token |
-| POST | `/api/realm/{realmId}/commit` | 创建 Commit | Write |
-| GET | `/api/realm/{realmId}/commits` | 列出 Commits | Read |
-| GET | `/api/realm/{realmId}/commits/:root` | 获取 Commit 详情 | Read |
-| PATCH | `/api/realm/{realmId}/commits/:root` | 更新 Commit 元数据 | Write |
-| DELETE | `/api/realm/{realmId}/commits/:root` | 删除 Commit | Write |
 | POST | `/api/realm/{realmId}/prepare-nodes` | 预上传检查 | Write |
 | GET | `/api/realm/{realmId}/nodes/:key/metadata` | 获取节点元信息 | Read |
 | GET | `/api/realm/{realmId}/nodes/:key` | 获取节点二进制数据 | Read |
 | PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | Write |
 | GET | `/api/realm/{realmId}/depots` | 列出所有 Depots | Read |
 | POST | `/api/realm/{realmId}/depots` | 创建 Depot | Write |
-| GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情 | Read |
-| PUT | `/api/realm/{realmId}/depots/:depotId` | 更新 Depot root | Write |
+| GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情（含 history） | Read |
+| PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot 元数据 | Write |
+| POST | `/api/realm/{realmId}/depots/:depotId/commit` | 提交新 root | Write |
 | DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | Write |
-| GET | `/api/realm/{realmId}/depots/:depotId/history` | 列出 Depot 历史 | Read |
-| POST | `/api/realm/{realmId}/depots/:depotId/rollback` | 回滚到指定版本 | Write |
 
 ### Ticket CAS 操作 API
 
@@ -127,11 +140,7 @@ Ticket ID 在路径中作为凭证，无需 `Authorization` header
 |------|------|------|------|
 | GET | `/api/ticket/{ticketId}` | 获取 Ticket 端点信息 | Ticket ID |
 | GET | `/api/ticket/{ticketId}/usage` | 获取使用统计 | Ticket (Read) |
-| POST | `/api/ticket/{ticketId}/commit` | 创建 Commit | Ticket (Write) |
-| GET | `/api/ticket/{ticketId}/commits` | 列出 Commits | Ticket (Read) |
-| GET | `/api/ticket/{ticketId}/commits/:root` | 获取 Commit 详情 | Ticket (Read) |
-| PATCH | `/api/ticket/{ticketId}/commits/:root` | 更新 Commit | Ticket (Write) |
-| DELETE | `/api/ticket/{ticketId}/commits/:root` | 删除 Commit | Ticket (Write) |
+| POST | `/api/ticket/{ticketId}/commit` | 提交 output | Ticket (Write) |
 | POST | `/api/ticket/{ticketId}/prepare-nodes` | 预上传检查 | Ticket (Write) |
 | GET | `/api/ticket/{ticketId}/nodes/:key/metadata` | 获取节点元信息 | Ticket (Read) |
 | GET | `/api/ticket/{ticketId}/nodes/:key` | 获取节点二进制数据 | Ticket (Read) |

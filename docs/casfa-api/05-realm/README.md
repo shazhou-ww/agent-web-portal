@@ -59,10 +59,9 @@ Authorization: Agent {agentToken}
 |------|------|------|------|
 | GET | `/api/realm/{realmId}/depots` | 列出所有 Depots | Read |
 | POST | `/api/realm/{realmId}/depots` | 创建 Depot | Write |
-| GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情 | Read |
-| PUT | `/api/realm/{realmId}/depots/:depotId` | 更新 Depot root | Write |
+| GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情（含 history） | Read |
+| PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot 元数据 | Write |
+| POST | `/api/realm/{realmId}/depots/:depotId/commit` | 提交新 root | Write |
 | DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | Write |
-| GET | `/api/realm/{realmId}/depots/:depotId/history` | 列出 Depot 历史 | Read |
-| POST | `/api/realm/{realmId}/depots/:depotId/rollback` | 回滚到指定版本 | Write |
 
 > **注意**: Ticket 路由不支持 Depot 操作，Depot 只能通过 Realm 路由管理。

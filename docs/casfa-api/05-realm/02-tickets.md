@@ -4,6 +4,16 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
 
 > 关于 Ticket 的完整 API 文档，请参阅 [Ticket API](../06-ticket.md)。
 
+## Issuer ID 格式
+
+每个 Ticket 记录其创建者（issuer），格式根据创建方式不同：
+
+| 创建方式 | 格式 | 说明 |
+|---------|------|------|
+| P256 Client | `client:{hash}` | 公钥的 Blake3s 哈希 |
+| User Token | `user:{ulid}` | 用户 ID 的标准表达 |
+| Agent Token | `token:{hash}` | Token 值的 Blake3s 哈希 |
+
 ---
 
 ## POST /api/realm/{realmId}/tickets
@@ -85,7 +95,7 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
       "purpose": "Generate thumbnail for uploaded image",
       "input": ["node:abc123..."],
       "output": null,
-      "issuerId": "agent:01HQXK5V8N3Y7M2P4R6T9W0DEF",
+      "issuerId": "client:01HQXK5V8N3Y7M2P4R6T9W0DEF",
       "createdAt": 1738497600000,
       "expiresAt": 1738584000000
     },
@@ -95,7 +105,7 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
       "purpose": "Convert document to PDF",
       "input": ["node:def456...", "node:template789..."],
       "output": "node:ghi789...",
-      "issuerId": "agent:01HQXK5V8N3Y7M2P4R6T9W0DEF",
+      "issuerId": "user:01HQXK5V8N3Y7M2P4R6T9W0DEF",
       "createdAt": 1738404000000,
       "expiresAt": 1738490400000,
       "committedAt": 1738409400000
@@ -120,8 +130,7 @@ Ticket 是 Realm 的附属资源，提供有限的、有时间边界的 CAS 访�
   "input": ["node:abc123..."],
   "output": null,
   "writable": true,
-  "issuerId": "agent:01HQXK5V8N3Y7M2P4R6T9W0DEF",
-  "issuerFingerprint": "fp:abc123...",
+  "issuerId": "client:01HQXK5V8N3Y7M2P4R6T9W0DEF",
   "config": {
     "nodeLimit": 4194304,
     "maxNameBytes": 255,

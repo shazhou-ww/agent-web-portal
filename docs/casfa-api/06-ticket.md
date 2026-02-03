@@ -35,8 +35,18 @@ Active → Committed → Revoked → Deleted
 | 操作 | 允许的调用者 |
 |------|-------------|
 | commit | Tool（通过 Ticket 凭证访问） |
-| revoke | Agent（Ticket 的 issuer） |
+| revoke | Issuer（Ticket 的创建者） |
 | delete | User（Realm 所有者） |
+
+### Issuer ID 格式
+
+每个 Ticket 记录其创建者（issuer），格式根据创建方式不同：
+
+| 创建方式 | 格式 | 说明 |
+|---------|------|------|
+| P256 Client | `client:{hash}` | 公钥的 Blake3s 哈希 |
+| User Token | `user:{ulid}` | 用户 ID 的标准表达 |
+| Agent Token | `token:{hash}` | Token 值的 Blake3s 哈希 |
 
 ## 认证
 

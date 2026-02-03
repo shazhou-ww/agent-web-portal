@@ -265,6 +265,18 @@ Ticket 是临时访问凭证，可以限制访问范围和权限。
 
 Agent Token 是为 AI Agent 创建的长期访问令牌。
 
+### Token 格式
+
+| 字段 | 格式 | 说明 |
+|------|------|------|
+| Token 值 | `casfa_{base32}` | 240-bit 随机数的 Crockford Base32 编码（48 字符），共 54 字符 |
+| Token ID | `token:{hash}` | Token 值的 Blake3s 哈希 |
+
+> **安全设计**：
+> - 服务端**不保存** Token 值，仅保存 Token ID（hash）
+> - Token 值仅在创建时返回一次
+> - 鉴权时，服务端计算请求中 Token 的 hash，查询数据库验证
+
 ### 端点列表
 
 | 方法 | 路径 | 描述 | 认证 |
@@ -301,13 +313,16 @@ Agent Token 是为 AI Agent 创建的长期访问令牌。
 
 ```json
 {
-  "id": "agent:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+  "id": "token:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+  "token": "casfa_0123456789ABCDEFGHJKMNPQRSTVWXYZ0123456789ABCDEF",
   "name": "My AI Agent",
   "description": "用于自动化任务的 Agent",
   "expiresAt": 1741089600000,
   "createdAt": 1738497600000
 }
 ```
+
+> **注意**: `token` 字段仅在创建时返回一次，请妥善保存。列表接口不会返回 token 内容。
 
 ---
 
@@ -325,7 +340,7 @@ Agent Token 是为 AI Agent 创建的长期访问令牌。
 {
   "tokens": [
     {
-      "id": "agent:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+      "id": "token:01HQXK5V8N3Y7M2P4R6T9W0ABC",
       "name": "My AI Agent",
       "description": "用于自动化任务的 Agent",
       "expiresAt": 1741089600000,
