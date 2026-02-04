@@ -8,8 +8,9 @@ import { createE2EContext, type E2EContext } from "./setup.ts";
 describe("Health Check", () => {
   let ctx: E2EContext;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     ctx = createE2EContext();
+    await ctx.ready();
   });
 
   afterAll(() => {

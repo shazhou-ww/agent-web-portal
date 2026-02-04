@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import type { HashProvider, StorageProvider } from "@agent-web-portal/cas-storage-core";
 import type { Hono } from "hono";
+import type { DbInstances } from "./bootstrap.ts";
 import type { AppConfig } from "./config.ts";
 // Controllers
 import {
@@ -21,15 +22,6 @@ import {
   createRealmController,
 } from "./controllers/index.ts";
 import { createTicketsController } from "./controllers/tickets.ts";
-import type { AwpPendingDb } from "./db/awp-pending.ts";
-import type { AwpPubkeysDb } from "./db/awp-pubkeys.ts";
-import type { DepotsDb } from "./db/depots.ts";
-import type { OwnershipDb } from "./db/ownership.ts";
-import type { RefCountDb } from "./db/refcount.ts";
-// DB Types
-import type { TokensDb } from "./db/tokens.ts";
-import type { UsageDb } from "./db/usage.ts";
-import type { UserRolesDb } from "./db/user-roles.ts";
 // MCP
 import { createMcpController } from "./mcp/index.ts";
 
@@ -48,6 +40,9 @@ import { createRouter } from "./router.ts";
 import type { AuthService } from "./services/auth.ts";
 import type { Env } from "./types.ts";
 
+// Re-export DbInstances for convenience
+export type { DbInstances } from "./bootstrap.ts";
+
 // ============================================================================
 // Hash Provider (Node.js)
 // ============================================================================
@@ -62,17 +57,6 @@ export const createNodeHashProvider = (): HashProvider => ({
 // ============================================================================
 // Types
 // ============================================================================
-
-export type DbInstances = {
-  tokensDb: TokensDb;
-  ownershipDb: OwnershipDb;
-  depotsDb: DepotsDb;
-  refCountDb: RefCountDb;
-  usageDb: UsageDb;
-  userRolesDb: UserRolesDb;
-  awpPendingDb: AwpPendingDb;
-  awpPubkeysDb: AwpPubkeysDb;
-};
 
 /**
  * All dependencies required by the application.

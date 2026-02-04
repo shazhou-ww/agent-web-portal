@@ -13,8 +13,9 @@ import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "
 describe("Agent Token Management", () => {
   let ctx: E2EContext;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     ctx = createE2EContext();
+    await ctx.ready();
   });
 
   afterAll(() => {

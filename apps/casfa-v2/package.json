@@ -7,9 +7,10 @@
   "main": "backend/dist/handler.mjs",
   "scripts": {
     "dev": "bun run backend/server.ts",
+    "dev:setup": "bun run backend/scripts/dev-setup.ts",
     "clean": "rimraf .turbo backend/dist .aws-sam",
     "build": "bun run build:backend",
-    "build:backend": "bun build backend/src/handler.ts --outdir backend/dist --format esm --target node --external '@aws-sdk/*' && mv backend/dist/handler.js backend/dist/handler.mjs",
+    "build:backend": "bun run backend/scripts/build.ts",
     "sam:build": "bun run build:backend && sam build",
     "sam:local": "sam local start-api --port 3560",
     "sam:deploy": "sam deploy",

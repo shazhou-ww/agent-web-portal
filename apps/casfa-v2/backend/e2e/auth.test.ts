@@ -14,8 +14,9 @@ const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 describe("Authentication", () => {
   let ctx: E2EContext;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     ctx = createE2EContext();
+    await ctx.ready();
   });
 
   afterAll(() => {

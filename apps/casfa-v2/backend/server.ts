@@ -21,22 +21,8 @@ import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory";
 import { createS3Storage } from "@agent-web-portal/cas-storage-s3";
 import { createApp, createNodeHashProvider } from "./src/app.ts";
 import { createCognitoJwtVerifier, createMockJwtVerifier } from "./src/auth/index.ts";
+import { createAuthServiceFromConfig, createDbInstances } from "./src/bootstrap.ts";
 import { loadConfig } from "./src/config.ts";
-
-// DB factories
-import {
-  createAwpPendingDb,
-  createAwpPubkeysDb,
-  createDepotsDb,
-  createOwnershipDb,
-  createRefCountDb,
-  createTokensDb,
-  createUsageDb,
-  createUserRolesDb,
-} from "./src/db/index.ts";
-
-// Auth service
-import { createAuthService } from "./src/services/auth.ts";
 
 // ============================================================================
 // Configuration
@@ -59,16 +45,7 @@ const config = loadConfig();
 // ============================================================================
 
 // Create DB instances (uses DYNAMODB_ENDPOINT if set)
-const db = {
-  tokensDb: createTokensDb({ tableName: config.db.tokensTable }),
-  ownershipDb: createOwnershipDb({ tableName: config.db.casRealmTable }),
-  depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
-  refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
-  usageDb: createUsageDb({ tableName: config.db.usageTable }),
-  userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
-  awpPendingDb: createAwpPendingDb({ tableName: config.db.tokensTable }),
-  awpPubkeysDb: createAwpPubkeysDb({ tableName: config.db.tokensTable }),
-};
+const db = createDbInstances(config);
 
 // Create storage based on STORAGE_TYPE
 const createStorage = () => {
@@ -104,12 +81,8 @@ const createJwtVerifier = () => {
 
 const jwtVerifier = createJwtVerifier();
 
-// Create auth service (Cognito)
-const authService = createAuthService({
-  tokensDb: db.tokensDb,
-  userRolesDb: db.userRolesDb,
-  cognitoConfig: config.cognito,
-});
+// Create auth service
+const authService = createAuthServiceFromConfig(db, config);
 
 // Create hash provider
 const hashProvider = createNodeHashProvider();

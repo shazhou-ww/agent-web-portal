@@ -55,12 +55,46 @@ const TEST_CONFIG = {
   STORAGE_TYPE: "memory" as const,
   STORAGE_FS_PATH: "./test-storage",
   MOCK_JWT_SECRET: "test-secret-key-for-e2e",
+  DYNAMODB_MAX_RETRIES: 5,
+  DYNAMODB_RETRY_DELAY_MS: 1000,
 };
+
+/**
+ * Check if DynamoDB is available and wait for it
+ */
+async function waitForDynamoDB(): Promise<void> {
+  const { DynamoDBClient, ListTablesCommand } = await import("@aws-sdk/client-dynamodb");
+  const endpoint = process.env.DYNAMODB_ENDPOINT ?? TEST_CONFIG.DYNAMODB_ENDPOINT;
+  const client = new DynamoDBClient({
+    region: "us-east-1",
+    endpoint,
+    credentials: {
+      accessKeyId: "local",
+      secretAccessKey: "local",
+    },
+  });
+
+  for (let i = 0; i < TEST_CONFIG.DYNAMODB_MAX_RETRIES; i++) {
+    try {
+      await client.send(new ListTablesCommand({}));
+      return; // Success
+    } catch (err) {
+      if (i === TEST_CONFIG.DYNAMODB_MAX_RETRIES - 1) {
+        throw new Error(
+          `DynamoDB at ${endpoint} not available after ${TEST_CONFIG.DYNAMODB_MAX_RETRIES} retries.\n` +
+            "Please ensure DynamoDB Local is running: docker compose up -d dynamodb\n" +
+            "Then create tables: bun run db:create"
+        );
+      }
+      await Bun.sleep(TEST_CONFIG.DYNAMODB_RETRY_DELAY_MS);
+    }
+  }
+}
 
 /**
  * Set test environment variables if not already set
  */
-export const setupTestEnv = () => {
+export const setupTestEnv = async () => {
   process.env.DYNAMODB_ENDPOINT ??= TEST_CONFIG.DYNAMODB_ENDPOINT;
   process.env.STORAGE_TYPE ??= TEST_CONFIG.STORAGE_TYPE;
   process.env.MOCK_JWT_SECRET ??= TEST_CONFIG.MOCK_JWT_SECRET;
@@ -68,10 +102,22 @@ export const setupTestEnv = () => {
   if (process.env.STORAGE_TYPE === "fs") {
     process.env.STORAGE_FS_PATH ??= TEST_CONFIG.STORAGE_FS_PATH;
   }
+
+  // Wait for DynamoDB to be available
+  await waitForDynamoDB();
 };
 
-// Auto-setup test environment
-setupTestEnv();
+// Auto-setup test environment (async init)
+let setupPromise: Promise<void> | null = null;
+const ensureSetup = () => {
+  if (!setupPromise) {
+    setupPromise = setupTestEnv();
+  }
+  return setupPromise;
+};
+
+// Start setup immediately
+ensureSetup();
 
 // ============================================================================
 // Test Server Types
@@ -153,7 +199,10 @@ export type TestHelpers = {
  * - Memory or file system storage (via STORAGE_TYPE)
  * - Mock JWT authentication (via MOCK_JWT_SECRET)
  */
-export const startTestServer = (options?: { port?: number }): TestServer => {
+export const startTestServer = async (options?: { port?: number }): Promise<TestServer> => {
+  // Ensure DynamoDB is ready before starting
+  await ensureSetup();
+
   const config = loadConfig();
   const mockJwtSecret = process.env.MOCK_JWT_SECRET ?? TEST_CONFIG.MOCK_JWT_SECRET;
   const storageType = process.env.STORAGE_TYPE ?? TEST_CONFIG.STORAGE_TYPE;
@@ -346,23 +395,65 @@ export type E2EContext = {
   helpers: TestHelpers;
   db: DbInstances;
   cleanup: () => void;
+  /** Wait for server to be ready - call this in beforeAll */
+  ready: () => Promise<void>;
 };
 
 /**
  * Create an E2E test context
+ * Note: Uses a cached server instance to avoid async setup in each test file
  */
+let cachedServer: TestServer | null = null;
+let serverPromise: Promise<TestServer> | null = null;
+
+const getOrCreateServer = async (): Promise<TestServer> => {
+  if (cachedServer) return cachedServer;
+  if (serverPromise) return serverPromise;
+
+  serverPromise = startTestServer();
+  cachedServer = await serverPromise;
+  return cachedServer;
+};
+
 export const createE2EContext = (): E2EContext => {
-  const server = startTestServer();
+  // Start server initialization immediately (non-blocking)
+  const serverPromise = getOrCreateServer();
+
+  // Create a lazy wrapper that will wait for server on first access
+  let resolvedServer: TestServer | null = null;
+
+  const getServer = (): TestServer => {
+    if (!resolvedServer) {
+      throw new Error("Server not ready - call await ctx.ready() first in beforeAll");
+    }
+    return resolvedServer;
+  };
 
   return {
-    server,
-    baseUrl: server.url,
-    helpers: server.helpers,
-    db: server.db,
-    cleanup: () => {
-      server.stop();
+    get server() {
+      return getServer();
     },
-  };
+    get baseUrl() {
+      return getServer().url;
+    },
+    get helpers() {
+      return getServer().helpers;
+    },
+    get db() {
+      return getServer().db;
+    },
+    cleanup: () => {
+      if (resolvedServer) {
+        resolvedServer.stop();
+        resolvedServer = null;
+        cachedServer = null;
+      }
+    },
+    // New async ready method
+    ready: async () => {
+      resolvedServer = await serverPromise;
+    },
+  } as E2EContext & { ready: () => Promise<void> };
 };
 
 // ============================================================================
