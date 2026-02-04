@@ -86,5 +86,7 @@ export const fromCrockfordBase32 = (encoded: string): Uint8Array => {
  * @returns true if valid Crockford Base32
  */
 export const isValidCrockfordBase32 = (str: string): boolean => {
-  return /^[0-9A-HJ-NP-TV-Za-hj-np-tv-z]+$/.test(str);
+  // Crockford Base32 excludes I, L, O, U (case-insensitive)
+  if (str.length === 0) return true;
+  return /^[0-9A-HJ-KM-NP-TV-Za-hj-km-np-tv-z]+$/.test(str);
 };
