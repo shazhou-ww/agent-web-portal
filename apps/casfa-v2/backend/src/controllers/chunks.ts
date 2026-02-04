@@ -8,17 +8,17 @@ import {
   validateNode,
   validateNodeStructure,
 } from "@agent-web-portal/cas-core";
+import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 import {
-  hashToNodeKey,
-  nodeKeyToHex,
-  PrepareNodesSchema,
   type DictNodeMetadata,
   type FileNodeMetadata,
+  hashToNodeKey,
   type NodeUploadResponse,
+  nodeKeyToHex,
   type PrepareNodesResponse,
+  PrepareNodesSchema,
   type SuccessorNodeMetadata,
 } from "@agent-web-portal/casfa-protocol";
-import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 import type { Context } from "hono";
 import type { OwnershipDb } from "../db/ownership.ts";
 import type { RefCountDb } from "../db/refcount.ts";
@@ -182,7 +182,12 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       );
 
       // Increment reference count
-      const { isNewToRealm } = await refCountDb.incrementRef(realm, storageKey, physicalSize, logicalSize);
+      const { isNewToRealm } = await refCountDb.incrementRef(
+        realm,
+        storageKey,
+        physicalSize,
+        logicalSize
+      );
 
       // Increment ref for children
       for (const childKey of childKeys) {

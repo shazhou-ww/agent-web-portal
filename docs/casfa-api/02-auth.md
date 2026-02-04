@@ -201,6 +201,7 @@ Agent Token 是为 AI Agent 创建的长期访问令牌。
 | Token ID | `token:{hash}` | Token 值的 Blake3s 哈希 |
 
 > **安全设计**：
+>
 > - 服务端**不保存** Token 值，仅保存 Token ID（hash）
 > - Token 值仅在创建时返回一次
 > - 鉴权时，服务端计算请求中 Token 的 hash，查询数据库验证

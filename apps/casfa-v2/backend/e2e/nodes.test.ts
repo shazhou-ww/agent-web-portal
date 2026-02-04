@@ -134,9 +134,7 @@ describe("Node Operations", () => {
     it("should reject unauthenticated requests", async () => {
       const nodeKey = testNodeKey(1);
 
-      const response = await fetch(
-        `${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}/metadata`
-      );
+      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}/metadata`);
 
       expect(response.status).toBe(401);
     });
@@ -161,9 +159,7 @@ describe("Node Operations", () => {
     it("should reject unauthenticated requests", async () => {
       const nodeKey = testNodeKey(1);
 
-      const response = await fetch(
-        `${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}`
-      );
+      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}`);
 
       expect(response.status).toBe(401);
     });

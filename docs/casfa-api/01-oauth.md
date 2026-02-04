@@ -25,11 +25,13 @@
    - 存储在客户端本地（如 sessionStorage）
 
 2. **计算 code_challenge**
+
    ```
    code_challenge = BASE64URL(SHA256(code_verifier))
    ```
 
 3. **发起授权请求（跳转 Cognito Hosted UI）**
+
    ```
    GET https://{cognitoHostedUiUrl}/authorize?
      response_type=code&
@@ -41,6 +43,7 @@
    ```
 
 4. **Cognito 回调返回授权码**
+
    ```
    GET {redirectUri}?code={authorizationCode}
    ```

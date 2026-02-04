@@ -10,19 +10,13 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
+import { CloudFormationClient, DescribeStacksCommand } from "@aws-sdk/client-cloudformation";
+import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 import {
-  CloudFormationClient,
-  DescribeStacksCommand,
-} from "@aws-sdk/client-cloudformation";
-import {
-  CloudFrontClient,
-  CreateInvalidationCommand,
-} from "@aws-sdk/client-cloudfront";
-import {
-  PutObjectCommand,
-  S3Client,
   DeleteObjectsCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
 } from "@aws-sdk/client-s3";
 
 const UI_DIST_DIR = join(import.meta.dir, "../dist");
@@ -59,9 +53,7 @@ interface StackOutputs {
 async function getStackOutputs(stackName: string): Promise<StackOutputs> {
   try {
     const cf = new CloudFormationClient(awsConfig);
-    const response = await cf.send(
-      new DescribeStacksCommand({ StackName: stackName })
-    );
+    const response = await cf.send(new DescribeStacksCommand({ StackName: stackName }));
 
     const outputs = response.Stacks?.[0]?.Outputs || [];
 
@@ -165,11 +157,9 @@ async function main() {
     const cacheControl =
       file.key === "index.html"
         ? "no-cache, no-store, must-revalidate"
-        : file.key.startsWith("assets/") ||
-          file.key.endsWith(".js") ||
-          file.key.endsWith(".css")
-        ? "public, max-age=31536000, immutable"
-        : "public, max-age=0, must-revalidate";
+        : file.key.startsWith("assets/") || file.key.endsWith(".js") || file.key.endsWith(".css")
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=0, must-revalidate";
 
     await s3.send(
       new PutObjectCommand({

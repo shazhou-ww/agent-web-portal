@@ -3,10 +3,7 @@
  */
 
 import { generateVerificationCode } from "@agent-web-portal/auth";
-import {
-  ClientCompleteSchema,
-  ClientInitSchema,
-} from "@agent-web-portal/casfa-protocol";
+import { ClientCompleteSchema, ClientInitSchema } from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { ClientPendingDb } from "../db/client-pending";
 import type { ClientPubkeysDb } from "../db/client-pubkeys";

@@ -2,11 +2,7 @@
  * OAuth controller
  */
 
-import {
-  LoginSchema,
-  RefreshSchema,
-  TokenExchangeSchema,
-} from "@agent-web-portal/casfa-protocol";
+import { LoginSchema, RefreshSchema, TokenExchangeSchema } from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { CognitoConfig } from "../config.ts";
 import type { AuthService } from "../services/auth.ts";

@@ -17,12 +17,22 @@ import { rmSync } from "node:fs";
 import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 import { createFsStorage } from "@agent-web-portal/cas-storage-fs";
 import { createMemoryStorage } from "@agent-web-portal/cas-storage-memory";
+// casfa-client-v2 SDK
+import {
+  type CasfaAnonymousClient,
+  type CasfaDelegateClient,
+  type CasfaTicketClient,
+  type CasfaUserClient,
+  createCasfaClient,
+  createDelegateClient,
+  createTicketClient,
+  createUserClient,
+} from "@agent-web-portal/casfa-client-v2";
 import type { Server } from "bun";
 import { createApp, createNodeHashProvider, type DbInstances } from "../src/app.ts";
 import { createMockJwt } from "../src/auth/index.ts";
 import { createMockJwtVerifier } from "../src/auth/jwt-verifier.ts";
 import { type AppConfig, loadConfig } from "../src/config.ts";
-
 // DB factories
 import {
   createAwpPendingDb,
@@ -36,21 +46,8 @@ import {
   createUsageDb,
   createUserRolesDb,
 } from "../src/db/index.ts";
-
 // Auth service
 import { type AuthService, createAuthService } from "../src/services/auth.ts";
-
-// casfa-client-v2 SDK
-import {
-  createCasfaClient,
-  createUserClient,
-  createDelegateClient,
-  createTicketClient,
-  type CasfaAnonymousClient,
-  type CasfaUserClient,
-  type CasfaDelegateClient,
-  type CasfaTicketClient,
-} from "@agent-web-portal/casfa-client-v2";
 
 // ============================================================================
 // Test Utilities
@@ -411,8 +408,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     // SDK Client Factory Methods
     getAnonymousClient: () => createCasfaClient({ baseUrl: url }),
 
-    getUserClient: (token: string) =>
-      createUserClient({ baseUrl: url, accessToken: token }),
+    getUserClient: (token: string) => createUserClient({ baseUrl: url, accessToken: token }),
 
     getDelegateClient: (agentToken: string) =>
       createDelegateClient({ baseUrl: url, authType: "token", token: agentToken }),
@@ -551,9 +547,4 @@ export const createAuthFetcher = (baseUrl: string, token: string) => {
 // Re-export SDK Types for Test Convenience
 // ============================================================================
 
-export type {
-  CasfaAnonymousClient,
-  CasfaUserClient,
-  CasfaDelegateClient,
-  CasfaTicketClient,
-};
+export type { CasfaAnonymousClient, CasfaUserClient, CasfaDelegateClient, CasfaTicketClient };

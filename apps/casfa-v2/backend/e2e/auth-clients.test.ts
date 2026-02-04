@@ -185,9 +185,7 @@ describe("Client Authentication", () => {
       if (result.ok) {
         expect(result.data.items).toBeInstanceOf(Array);
         expect(result.data.items.length).toBeGreaterThan(0);
-        expect(
-          result.data.items.some((c) => c.clientId === initResult.data.clientId)
-        ).toBe(true);
+        expect(result.data.items.some((c) => c.clientId === initResult.data.clientId)).toBe(true);
       }
     });
 

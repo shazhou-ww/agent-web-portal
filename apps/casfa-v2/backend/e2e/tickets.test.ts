@@ -176,10 +176,7 @@ describe("Ticket Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const userClient = ctx.helpers.getUserClient(token);
 
-      const result = await userClient.tickets.get(
-        realm,
-        "ticket:NONEXISTENT0000000000000"
-      );
+      const result = await userClient.tickets.get(realm, "ticket:NONEXISTENT0000000000000");
 
       expect(result.ok).toBe(false);
       if (!result.ok) {

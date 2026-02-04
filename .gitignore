@@ -48,6 +48,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .skill-cache/
 temp-*.bin
 
+# Local storage (casfa-v2 dev)
+.local-storage/
+
 # Local CAS blob storage (casfa dev)
 .local-cas-storage/
 

@@ -164,10 +164,7 @@ describe("Depot Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const userClient = ctx.helpers.getUserClient(token);
 
-      const result = await userClient.depots.get(
-        realm,
-        "depot:NONEXISTENT0000000000000"
-      );
+      const result = await userClient.depots.get(realm, "depot:NONEXISTENT0000000000000");
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -262,11 +259,9 @@ describe("Depot Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const userClient = ctx.helpers.getUserClient(token);
 
-      const result = await userClient.depots.update(
-        realm,
-        "depot:NONEXISTENT0000000000000",
-        { title: "Update" }
-      );
+      const result = await userClient.depots.update(realm, "depot:NONEXISTENT0000000000000", {
+        title: "Update",
+      });
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -332,11 +327,9 @@ describe("Depot Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const userClient = ctx.helpers.getUserClient(token);
 
-      const result = await userClient.depots.commit(
-        realm,
-        "depot:NONEXISTENT0000000000000",
-        { root: testNodeKey(1) }
-      );
+      const result = await userClient.depots.commit(realm, "depot:NONEXISTENT0000000000000", {
+        root: testNodeKey(1),
+      });
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -382,10 +375,7 @@ describe("Depot Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const userClient = ctx.helpers.getUserClient(token);
 
-      const result = await userClient.depots.delete(
-        realm,
-        "depot:NONEXISTENT0000000000000"
-      );
+      const result = await userClient.depots.delete(realm, "depot:NONEXISTENT0000000000000");
 
       expect(result.ok).toBe(false);
       if (!result.ok) {

@@ -4,10 +4,7 @@
  * Handles ticket management under /api/realm/{realmId}/tickets/*
  */
 
-import {
-  CreateTicketSchema,
-  TicketCommitSchema,
-} from "@agent-web-portal/casfa-protocol";
+import { CreateTicketSchema, TicketCommitSchema } from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { ServerConfig } from "../config.ts";
 import type { TokensDb } from "../db/tokens.ts";

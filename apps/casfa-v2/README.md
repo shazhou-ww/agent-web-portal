@@ -17,6 +17,7 @@ CASFA v2 是一个为 AI Agent 设计的内容寻址存储服务，基于 Hono �
 ### 1. 环境准备
 
 确保已安装：
+
 - [Bun](https://bun.sh/) >= 1.0
 - [Docker](https://www.docker.com/) (用于 DynamoDB Local)
 
@@ -162,9 +163,9 @@ apps/casfa-v2/
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PORT_CASFA_V2_API` | 8801 | API 服务端口 |
-| `DYNAMODB_ENDPOINT` | http://localhost:8700 | DynamoDB 端点（8700=持久化，8701=测试） |
+| `DYNAMODB_ENDPOINT` | <http://localhost:8700> | DynamoDB 端点（8700=持久化，8701=测试） |
 | `STORAGE_TYPE` | memory | 存储类型: memory/fs/s3 |
-| `STORAGE_FS_PATH` | ./local-storage | 文件存储路径（STORAGE_TYPE=fs 时） |
+| `STORAGE_FS_PATH` | ./.local-storage | 文件存储路径（STORAGE_TYPE=fs 时） |
 | `MOCK_JWT_SECRET` | - | 本地测试用 Mock JWT 密钥 |
 | `COGNITO_USER_POOL_ID` | - | 生产环境 Cognito 配置 |
 
@@ -268,6 +269,7 @@ bun run test:e2e
 ```
 
 测试会自动：
+
 1. 启动 `dynamodb-test` 容器（端口 8701，内存模式）
 2. 等待 DynamoDB 就绪
 3. 创建测试所需的表

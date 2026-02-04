@@ -61,7 +61,7 @@ export type StorageConfig = {
 
 export const loadStorageConfig = (): StorageConfig => ({
   bucket: process.env.CAS_BUCKET ?? "cas-bucket",
-  prefix: process.env.CAS_PREFIX ?? "cas/sha256/",
+  prefix: process.env.CAS_PREFIX ?? "cas/blake3s/",
 });
 
 // ============================================================================

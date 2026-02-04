@@ -861,7 +861,13 @@ Offset   Content
 **Key**：
 
 ```
-blake3s:8b49b82afb41373146a970681bbe55a1
+blake3s:0000b2da2b8398251c05e6a73a6f1918
+```
+
+或使用 node: 前缀的 Crockford Base32 格式：
+
+```
+node:000B5PHBGEC2A705WTKKMVRS30
 ```
 
 **生成代码**：

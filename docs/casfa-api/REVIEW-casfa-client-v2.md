@@ -92,7 +92,8 @@
 }
 ```
 
-**需要修改**: 
+**需要修改**:
+
 - casfa-protocol: `client_name` → `clientName`，类型名 `AwpAuthInit` → `ClientInit`
 - 服务端: 响应字段 `auth_url` → `authUrl`, `verification_code` → `displayCode` 等
 - SDK: 类型名 `AwpAuthInitResponse` → `ClientInitResponse`
@@ -117,6 +118,7 @@ export type GetClientParams = {
 ```
 
 **理由**：
+
 - RESTful 设计中，获取资源状态就是 GET 该资源
 - `clientId = Blake3s(pubkey)` 是固定派生，客户端也可自行计算
 - URL 更短（26 字符 vs 长公钥字符串），且不暴露原始公钥
@@ -135,6 +137,7 @@ export type GetClientParams = {
 ```
 
 **理由**：
+
 - 故意与 `/nodes/:nodeId` 严格区分，避免路由冲突
 - `/prepare-nodes` 是对批量 keys 的预检操作，不是单个 node 的子路径
 
@@ -255,6 +258,7 @@ SDK 当前设计接近正确，只需去掉 `/poll` 后缀。
 ### 2.2 OAuth Config 响应类型
 
 **当前 SDK**:
+
 ```typescript
 export type CognitoConfig = {
   userPoolId: string;
@@ -265,6 +269,7 @@ export type CognitoConfig = {
 ```
 
 **推荐**:
+
 ```typescript
 export type OAuthConfig = {
   userPoolId: string;

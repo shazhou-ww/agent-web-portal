@@ -1,6 +1,7 @@
 # Node 操作
 
 节点是 CAS 中的基本存储单元，包括三种类型：
+
 - **d-node (dict)**: 目录节点，包含子节点映射
 - **f-node (file)**: 文件顶层节点，包含 content-type
 - **s-node (successor)**: 文件后继节点，用于大文件分块

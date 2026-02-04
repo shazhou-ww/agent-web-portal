@@ -2,15 +2,15 @@
 
 /**
  * AWP Agent - Full Stack Deployment Script
- * 
+ *
  * This stack only has frontend (static site), no Lambda backend.
- * 
+ *
  * Usage:
  *   bun run deploy              # Deploy SAM stack + frontend
  */
 
-import { $ } from "bun";
 import { join } from "node:path";
+import { $ } from "bun";
 
 const ROOT_DIR = join(import.meta.dir, "..");
 

@@ -32,12 +32,10 @@ export const EMPTY_DICT_BYTES = new Uint8Array(HEADER_SIZE);
 /**
  * BLAKE3s-128 hash of EMPTY_DICT_BYTES (hex format for storage)
  *
- * Computed from: blake3s(16-byte header with d-node flags, count=0, size=0)
- *
- * NOTE: This value is computed using truncated SHA-256 (first 16 bytes)
- * for testing. Production should use actual BLAKE3s-128.
+ * Computed from: blake3(16-byte header with d-node flags, count=0, size=0)
+ * truncated to 128 bits (16 bytes).
  */
-export const EMPTY_DICT_KEY = "8b49b82afb41373146a970681bbe55a1";
+export const EMPTY_DICT_KEY = "0000b2da2b8398251c05e6a73a6f1918";
 
 /**
  * Well-known keys for system-level CAS nodes

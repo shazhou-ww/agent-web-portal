@@ -47,9 +47,11 @@ describe("Well-known Keys", () => {
       expect(EMPTY_DICT_KEY).toMatch(/^[a-f0-9]{32}$/);
     });
 
-    it("should match the hash of EMPTY_DICT_BYTES (using truncated SHA-256 for testing)", async () => {
-      const hash = await crypto.subtle.digest("SHA-256", EMPTY_DICT_BYTES);
-      const truncatedHashHex = Array.from(new Uint8Array(hash).slice(0, 16))
+    it("should match the BLAKE3-128 hash of EMPTY_DICT_BYTES", async () => {
+      // Import BLAKE3 dynamically for test
+      const { blake3 } = await import("@noble/hashes/blake3");
+      const fullHash = blake3(EMPTY_DICT_BYTES);
+      const truncatedHashHex = Array.from(fullHash.slice(0, 16))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
       expect(EMPTY_DICT_KEY).toBe(truncatedHashHex);

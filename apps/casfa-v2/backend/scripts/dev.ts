@@ -161,7 +161,7 @@ function buildEnvVars(config: DevConfig): Record<string, string> {
 
   // Storage configuration
   if (config.storage === "fs") {
-    env.STORAGE_FS_PATH = process.env.STORAGE_FS_PATH ?? "./local-storage";
+    env.STORAGE_FS_PATH = process.env.STORAGE_FS_PATH ?? "./.local-storage";
   }
 
   // Auth configuration

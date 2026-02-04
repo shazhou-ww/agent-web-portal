@@ -38,7 +38,8 @@ Ticket 的 `issuerId` 根据创建方式使用不同格式：
 | User Token | `user:{id}` | Cognito UUID 的 Base32 编码 |
 | Agent Token | `token:{hash}` | Token 值的 Blake3s 哈希 |
 
-> **注意**: 
+> **注意**:
+>
 > - Node Key 使用统一的 hash 算法，不带算法前缀
 > - Realm ID 等同于 User ID
 
