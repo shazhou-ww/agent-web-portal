@@ -119,3 +119,24 @@ export {
   PrepareNodesSchema,
   SuccessorNodeMetadataSchema,
 } from "./node.ts";
+
+// ============================================================================
+// Info schemas
+// ============================================================================
+
+export type {
+  AuthType,
+  DatabaseType,
+  ServiceFeatures,
+  ServiceInfo,
+  ServiceLimits,
+  StorageType,
+} from "./info.ts";
+export {
+  AuthTypeSchema,
+  DatabaseTypeSchema,
+  ServiceFeaturesSchema,
+  ServiceInfoSchema,
+  ServiceLimitsSchema,
+  StorageTypeSchema,
+} from "./info.ts";

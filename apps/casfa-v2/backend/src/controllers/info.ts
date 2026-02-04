@@ -5,6 +5,7 @@
  * NOTE: This endpoint should NOT expose sensitive deployment details.
  */
 
+import type { AuthType, DatabaseType, ServiceInfo, StorageType } from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { FeaturesConfig, ServerConfig } from "../config.ts";
 
@@ -12,49 +13,12 @@ import type { FeaturesConfig, ServerConfig } from "../config.ts";
 // Types
 // ============================================================================
 
-export type ServiceInfo = {
-  /** Service name */
-  service: string;
-  /** Service version */
-  version: string;
-  /** Storage backend type */
-  storage: "memory" | "fs" | "s3";
-  /** Authentication method */
-  auth: "mock" | "cognito" | "tokens-only";
-  /** Database type */
-  database: "local" | "aws";
-  /** Server limits */
-  limits: {
-    /** Maximum node/block size in bytes */
-    maxNodeSize: number;
-    /** Maximum name length in bytes */
-    maxNameBytes: number;
-    /** Maximum children in a collection */
-    maxCollectionChildren: number;
-    /** Maximum payload size for uploads in bytes */
-    maxPayloadSize: number;
-    /** Maximum ticket TTL in seconds */
-    maxTicketTtl: number;
-    /** Maximum agent token TTL in seconds */
-    maxAgentTokenTtl: number;
-  };
-  /** Feature flags (controlled via environment variables) */
-  features: {
-    /** Whether JWT authentication is enabled (FEATURE_JWT_AUTH) */
-    jwtAuth: boolean;
-    /** Whether OAuth login is enabled (FEATURE_OAUTH_LOGIN) */
-    oauthLogin: boolean;
-    /** Whether AWP (Agent Web Portal) auth is enabled (FEATURE_AWP_AUTH) */
-    awpAuth: boolean;
-  };
-};
-
 export type InfoControllerDeps = {
   serverConfig: ServerConfig;
   featuresConfig: FeaturesConfig;
-  storageType: "memory" | "fs" | "s3";
-  authType: "mock" | "cognito" | "tokens-only";
-  databaseType: "local" | "aws";
+  storageType: StorageType;
+  authType: AuthType;
+  databaseType: DatabaseType;
 };
 
 export type InfoController = {

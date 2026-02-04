@@ -5,6 +5,7 @@
 import * as adminApi from "./api/admin.ts";
 import * as authApi from "./api/auth.ts";
 import * as depotsApi from "./api/depots.ts";
+import * as infoApi from "./api/info.ts";
 import * as mcpApi from "./api/mcp.ts";
 import * as nodesApi from "./api/nodes.ts";
 // API imports
@@ -15,6 +16,7 @@ import { type ApiName, assertAccess } from "./auth/permissions.ts";
 import { createTicketAuth } from "./auth/ticket.ts";
 import { createTokenAuth } from "./auth/token.ts";
 import { createUserAuth } from "./auth/user.ts";
+import type { ServiceInfo } from "@agent-web-portal/casfa-protocol";
 // Re-export types
 import type {
   AgentTokenInfo,
@@ -66,6 +68,9 @@ export type CasfaClient = {
   getAuthState: () => AuthState;
   getRealmId: () => string | null;
   setRealmId: (realmId: string) => void;
+
+  // Public API (no auth required)
+  getInfo: () => Promise<FetchResult<ServiceInfo>>;
 
   // OAuth API (mostly public)
   oauth: {
@@ -212,6 +217,7 @@ export const createCasfaClient = (config: CasfaClientConfig): CasfaClient => {
   const authCtx: authApi.AuthApiContext = { fetcher };
   const adminCtx: adminApi.AdminApiContext = { fetcher };
   const mcpCtx: mcpApi.McpApiContext = { fetcher };
+  const infoCtx: infoApi.InfoApiContext = { fetcher };
 
   const getRealmCtx = (): realmApi.RealmApiContext => ({
     fetcher,
@@ -242,6 +248,9 @@ export const createCasfaClient = (config: CasfaClientConfig): CasfaClient => {
     setRealmId: (id: string) => {
       currentRealmId = id;
     },
+
+    // Public API (no auth required)
+    getInfo: () => infoApi.getInfo(infoCtx),
 
     // OAuth API
     oauth: {

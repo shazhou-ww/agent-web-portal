@@ -48,6 +48,9 @@ export {
   updateDepot,
 } from "./depots.ts";
 
+// Info API
+export { getInfo, type InfoApiContext } from "./info.ts";
+
 // MCP API
 export {
   type CallMcpParams,
