@@ -3,10 +3,13 @@
  * Create CASFA v2 DynamoDB tables in local DynamoDB.
  *
  * Prerequisites:
- *   docker compose up -d dynamodb
+ *   docker compose up -d dynamodb       # Port 8700 (persistent)
+ *   docker compose up -d dynamodb-test  # Port 8701 (in-memory)
  *
  * Usage:
- *   bun run backend/scripts/create-local-tables.ts
+ *   bun run backend/scripts/create-local-tables.ts              # Default port 8700
+ *   bun run backend/scripts/create-local-tables.ts --port 8701  # Test DB
+ *   bun run backend/scripts/create-local-tables.ts --delete     # Delete tables
  *
  * Env:
  *   DYNAMODB_ENDPOINT  - default http://localhost:8700
@@ -24,25 +27,50 @@ import {
   ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
 
-const endpoint = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8700";
+// Parse --port argument
+function parsePortArg(): number | undefined {
+  const args = process.argv.slice(2);
+  const portIndex = args.indexOf("--port");
+  if (portIndex !== -1 && args[portIndex + 1] !== undefined) {
+    return Number.parseInt(args[portIndex + 1] as string, 10);
+  }
+  return undefined;
+}
+
+// Build endpoint from port or environment
+function getEndpoint(portOverride?: number): string {
+  if (portOverride) {
+    return `http://localhost:${portOverride}`;
+  }
+  return process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8700";
+}
+
 const tokensTable = process.env.TOKENS_TABLE ?? "cas-tokens";
 const realmTable = process.env.CAS_REALM_TABLE ?? "cas-realm";
 const refCountTable = process.env.CAS_REFCOUNT_TABLE ?? "cas-refcount";
 const usageTable = process.env.CAS_USAGE_TABLE ?? "cas-usage";
 
-const client = new DynamoDBClient({
-  region: process.env.AWS_REGION ?? "us-east-1",
-  endpoint,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "local",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "local",
-  },
-});
+// Create a DynamoDB client for a specific endpoint
+export function createClient(endpoint: string): DynamoDBClient {
+  return new DynamoDBClient({
+    region: process.env.AWS_REGION ?? "us-east-1",
+    endpoint,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "local",
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "local",
+    },
+  });
+}
 
-async function createTable(input: CreateTableCommandInput): Promise<void> {
+// Default client (for backward compatibility)
+const portArg = parsePortArg();
+const endpoint = getEndpoint(portArg);
+const client = createClient(endpoint);
+
+async function createTable(dbClient: DynamoDBClient, input: CreateTableCommandInput): Promise<void> {
   const name = input.TableName!;
   try {
-    await client.send(new CreateTableCommand(input));
+    await dbClient.send(new CreateTableCommand(input));
     console.log(`Created table: ${name}`);
   } catch (err: unknown) {
     if (
@@ -58,9 +86,9 @@ async function createTable(input: CreateTableCommandInput): Promise<void> {
   }
 }
 
-async function deleteTable(tableName: string): Promise<void> {
+async function deleteTable(dbClient: DynamoDBClient, tableName: string): Promise<void> {
   try {
-    await client.send(new DeleteTableCommand({ TableName: tableName }));
+    await dbClient.send(new DeleteTableCommand({ TableName: tableName }));
     console.log(`Deleted table: ${tableName}`);
   } catch (err: unknown) {
     if (
@@ -76,17 +104,17 @@ async function deleteTable(tableName: string): Promise<void> {
   }
 }
 
-export async function listTables(): Promise<string[]> {
-  const result = await client.send(new ListTablesCommand({}));
+export async function listTables(dbClient: DynamoDBClient = client): Promise<string[]> {
+  const result = await dbClient.send(new ListTablesCommand({}));
   return result.TableNames ?? [];
 }
 
-export async function createAllTables(): Promise<void> {
-  console.log(`Using DynamoDB at ${endpoint}\n`);
+export async function createAllTables(dbClient: DynamoDBClient = client): Promise<void> {
+  console.log(`Creating tables...\n`);
 
   // Tokens table (users, agents, tickets, roles, awp-pending, awp-pubkeys)
   // Uses composite key (pk, sk) to support different entity types in one table
-  await createTable({
+  await createTable(dbClient, {
     TableName: tokensTable,
     AttributeDefinitions: [
       { AttributeName: "pk", AttributeType: "S" },
@@ -122,7 +150,7 @@ export async function createAllTables(): Promise<void> {
   });
 
   // Realm table (ownership, commits, depots)
-  await createTable({
+  await createTable(dbClient, {
     TableName: realmTable,
     AttributeDefinitions: [
       { AttributeName: "realm", AttributeType: "S" },
@@ -156,7 +184,7 @@ export async function createAllTables(): Promise<void> {
   });
 
   // Reference count table for GC and usage tracking
-  await createTable({
+  await createTable(dbClient, {
     TableName: refCountTable,
     AttributeDefinitions: [
       { AttributeName: "pk", AttributeType: "S" },
@@ -193,7 +221,7 @@ export async function createAllTables(): Promise<void> {
   });
 
   // Usage table for quota management
-  await createTable({
+  await createTable(dbClient, {
     TableName: usageTable,
     AttributeDefinitions: [
       { AttributeName: "pk", AttributeType: "S" },
@@ -207,12 +235,12 @@ export async function createAllTables(): Promise<void> {
   });
 }
 
-export async function deleteAllTables(): Promise<void> {
-  console.log(`Deleting tables from ${endpoint}\n`);
-  await deleteTable(tokensTable);
-  await deleteTable(realmTable);
-  await deleteTable(refCountTable);
-  await deleteTable(usageTable);
+export async function deleteAllTables(dbClient: DynamoDBClient = client): Promise<void> {
+  console.log(`Deleting tables...\n`);
+  await deleteTable(dbClient, tokensTable);
+  await deleteTable(dbClient, realmTable);
+  await deleteTable(dbClient, refCountTable);
+  await deleteTable(dbClient, usageTable);
 }
 
 // Run if executed directly

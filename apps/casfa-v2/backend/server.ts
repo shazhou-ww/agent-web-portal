@@ -87,6 +87,17 @@ const authService = createAuthServiceFromConfig(db, config);
 // Create hash provider
 const hashProvider = createNodeHashProvider();
 
+// Determine runtime info for /api/info endpoint
+const getAuthType = (): "mock" | "cognito" | "tokens-only" => {
+  if (mockJwtSecret) return "mock";
+  if (config.cognito.userPoolId) return "cognito";
+  return "tokens-only";
+};
+
+const getDatabaseType = (): "local" | "aws" => {
+  return process.env.DYNAMODB_ENDPOINT ? "local" : "aws";
+};
+
 // ============================================================================
 // Create App
 // ============================================================================
@@ -98,6 +109,11 @@ const app = createApp({
   authService,
   hashProvider,
   jwtVerifier,
+  runtimeInfo: {
+    storageType: storageType as "memory" | "fs" | "s3",
+    authType: getAuthType(),
+    databaseType: getDatabaseType(),
+  },
 });
 
 // ============================================================================

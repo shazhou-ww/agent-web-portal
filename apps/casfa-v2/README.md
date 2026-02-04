@@ -10,6 +10,7 @@ CASFA v2 是一个为 AI Agent 设计的内容寻址存储服务，基于 Hono �
 - 🎫 **Ticket 系统**: 细粒度的临时访问控制
 - 📁 **Depot 管理**: 类似 Git 的版本化数据存储
 - 🔄 **多种存储后端**: 支持 S3、文件系统、内存存储
+- ⚙️ **灵活的开发配置**: 支持多种预设模式，适应不同开发场景
 
 ## 快速开始
 
@@ -25,29 +26,44 @@ CASFA v2 是一个为 AI Agent 设计的内容寻址存储服务，基于 Hono �
 # 从仓库根目录
 cd apps/casfa-v2
 
-# 一键设置开发环境（启动 DynamoDB、创建表、配置 .env）
-bun run dev:setup
+# 方式一：使用 CLI 工具（推荐）
+bun run dev                    # 默认：persistent DB + fs storage + mock auth
 
-# 或者手动设置：
-# 1. 启动 DynamoDB Local（从仓库根目录）
-docker compose up -d dynamodb
+# 方式二：使用预设模式
+bun run dev:minimal           # 全内存模式，无需 Docker（适合快速测试）
+bun run dev:docker            # 持久化 DynamoDB + 文件存储（适合本地开发）
+bun run dev:aws               # 连接 AWS 服务（适合集成测试）
 
-# 2. 创建 DynamoDB 表
-bun run db:create
-
-# 3. 复制配置文件
-cp .env.example .env
+# 方式三：手动配置
+bun run backend/scripts/dev.ts --db memory --storage memory --auth mock
 ```
 
-### 3. 启动开发服务器
+### 3. 开发模式详解
+
+| 模式 | 命令 | DynamoDB | Storage | Auth | 用途 |
+|------|------|----------|---------|------|------|
+| **minimal** | `dev:minimal` | 内存 (8701) | 内存 | Mock JWT | E2E 测试、快速验证 |
+| **docker** | `dev:docker` | 持久化 (8700) | 文件系统 | Mock JWT | 日常开发、数据持久化 |
+| **aws** | `dev:aws` | AWS | S3 | Cognito | 集成测试、生产预览 |
+
+### 4. DynamoDB 端口分配
+
+项目使用两个 DynamoDB Local 实例：
+
+| 端口 | 容器名 | 模式 | 用途 |
+|------|--------|------|------|
+| **8700** | `dynamodb` | 持久化 (`-dbPath`) | 开发环境，数据保留 |
+| **8701** | `dynamodb-test` | 内存 (`-inMemory`) | E2E 测试，每次干净 |
 
 ```bash
-bun run dev
+# 启动开发 DynamoDB（持久化）
+docker compose up -d dynamodb
+
+# 启动测试 DynamoDB（内存）
+docker compose up -d dynamodb-test
 ```
 
-服务器将在 `http://localhost:8801` 启动。
-
-### 4. 验证服务
+### 5. 验证服务
 
 ```bash
 curl http://localhost:8801/health
@@ -67,26 +83,40 @@ curl http://localhost:8801/health
 ## 开发命令
 
 ```bash
-# 开发
-bun run dev          # 启动开发服务器
-bun run dev:setup    # 一键设置开发环境
+# 开发服务器（使用 CLI 工具）
+bun run dev              # 默认配置启动（persistent + fs + mock）
+bun run dev:minimal      # 全内存模式，无需 Docker
+bun run dev:docker       # 持久化模式
+bun run dev:aws          # 连接 AWS 服务
+bun run dev:simple       # 直接运行 server.ts（不经过 CLI）
+bun run dev:setup        # 一键设置开发环境
+
+# CLI 自定义选项
+bun run backend/scripts/dev.ts --db <memory|persistent|aws>
+bun run backend/scripts/dev.ts --storage <memory|fs|s3>
+bun run backend/scripts/dev.ts --auth <mock|cognito>
+bun run backend/scripts/dev.ts --preset <e2e|local|dev>
+bun run backend/scripts/dev.ts --port 8801
+bun run backend/scripts/dev.ts --skip-tables
 
 # 测试
-bun test             # 运行所有测试
-bun run test:e2e     # 运行 E2E 测试（自动管理 DynamoDB 表）
+bun test                 # 运行单元测试
+bun run test:e2e         # 运行 E2E 测试（自动管理容器）
+bun run test:e2e:debug   # E2E 测试（不清理，保留容器）
 
 # 数据库
-bun run db:create    # 创建本地 DynamoDB 表
-bun run db:delete    # 删除本地 DynamoDB 表
+bun run db:create        # 创建表（端口 8700）
+bun run db:create:test   # 创建表（端口 8701）
+bun run db:delete        # 删除表
 
 # 构建
-bun run build        # 构建 Lambda 部署包
-bun run sam:build    # SAM 构建
-bun run sam:deploy   # 部署到 AWS
+bun run build            # 构建 Lambda 部署包
+bun run sam:build        # SAM 构建
+bun run sam:deploy       # 部署到 AWS
 
 # 代码质量
-bun run check        # TypeScript 类型检查 + Biome lint
-bun run lint:fix     # 自动修复 lint 问题
+bun run check            # TypeScript 类型检查 + Biome lint
+bun run lint:fix         # 自动修复 lint 问题
 ```
 
 ## 项目结构
@@ -132,14 +162,60 @@ apps/casfa-v2/
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PORT_CASFA_V2_API` | 8801 | API 服务端口 |
-| `DYNAMODB_ENDPOINT` | http://localhost:8700 | DynamoDB 端点 |
+| `DYNAMODB_ENDPOINT` | http://localhost:8700 | DynamoDB 端点（8700=持久化，8701=测试） |
 | `STORAGE_TYPE` | memory | 存储类型: memory/fs/s3 |
+| `STORAGE_FS_PATH` | ./local-storage | 文件存储路径（STORAGE_TYPE=fs 时） |
 | `MOCK_JWT_SECRET` | - | 本地测试用 Mock JWT 密钥 |
 | `COGNITO_USER_POOL_ID` | - | 生产环境 Cognito 配置 |
+
+### Feature Flags
+
+通过环境变量控制功能开关，所有功能默认启用：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `FEATURE_JWT_AUTH` | true | 启用 JWT Bearer Token 认证 |
+| `FEATURE_OAUTH_LOGIN` | true | 启用 OAuth 登录流程 |
+| `FEATURE_AWP_AUTH` | true | 启用 AWP 客户端认证 |
+
+设置为 `false` 可禁用功能（如维护模式）：
+
+```bash
+FEATURE_OAUTH_LOGIN=false  # 禁用 OAuth 登录
+```
 
 完整配置见 [.env.example](.env.example)。
 
 ## API 概览
+
+### 服务信息
+
+- `GET /api/health` - 健康检查
+- `GET /api/info` - 服务配置信息（存储类型、认证方式、限制等）
+
+```json
+// GET /api/info 响应示例
+{
+  "service": "casfa-v2",
+  "version": "0.1.0",
+  "storage": "memory",     // memory | fs | s3
+  "auth": "mock",          // mock | cognito | tokens-only
+  "database": "local",     // local | aws
+  "limits": {
+    "maxNodeSize": 4194304,
+    "maxNameBytes": 255,
+    "maxCollectionChildren": 10000,
+    "maxPayloadSize": 10485760,
+    "maxTicketTtl": 86400,
+    "maxAgentTokenTtl": 2592000
+  },
+  "features": {
+    "jwtAuth": true,
+    "oauthLogin": true,
+    "awpAuth": true
+  }
+}
+```
 
 ### 认证
 
@@ -184,20 +260,26 @@ apps/casfa-v2/
 
 ## 测试
 
-E2E 测试需要 DynamoDB Local 运行：
+E2E 测试会自动管理 DynamoDB 容器生命周期：
 
 ```bash
-# 确保 DynamoDB 正在运行
-docker compose up -d dynamodb
-
-# 运行测试
-bun test
+# 运行 E2E 测试（全自动）
+bun run test:e2e
 ```
 
 测试会自动：
-1. 等待 DynamoDB 就绪
-2. 创建测试所需的表
-3. 在每个测试后清理数据
+1. 启动 `dynamodb-test` 容器（端口 8701，内存模式）
+2. 等待 DynamoDB 就绪
+3. 创建测试所需的表
+4. 运行所有 E2E 测试
+5. 清理表和存储数据
+6. 停止并删除 `dynamodb-test` 容器
+
+调试模式（保留容器和数据）：
+
+```bash
+bun run test:e2e:debug
+```
 
 ## 部署
 

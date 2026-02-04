@@ -6,7 +6,11 @@
   "type": "module",
   "main": "backend/dist/handler.mjs",
   "scripts": {
-    "dev": "bun run backend/server.ts",
+    "dev": "bun run backend/scripts/dev.ts",
+    "dev:simple": "bun run backend/server.ts",
+    "dev:minimal": "bun run backend/scripts/dev.ts --preset e2e",
+    "dev:docker": "bun run backend/scripts/dev.ts --preset local",
+    "dev:aws": "bun run backend/scripts/dev.ts --preset dev",
     "dev:setup": "bun run backend/scripts/dev-setup.ts",
     "clean": "rimraf .turbo backend/dist .aws-sam",
     "build": "bun run build:backend",
@@ -16,8 +20,9 @@
     "sam:deploy": "sam deploy",
     "test": "bun test",
     "test:e2e": "bun run backend/scripts/integration-test.ts",
-    "test:e2e:debug": "bun run backend/scripts/integration-test.ts --no-cleanup",
+    "test:e2e:debug": "bun run backend/scripts/integration-test.ts --no-cleanup --keep-container",
     "db:create": "bun run backend/scripts/create-local-tables.ts",
+    "db:create:test": "bun run backend/scripts/create-local-tables.ts --port 8701",
     "db:delete": "bun run backend/scripts/create-local-tables.ts --delete",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
@@ -46,6 +51,7 @@
     "@types/aws-lambda": "^8.10.147",
     "@types/bun": "latest",
     "@types/node": "^22.10.5",
+    "commander": "^14.0.3",
     "typescript": "^5.7.2"
   }
 }

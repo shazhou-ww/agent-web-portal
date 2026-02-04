@@ -12,6 +12,7 @@ import type { AuthTokensController } from "./controllers/auth-tokens.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
 import type { DepotsController } from "./controllers/depots.ts";
 import type { HealthController } from "./controllers/health.ts";
+import type { InfoController } from "./controllers/info.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
 import type { TicketsController } from "./controllers/tickets.ts";
@@ -41,6 +42,7 @@ import type { Env } from "./types.ts";
 export type RouterDeps = {
   // Controllers
   health: HealthController;
+  info: InfoController;
   oauth: OAuthController;
   authClients: AuthClientsController;
   authTokens: AuthTokensController;
@@ -82,10 +84,11 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   );
 
   // ============================================================================
-  // Health
+  // Health & Info
   // ============================================================================
 
   app.get("/api/health", deps.health.check);
+  app.get("/api/info", deps.info.getInfo);
 
   // ============================================================================
   // OAuth Routes

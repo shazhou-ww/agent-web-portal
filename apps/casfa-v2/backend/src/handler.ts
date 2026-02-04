@@ -7,6 +7,7 @@
 import { createS3Storage } from "@agent-web-portal/cas-storage-s3";
 import { handle } from "hono/aws-lambda";
 import { createApp, createNodeHashProvider } from "./app.ts";
+import { createCognitoJwtVerifier } from "./auth/index.ts";
 import { createAuthServiceFromConfig, createDbInstances } from "./bootstrap.ts";
 import { loadConfig } from "./config.ts";
 
@@ -25,6 +26,11 @@ const storage = createS3Storage({
 const authService = createAuthServiceFromConfig(db, config);
 const hashProvider = createNodeHashProvider();
 
+// Create Cognito JWT verifier for production
+const jwtVerifier = config.cognito.userPoolId
+  ? createCognitoJwtVerifier(config.cognito)
+  : undefined;
+
 // ============================================================================
 // Create App
 // ============================================================================
@@ -35,6 +41,12 @@ const app = createApp({
   storage,
   authService,
   hashProvider,
+  jwtVerifier,
+  runtimeInfo: {
+    storageType: "s3",
+    authType: config.cognito.userPoolId ? "cognito" : "tokens-only",
+    databaseType: "aws",
+  },
 });
 
 // ============================================================================

@@ -1,11 +1,32 @@
 # Local development: DynamoDB Local for CAS stack
-# Usage: docker compose up -d dynamodb
+#
+# Usage:
+#   docker compose up -d dynamodb           # Start persistent DynamoDB (port 8700)
+#   docker compose up -d dynamodb-test      # Start in-memory DynamoDB for tests (port 8701)
+#
 # Then set in .env: DYNAMODB_ENDPOINT=http://localhost:8700
 # Create tables: cd apps/casfa-v2 && bun run db:create
+#
+# Port allocation:
+#   8700 - Development DynamoDB (persistent, data survives restarts)
+#   8701 - Test DynamoDB (in-memory, isolated, auto-cleanup)
 
 services:
+  # Development DynamoDB - persistent storage
   dynamodb:
     image: amazon/dynamodb-local:latest
     ports:
       - "8700:8000"
+    command: [ "-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data" ]
+    volumes:
+      - dynamodb-data:/data
+
+  # Test DynamoDB - in-memory (fast, isolated, no persistence)
+  dynamodb-test:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8701:8000"
     command: [ "-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory" ]
+
+volumes:
+  dynamodb-data:

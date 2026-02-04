@@ -83,6 +83,34 @@ export const loadCognitoConfig = (): CognitoConfig => ({
 });
 
 // ============================================================================
+// Features Config (Feature Flags)
+// ============================================================================
+
+export type FeaturesConfig = {
+  /** Enable JWT Bearer token authentication */
+  jwtAuth: boolean;
+  /** Enable OAuth login flow (Cognito) */
+  oauthLogin: boolean;
+  /** Enable AWP (Agent Web Portal) client authentication */
+  awpAuth: boolean;
+};
+
+/**
+ * Load feature flags from environment variables.
+ * All features default to true unless explicitly disabled.
+ *
+ * Environment variables:
+ * - FEATURE_JWT_AUTH=false to disable JWT auth
+ * - FEATURE_OAUTH_LOGIN=false to disable OAuth login
+ * - FEATURE_AWP_AUTH=false to disable AWP auth
+ */
+export const loadFeaturesConfig = (): FeaturesConfig => ({
+  jwtAuth: process.env.FEATURE_JWT_AUTH !== "false",
+  oauthLogin: process.env.FEATURE_OAUTH_LOGIN !== "false",
+  awpAuth: process.env.FEATURE_AWP_AUTH !== "false",
+});
+
+// ============================================================================
 // App Config (combined)
 // ============================================================================
 
@@ -91,6 +119,7 @@ export type AppConfig = {
   db: DbConfig;
   storage: StorageConfig;
   cognito: CognitoConfig;
+  features: FeaturesConfig;
 };
 
 export const loadConfig = (): AppConfig => ({
@@ -98,4 +127,5 @@ export const loadConfig = (): AppConfig => ({
   db: loadDbConfig(),
   storage: loadStorageConfig(),
   cognito: loadCognitoConfig(),
+  features: loadFeaturesConfig(),
 });

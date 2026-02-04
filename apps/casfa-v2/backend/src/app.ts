@@ -18,6 +18,7 @@ import {
   createChunksController,
   createDepotsController,
   createHealthController,
+  createInfoController,
   createOAuthController,
   createRealmController,
 } from "./controllers/index.ts";
@@ -70,6 +71,12 @@ export type AppDependencies = {
   hashProvider: HashProvider;
   /** Optional JWT verifier for Bearer token auth. If not provided, JWT auth is disabled. */
   jwtVerifier?: JwtVerifier;
+  /** Runtime configuration for /api/info endpoint */
+  runtimeInfo?: {
+    storageType: "memory" | "fs" | "s3";
+    authType: "mock" | "cognito" | "tokens-only";
+    databaseType: "local" | "aws";
+  };
 };
 
 // ============================================================================
@@ -82,7 +89,7 @@ export type AppDependencies = {
  * This is a pure assembly function - all dependencies must be provided.
  */
 export const createApp = (deps: AppDependencies): Hono<Env> => {
-  const { config, db, storage, authService, hashProvider, jwtVerifier } = deps;
+  const { config, db, storage, authService, hashProvider, jwtVerifier, runtimeInfo } = deps;
   const {
     tokensDb,
     ownershipDb,
@@ -108,6 +115,13 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
 
   // Controllers
   const health = createHealthController();
+  const info = createInfoController({
+    serverConfig: config.server,
+    featuresConfig: config.features,
+    storageType: runtimeInfo?.storageType ?? "memory",
+    authType: runtimeInfo?.authType ?? "tokens-only",
+    databaseType: runtimeInfo?.databaseType ?? "aws",
+  });
   const oauth = createOAuthController({
     cognitoConfig: config.cognito,
     authService,
@@ -150,6 +164,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   // Create router
   return createRouter({
     health,
+    info,
     oauth,
     authClients,
     authTokens,
