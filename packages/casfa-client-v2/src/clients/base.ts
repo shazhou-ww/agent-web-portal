@@ -114,12 +114,12 @@ export const createBaseClientApi = (ctx: BaseClientContext): CasfaBaseClient => 
           method: "POST",
           body: {
             pubkey: params.publicKey,
-            name: params.name,
+            clientName: params.name,
           },
         }),
 
       pollClient: (params: PollClientParams): Promise<FetchResult<AwpAuthPollResponse>> =>
-        fetcher.request<AwpAuthPollResponse>(`/api/auth/clients/${params.clientId}/poll`),
+        fetcher.request<AwpAuthPollResponse>(`/api/auth/clients/${encodeURIComponent(params.clientId)}`),
     },
   };
 };

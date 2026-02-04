@@ -96,7 +96,7 @@ const createNodeOps = (
     }
 
     const result = await fetcher.request<PrepareNodesResult>(
-      `/api/realm/${realmId}/nodes/prepare`,
+      `/api/realm/${realmId}/prepare-nodes`,
       {
         method: "POST",
         body: { keys: keysToCheck },
@@ -253,7 +253,7 @@ export const createDelegateClient = (config: DelegateClientConfig): CasfaDelegat
   let getAuthHeader: () => Promise<string>;
 
   if (config.authType === "token") {
-    getAuthHeader = async () => `AgentToken ${config.token}`;
+    getAuthHeader = async () => `Agent ${config.token}`;
   } else {
     // P256 auth - for now just use the public key as client ID
     // In a real implementation, you'd need to sign requests

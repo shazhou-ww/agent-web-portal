@@ -64,7 +64,7 @@ export const prepareNodes = async (
 
   // Check server for remaining keys
   const result = await ctx.fetcher.request<PrepareNodesResult>(
-    `/api/realm/${ctx.realmId}/nodes/prepare`,
+    `/api/realm/${ctx.realmId}/prepare-nodes`,
     {
       method: "POST",
       body: { keys: keysToCheck },

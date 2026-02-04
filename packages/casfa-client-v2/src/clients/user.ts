@@ -109,7 +109,7 @@ const createNodeOps = (
     }
 
     const result = await fetcher.request<PrepareNodesResult>(
-      `/api/realm/${realmId}/nodes/prepare`,
+      `/api/realm/${realmId}/prepare-nodes`,
       {
         method: "POST",
         body: { keys: keysToCheck },
@@ -322,7 +322,10 @@ export const createUserClient = (config: UserClientConfig): CasfaUserClient => {
       complete: (params: CompleteClientParams) =>
         fetcher.request<{ success: boolean }>("/api/auth/clients/complete", {
           method: "POST",
-          body: { clientId: params.clientId },
+          body: {
+            clientId: params.clientId,
+            verificationCode: params.verificationCode,
+          },
         }),
 
       list: (params?: ListClientsParams) => {

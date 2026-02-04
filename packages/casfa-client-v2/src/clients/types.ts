@@ -88,6 +88,7 @@ export type PollClientParams = {
 
 export type CompleteClientParams = {
   clientId: string;
+  verificationCode?: string;
 };
 
 export type ListClientsParams = {

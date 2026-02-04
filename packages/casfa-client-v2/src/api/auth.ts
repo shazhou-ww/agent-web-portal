@@ -39,7 +39,7 @@ export const initClient = async (
     method: "POST",
     body: {
       pubkey: params.publicKey,
-      name: params.name,
+      clientName: params.name,
     },
     skipAuth: true,
   });

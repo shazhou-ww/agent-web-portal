@@ -81,7 +81,7 @@ const createNodeOps = (
     }
 
     const result = await fetcher.request<PrepareNodesResult>(
-      `/api/realm/${realmId}/nodes/prepare`,
+      `/api/realm/${realmId}/prepare-nodes`,
       {
         method: "POST",
         body: { keys: keysToCheck },

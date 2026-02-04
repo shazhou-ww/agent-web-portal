@@ -24,7 +24,7 @@ export const createTokenAuth = (config: TokenAuthConfig): AuthStrategy => {
   const getState = (): TokenAuthState => ({ ...state });
 
   const getAuthHeader = async (): Promise<string> => {
-    return `AgentToken ${state.token}`;
+    return `Agent ${state.token}`;
   };
 
   const initialize = async (): Promise<void> => {
