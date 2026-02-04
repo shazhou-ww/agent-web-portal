@@ -49,6 +49,18 @@ const CONTAINER_NAME = "dynamodb-test";
 // Docker Container Management
 // ============================================================================
 
+/**
+ * Check if Docker daemon is running
+ */
+function isDockerRunning(): boolean {
+  const result = spawnSync("docker", ["info"], {
+    encoding: "utf-8",
+    shell: true,
+    stdio: "pipe",
+  });
+  return result.status === 0;
+}
+
 function isContainerRunning(): boolean {
   const result = spawnSync("docker", ["ps", "--filter", `name=${CONTAINER_NAME}`, "--format", "{{.Names}}"], {
     encoding: "utf-8",
@@ -173,6 +185,14 @@ async function main(): Promise<void> {
     console.log("CASFA v2 Integration Test Runner");
     console.log("=".repeat(60));
     console.log();
+
+    // Check if Docker is running
+    if (!isDockerRunning()) {
+      console.error("Error: Docker is not running.");
+      console.error("Please start Docker Desktop and try again.");
+      process.exit(1);
+    }
+
     console.log("Configuration:");
     console.log(`  DYNAMODB_ENDPOINT: ${DYNAMODB_ENDPOINT}`);
     console.log(`  STORAGE_TYPE: ${STORAGE_TYPE}`);

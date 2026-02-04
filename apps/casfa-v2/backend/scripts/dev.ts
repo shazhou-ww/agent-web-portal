@@ -75,6 +75,18 @@ const DB_PORTS: Record<DbType, string | undefined> = {
 // ============================================================================
 
 /**
+ * Check if Docker daemon is running
+ */
+function isDockerRunning(): boolean {
+  const result = spawnSync("docker", ["info"], {
+    encoding: "utf-8",
+    shell: true,
+    stdio: "pipe",
+  });
+  return result.status === 0;
+}
+
+/**
  * Prompt user for yes/no confirmation
  */
 async function promptYesNo(question: string): Promise<boolean> {
@@ -224,6 +236,15 @@ program
     console.log(`  Auth:     ${config.auth}`);
     console.log(`  Port:     ${config.port}`);
     console.log();
+
+    // If using local DynamoDB, check Docker is running first
+    if (config.db !== "aws") {
+      if (!isDockerRunning()) {
+        console.error("Error: Docker is not running.");
+        console.error("Please start Docker Desktop and try again.");
+        process.exit(1);
+      }
+    }
 
     // If using local DynamoDB, ensure it's running and tables exist
     if (config.db !== "aws" && !config.skipTableCreation) {
