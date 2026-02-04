@@ -49,6 +49,7 @@
     "zod": "3"
   },
   "devDependencies": {
+    "@agent-web-portal/casfa-client-v2": "workspace:*",
     "@types/aws-lambda": "^8.10.147",
     "@types/bun": "latest",
     "@types/node": "^22.10.5",

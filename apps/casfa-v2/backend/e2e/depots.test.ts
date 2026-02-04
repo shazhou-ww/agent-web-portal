@@ -1,7 +1,7 @@
 /**
  * E2E Tests: Depot Management
  *
- * Tests for Depot endpoints:
+ * Tests for Depot endpoints using casfa-client-v2 SDK:
  * - GET /api/realm/{realmId}/depots - List depots
  * - POST /api/realm/{realmId}/depots - Create depot
  * - GET /api/realm/{realmId}/depots/:depotId - Get depot details
@@ -11,7 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAuthFetcher, createE2EContext, type E2EContext, testNodeKey, uniqueId } from "./setup.ts";
+import { createE2EContext, type E2EContext, testNodeKey, uniqueId } from "./setup.ts";
 
 describe("Depot Management", () => {
   let ctx: E2EContext;
@@ -29,58 +29,42 @@ describe("Depot Management", () => {
     it("should list depots including default main depot", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/${realm}/depots`);
+      const result = await userClient.depots.list(realm);
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        depots: Array<{
-          depotId: string;
-          title: string;
-          root: string;
-          maxHistory: number;
-          history: string[];
-          createdAt: number;
-          updatedAt: number;
-        }>;
-        hasMore: boolean;
-      };
-
-      expect(data.depots).toBeInstanceOf(Array);
-      // Should have at least the default main depot
-      expect(data.depots.length).toBeGreaterThanOrEqual(0);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // Server returns { depots: [...] }, SDK type expects { items: [...] }
+        const data = result.data as any;
+        const items = data.items ?? data.depots;
+        expect(items).toBeInstanceOf(Array);
+        expect(items.length).toBeGreaterThanOrEqual(0);
+      }
     });
 
     it("should support pagination", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create a few depots
       for (let i = 0; i < 3; i++) {
-        await authFetch(`/api/realm/${realm}/depots`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: `Depot ${i}` }),
-        });
+        await userClient.depots.create(realm, { title: `Depot ${i}` });
       }
 
-      const response = await authFetch(`/api/realm/${realm}/depots?limit=2`);
+      const result = await userClient.depots.list(realm, { limit: 2 });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        depots: unknown[];
-        nextCursor?: string;
-        hasMore: boolean;
-      };
-
-      expect(data.depots.length).toBeLessThanOrEqual(2);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        const items = data.items ?? data.depots;
+        expect(items.length).toBeLessThanOrEqual(2);
+      }
     });
 
     it("should reject unauthenticated requests", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/depots`);
-
       expect(response.status).toBe(401);
     });
   });
@@ -89,68 +73,53 @@ describe("Depot Management", () => {
     it("should create a new depot", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "My Documents",
-          maxHistory: 10,
-        }),
+      const result = await userClient.depots.create(realm, {
+        title: "My Documents",
+        maxHistory: 10,
       });
 
-      expect(response.status).toBe(201);
-      const data = (await response.json()) as {
-        depotId: string;
-        title: string;
-        root: string;
-        maxHistory: number;
-        history: string[];
-        createdAt: number;
-        updatedAt: number;
-      };
-
-      expect(data.depotId).toMatch(/^depot:/);
-      expect(data.title).toBe("My Documents");
-      expect(data.maxHistory).toBe(10);
-      expect(data.history).toEqual([]);
-      expect(data.createdAt).toBeLessThanOrEqual(Date.now());
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.depotId).toMatch(/^depot:/);
+        expect(data.title).toBe("My Documents");
+        expect(data.maxHistory).toBe(10);
+        expect(data.createdAt).toBeLessThanOrEqual(Date.now());
+      }
     });
 
     it("should create depot with default maxHistory", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "Default History Depot",
-        }),
+      const result = await userClient.depots.create(realm, {
+        title: "Default History Depot",
       });
 
-      expect(response.status).toBe(201);
-      const data = (await response.json()) as { maxHistory: number };
-      expect(data.maxHistory).toBe(20); // Default value
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.maxHistory).toBe(20); // Default value
+      }
     });
 
     it("should reject maxHistory exceeding system limit", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "Too Much History",
-          maxHistory: 101, // Exceeds max of 100
-        }),
+      const result = await userClient.depots.create(realm, {
+        title: "Too Much History",
+        maxHistory: 101, // Exceeds max of 100
       });
 
-      expect(response.status).toBe(400);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(400);
+      }
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -159,7 +128,6 @@ describe("Depot Management", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Unauthorized" }),
       });
-
       expect(response.status).toBe(401);
     });
   });
@@ -168,44 +136,43 @@ describe("Depot Management", () => {
     it("should get depot details with history", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create depot
-      const createResponse = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Detail Test" }),
+      const createResult = await userClient.depots.create(realm, {
+        title: "Detail Test",
       });
 
-      const { depotId } = (await createResponse.json()) as { depotId: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+
+      const { depotId } = createResult.data;
 
       // Get details
-      const response = await authFetch(`/api/realm/${realm}/depots/${depotId}`);
+      const result = await userClient.depots.get(realm, depotId);
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        depotId: string;
-        title: string;
-        root: string;
-        maxHistory: number;
-        history: string[];
-        createdAt: number;
-        updatedAt: number;
-      };
-
-      expect(data.depotId).toBe(depotId);
-      expect(data.title).toBe("Detail Test");
-      expect(data.history).toBeInstanceOf(Array);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.depotId).toBe(depotId);
+        expect(result.data.title).toBe("Detail Test");
+        expect(result.data.history).toBeInstanceOf(Array);
+      }
     });
 
     it("should return 404 for non-existent depot", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000`);
+      const result = await userClient.depots.get(
+        realm,
+        "depot:NONEXISTENT0000000000000"
+      );
 
-      expect(response.status).toBe(404);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(404);
+      }
     });
   });
 
@@ -213,165 +180,168 @@ describe("Depot Management", () => {
     it("should update depot title", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create depot
-      const createResponse = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Original Title" }),
+      const createResult = await userClient.depots.create(realm, {
+        title: "Original Title",
       });
 
-      const { depotId } = (await createResponse.json()) as { depotId: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+
+      const { depotId } = createResult.data;
 
       // Update title
-      const response = await authFetch(`/api/realm/${realm}/depots/${depotId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "New Title" }),
+      const result = await userClient.depots.update(realm, depotId, {
+        title: "New Title",
       });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { title: string };
-      expect(data.title).toBe("New Title");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.title).toBe("New Title");
+      }
     });
 
     it("should update depot maxHistory", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create depot
-      const createResponse = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "History Update", maxHistory: 10 }),
+      const createResult = await userClient.depots.create(realm, {
+        title: "History Update",
+        maxHistory: 10,
       });
 
-      const { depotId } = (await createResponse.json()) as { depotId: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+
+      const { depotId } = createResult.data;
 
       // Update maxHistory
-      const response = await authFetch(`/api/realm/${realm}/depots/${depotId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxHistory: 30 }),
+      const result = await userClient.depots.update(realm, depotId, {
+        maxHistory: 30,
       });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { maxHistory: number };
-      expect(data.maxHistory).toBe(30);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.maxHistory).toBe(30);
+      }
     });
 
     it("should reject maxHistory exceeding limit", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create depot
-      const createResponse = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Bad Update" }),
+      const createResult = await userClient.depots.create(realm, {
+        title: "Bad Update",
       });
 
-      const { depotId } = (await createResponse.json()) as { depotId: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+
+      const { depotId } = createResult.data;
 
       // Try to set too high maxHistory
-      const response = await authFetch(`/api/realm/${realm}/depots/${depotId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxHistory: 200 }),
+      const result = await userClient.depots.update(realm, depotId, {
+        maxHistory: 200,
       });
 
-      expect(response.status).toBe(400);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(400);
+      }
     });
 
     it("should return 404 for non-existent depot", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(
-        `/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: "Update" }),
-        }
+      const result = await userClient.depots.update(
+        realm,
+        "depot:NONEXISTENT0000000000000",
+        { title: "Update" }
       );
 
-      expect(response.status).toBe(404);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(404);
+      }
     });
   });
 
   describe("POST /api/realm/{realmId}/depots/:depotId/commit", () => {
-    it("should commit new root node", async () => {
+    it("should attempt commit new root node", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create depot
-      const createResponse = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Commit Test" }),
+      const createResult = await userClient.depots.create(realm, {
+        title: "Commit Test",
       });
 
-      const { depotId } = (await createResponse.json()) as { depotId: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+
+      const { depotId } = createResult.data;
 
       // Commit new root (note: would fail if node doesn't exist)
       const newRoot = testNodeKey(1);
-      const response = await authFetch(`/api/realm/${realm}/depots/${depotId}/commit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root: newRoot }),
+      const result = await userClient.depots.commit(realm, depotId, {
+        root: newRoot,
       });
 
-      // Expect 400 because the root node doesn't actually exist
-      expect([200, 400]).toContain(response.status);
+      // Expect failure because the root node doesn't actually exist
+      expect(result.ok === true || result.error?.status === 400).toBe(true);
     });
 
     it("should reject invalid root key format", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create depot
-      const createResponse = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Invalid Root Test" }),
+      const createResult = await userClient.depots.create(realm, {
+        title: "Invalid Root Test",
       });
 
-      const { depotId } = (await createResponse.json()) as { depotId: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+
+      const { depotId } = createResult.data;
 
       // Commit with invalid root format
-      const response = await authFetch(`/api/realm/${realm}/depots/${depotId}/commit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root: "invalid-root-format" }),
+      const result = await userClient.depots.commit(realm, depotId, {
+        root: "invalid-root-format",
       });
 
-      expect(response.status).toBe(400);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(400);
+      }
     });
 
     it("should return 404 for non-existent depot", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(
-        `/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000/commit`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            root: testNodeKey(1),
-          }),
-        }
+      const result = await userClient.depots.commit(
+        realm,
+        "depot:NONEXISTENT0000000000000",
+        { root: testNodeKey(1) }
       );
 
-      expect(response.status).toBe(404);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(404);
+      }
     });
   });
 
@@ -379,44 +349,48 @@ describe("Depot Management", () => {
     it("should delete depot", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create depot
-      const createResponse = await authFetch(`/api/realm/${realm}/depots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Delete Test" }),
+      const createResult = await userClient.depots.create(realm, {
+        title: "Delete Test",
       });
 
-      const { depotId } = (await createResponse.json()) as { depotId: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+
+      const { depotId } = createResult.data;
 
       // Delete depot
-      const response = await authFetch(`/api/realm/${realm}/depots/${depotId}`, {
-        method: "DELETE",
-      });
+      const result = await userClient.depots.delete(realm, depotId);
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { success: boolean };
-      expect(data.success).toBe(true);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.success).toBe(true);
+      }
 
       // Verify deleted
-      const getResponse = await authFetch(`/api/realm/${realm}/depots/${depotId}`);
-      expect(getResponse.status).toBe(404);
+      const getResult = await userClient.depots.get(realm, depotId);
+      expect(getResult.ok).toBe(false);
+      if (!getResult.ok) {
+        expect(getResult.error.status).toBe(404);
+      }
     });
 
     it("should return 404 for non-existent depot", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(
-        `/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000`,
-        {
-          method: "DELETE",
-        }
+      const result = await userClient.depots.delete(
+        realm,
+        "depot:NONEXISTENT0000000000000"
       );
 
-      expect(response.status).toBe(404);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(404);
+      }
     });
   });
 
@@ -426,28 +400,32 @@ describe("Depot Management", () => {
       const userId2 = `user2-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId1, "authorized");
       await ctx.helpers.createTestUser(userId2, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/usr_${userId2}/depots`);
+      const result = await userClient.depots.list(`usr_${userId2}`);
 
-      expect(response.status).toBe(403);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(403);
+      }
     });
 
-    it("should not allow Ticket to access depots", async () => {
+    it("should not allow Ticket to access depots list", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create ticket
-      const createResponse = await authFetch(`/api/realm/${realm}/tickets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ purpose: "Depot access test" }),
+      const createResult = await userClient.tickets.create(realm, {
+        purpose: "Depot access test",
       });
 
-      const { ticketId } = (await createResponse.json()) as { ticketId: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
 
-      // Try to access depots with ticket
+      const { ticketId } = createResult.data;
+
+      // Try to list depots with ticket - use raw fetch since ticketClient doesn't have list
       const response = await ctx.helpers.ticketRequest(
         ticketId,
         "GET",

@@ -1,13 +1,13 @@
 /**
  * E2E Tests: Admin API
  *
- * Tests for admin user management endpoints:
+ * Tests for admin user management endpoints using casfa-client-v2 SDK:
  * - GET /api/admin/users
  * - PATCH /api/admin/users/:userId
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
+import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 
 describe("Admin API", () => {
   let ctx: E2EContext;
@@ -25,28 +25,34 @@ describe("Admin API", () => {
     it("should list all users for admin", async () => {
       const adminId = `admin-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(adminId, "admin");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch("/api/admin/users");
+      const result = await userClient.admin.listUsers();
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { users: unknown[] };
-      expect(data.users).toBeInstanceOf(Array);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // Server returns { users: [...] }, SDK type expects { items: [...] }
+        const data = result.data as any;
+        const items = data.items ?? data.users;
+        expect(items).toBeInstanceOf(Array);
+      }
     });
 
     it("should reject non-admin users", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch("/api/admin/users");
+      const result = await userClient.admin.listUsers();
 
-      expect(response.status).toBe(403);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(403);
+      }
     });
 
     it("should reject unauthenticated requests", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/admin/users`);
-
       expect(response.status).toBe(401);
     });
   });
@@ -56,20 +62,19 @@ describe("Admin API", () => {
       const adminId = `admin-${uniqueId()}`;
       const targetUserId = `target-${uniqueId()}`;
       const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
-      const authFetch = createAuthFetcher(ctx.baseUrl, adminToken);
+      const userClient = ctx.helpers.getUserClient(adminToken);
 
       // Create target user as unauthorized first
       await ctx.db.userRolesDb.setRole(targetUserId, "unauthorized");
 
-      const response = await authFetch(`/api/admin/users/user:${targetUserId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "authorized" }),
+      const result = await userClient.admin.updateUserRole(`user:${targetUserId}`, {
+        role: "authorized",
       });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { userId: string; role: string };
-      expect(data.role).toBe("authorized");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.role).toBe("authorized");
+      }
     });
 
     it("should update user role to admin", async () => {
@@ -77,17 +82,16 @@ describe("Admin API", () => {
       const targetUserId = `target-${uniqueId()}`;
       const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
       await ctx.helpers.createTestUser(targetUserId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, adminToken);
+      const userClient = ctx.helpers.getUserClient(adminToken);
 
-      const response = await authFetch(`/api/admin/users/user:${targetUserId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "admin" }),
+      const result = await userClient.admin.updateUserRole(`user:${targetUserId}`, {
+        role: "admin",
       });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { userId: string; role: string };
-      expect(data.role).toBe("admin");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.role).toBe("admin");
+      }
     });
 
     it("should revoke user access by setting role to unauthorized", async () => {
@@ -95,28 +99,30 @@ describe("Admin API", () => {
       const targetUserId = `target-${uniqueId()}`;
       const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
       await ctx.helpers.createTestUser(targetUserId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, adminToken);
+      const userClient = ctx.helpers.getUserClient(adminToken);
 
-      const response = await authFetch(`/api/admin/users/user:${targetUserId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "unauthorized" }),
+      const result = await userClient.admin.updateUserRole(`user:${targetUserId}`, {
+        role: "unauthorized",
       });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { userId: string; role: string };
-      expect(data.role).toBe("unauthorized");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.role).toBe("unauthorized");
+      }
     });
 
     it("should reject invalid role", async () => {
       const adminId = `admin-${uniqueId()}`;
       const targetUserId = `target-${uniqueId()}`;
       const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
-      const authFetch = createAuthFetcher(ctx.baseUrl, adminToken);
 
-      const response = await authFetch(`/api/admin/users/user:${targetUserId}`, {
+      // Use raw fetch to test invalid role
+      const response = await fetch(`${ctx.baseUrl}/api/admin/users/user:${targetUserId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
         body: JSON.stringify({ role: "invalid_role" }),
       });
 
@@ -127,15 +133,16 @@ describe("Admin API", () => {
       const userId = `user-${uniqueId()}`;
       const targetUserId = `target-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/admin/users/user:${targetUserId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "authorized" }),
+      const result = await userClient.admin.updateUserRole(`user:${targetUserId}`, {
+        role: "authorized",
       });
 
-      expect(response.status).toBe(403);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(403);
+      }
     });
   });
 });

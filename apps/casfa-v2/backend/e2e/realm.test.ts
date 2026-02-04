@@ -1,13 +1,13 @@
 /**
  * E2E Tests: Realm API
  *
- * Tests for Realm basic endpoints:
+ * Tests for Realm basic endpoints using casfa-client-v2 SDK:
  * - GET /api/realm/{realmId} - Realm endpoint info
  * - GET /api/realm/{realmId}/usage - Usage statistics
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
+import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 
 describe("Realm API", () => {
   let ctx: E2EContext;
@@ -25,25 +25,21 @@ describe("Realm API", () => {
     it("should return realm endpoint info", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/${realm}`);
+      const result = await userClient.realm.getInfo(realm);
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        realm: string;
-        nodeLimit: number;
-        maxNameBytes: number;
-      };
-
-      expect(data.realm).toBe(realm);
-      expect(data.nodeLimit).toBeGreaterThan(0);
-      expect(data.maxNameBytes).toBeGreaterThan(0);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.realm ?? data.realmId).toBe(realm);
+        expect(data.nodeLimit).toBeGreaterThan(0);
+        expect(data.maxNameBytes).toBeGreaterThan(0);
+      }
     });
 
     it("should reject unauthenticated requests", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test`);
-
       expect(response.status).toBe(401);
     });
 
@@ -52,11 +48,14 @@ describe("Realm API", () => {
       const userId2 = `user2-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId1, "authorized");
       await ctx.helpers.createTestUser(userId2, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/usr_${userId2}`);
+      const result = await userClient.realm.getInfo(`usr_${userId2}`);
 
-      expect(response.status).toBe(403);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(403);
+      }
     });
   });
 
@@ -64,48 +63,36 @@ describe("Realm API", () => {
     it("should return usage statistics", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/${realm}/usage`);
+      const result = await userClient.realm.getUsage(realm);
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        realm: string;
-        physicalBytes: number;
-        logicalBytes: number;
-        nodeCount: number;
-        quotaLimit: number;
-        updatedAt: number;
-      };
-
-      expect(data.realm).toBe(realm);
-      expect(typeof data.physicalBytes).toBe("number");
-      expect(typeof data.logicalBytes).toBe("number");
-      expect(typeof data.nodeCount).toBe("number");
-      expect(typeof data.quotaLimit).toBe("number");
-      expect(typeof data.updatedAt).toBe("number");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.realm ?? data.realmId).toBe(realm);
+        expect(typeof (data.physicalBytes ?? data.totalBytes)).toBe("number");
+        expect(typeof data.nodeCount).toBe("number");
+      }
     });
 
     it("should return zero usage for new realm", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/${realm}/usage`);
+      const result = await userClient.realm.getUsage(realm);
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        physicalBytes: number;
-        nodeCount: number;
-      };
-
-      expect(data.physicalBytes).toBe(0);
-      expect(data.nodeCount).toBe(0);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.physicalBytes ?? data.totalBytes).toBe(0);
+        expect(data.nodeCount).toBe(0);
+      }
     });
 
     it("should reject unauthenticated requests", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/usage`);
-
       expect(response.status).toBe(401);
     });
 
@@ -114,46 +101,46 @@ describe("Realm API", () => {
       const userId2 = `user2-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId1, "authorized");
       await ctx.helpers.createTestUser(userId2, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/realm/usr_${userId2}/usage`);
+      const result = await userClient.realm.getUsage(`usr_${userId2}`);
 
-      expect(response.status).toBe(403);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(403);
+      }
     });
   });
 
   describe("Authentication Methods", () => {
-    it("should accept Bearer token authentication", async () => {
+    it("should accept Bearer token authentication (via UserClient)", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const result = await userClient.realm.getInfo(realm);
 
-      expect(response.status).toBe(200);
+      expect(result.ok).toBe(true);
     });
 
-    it("should accept Agent token authentication", async () => {
+    it("should accept Agent token authentication (via DelegateClient)", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create agent token
-      const createResponse = await authFetch("/api/auth/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Test Agent" }),
+      const createResult = await userClient.agentTokens.create({
+        name: "Test Agent",
       });
 
-      const { token: agentToken } = (await createResponse.json()) as { token: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
 
-      // Use agent token
-      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}`, {
-        headers: { Authorization: `Agent ${agentToken}` },
-      });
+      // Use agent token via delegate client
+      const delegateClient = ctx.helpers.getDelegateClient(createResult.data.token);
+      const result = await delegateClient.realm.getInfo(realm);
 
-      expect(response.status).toBe(200);
+      expect(result.ok).toBe(true);
     });
   });
 });

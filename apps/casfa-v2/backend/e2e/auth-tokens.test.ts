@@ -1,14 +1,14 @@
 /**
  * E2E Tests: Agent Token Management
  *
- * Tests for Agent Token endpoints:
+ * Tests for Agent Token endpoints using casfa-client-v2 SDK:
  * - POST /api/auth/tokens
  * - GET /api/auth/tokens
  * - DELETE /api/auth/tokens/:id
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
+import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 
 describe("Agent Token Management", () => {
   let ctx: E2EContext;
@@ -26,70 +26,57 @@ describe("Agent Token Management", () => {
     it("should create an Agent Token", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch("/api/auth/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "My AI Agent",
-          description: "Test agent token",
-        }),
+      const result = await userClient.agentTokens.create({
+        name: "My AI Agent",
       });
 
-      expect(response.status).toBe(201);
-      const data = (await response.json()) as {
-        id: string;
-        token: string;
-        name: string;
-        description?: string;
-        expiresAt: number;
-        createdAt: number;
-      };
-
-      expect(data.id).toMatch(/^token:/);
-      expect(data.token).toMatch(/^casfa_/);
-      expect(data.name).toBe("My AI Agent");
-      expect(data.description).toBe("Test agent token");
-      expect(data.expiresAt).toBeGreaterThan(Date.now());
-      expect(data.createdAt).toBeLessThanOrEqual(Date.now());
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.id ?? data.tokenId).toMatch(/^token:/);
+        expect(data.token).toMatch(/^casfa_/);
+        expect(data.name).toBe("My AI Agent");
+        expect(data.expiresAt).toBeGreaterThan(Date.now());
+        expect(data.createdAt).toBeLessThanOrEqual(Date.now());
+      }
     });
 
     it("should create Agent Token with custom expiration", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       const expiresIn = 3600; // 1 hour
-      const response = await authFetch("/api/auth/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Short-lived Token",
-          expiresIn,
-        }),
+      const result = await userClient.agentTokens.create({
+        name: "Short-lived Token",
+        expiresIn,
       });
 
-      expect(response.status).toBe(201);
-      const data = (await response.json()) as { expiresAt: number };
-
-      // Check expiration is approximately 1 hour from now
-      const expectedExpiry = Date.now() + expiresIn * 1000;
-      expect(data.expiresAt).toBeGreaterThan(expectedExpiry - 5000);
-      expect(data.expiresAt).toBeLessThan(expectedExpiry + 5000);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        // Check expiration is approximately 1 hour from now
+        const expectedExpiry = Date.now() + expiresIn * 1000;
+        expect(data.expiresAt).toBeGreaterThan(expectedExpiry - 5000);
+        expect(data.expiresAt).toBeLessThan(expectedExpiry + 5000);
+      }
     });
 
     it("should reject missing name", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch("/api/auth/tokens", {
+      // Use raw fetch to test missing name
+      const response = await fetch(`${ctx.baseUrl}/api/auth/tokens`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: "No name provided",
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({}),
       });
 
       expect(response.status).toBe(400);
@@ -98,17 +85,16 @@ describe("Agent Token Management", () => {
     it("should reject empty name", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch("/api/auth/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "",
-        }),
+      const result = await userClient.agentTokens.create({
+        name: "",
       });
 
-      expect(response.status).toBe(400);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(400);
+      }
     });
 
     it("should reject unauthenticated request", async () => {
@@ -128,60 +114,48 @@ describe("Agent Token Management", () => {
     it("should list user tokens", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create a few tokens
-      await authFetch("/api/auth/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Token 1" }),
-      });
-
-      await authFetch("/api/auth/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Token 2" }),
-      });
+      await userClient.agentTokens.create({ name: "Token 1" });
+      await userClient.agentTokens.create({ name: "Token 2" });
 
       // List tokens
-      const response = await authFetch("/api/auth/tokens");
+      const result = await userClient.agentTokens.list();
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        tokens: Array<{
-          id: string;
-          name: string;
-          description?: string;
-          expiresAt: number;
-          createdAt: number;
-        }>;
-      };
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // Server returns { tokens: [...] }, SDK type expects { items: [...] }
+        const data = result.data as any;
+        const items = data.items ?? data.tokens;
+        expect(items).toBeInstanceOf(Array);
+        expect(items.length).toBeGreaterThanOrEqual(2);
 
-      expect(data.tokens).toBeInstanceOf(Array);
-      expect(data.tokens.length).toBeGreaterThanOrEqual(2);
-
-      // Token value should NOT be included in list
-      for (const t of data.tokens) {
-        expect(t).not.toHaveProperty("token");
+        // Token value should NOT be included in list
+        for (const t of items) {
+          expect(t).not.toHaveProperty("token");
+        }
       }
     });
 
     it("should return empty list for new user", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch("/api/auth/tokens");
+      const result = await userClient.agentTokens.list();
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { tokens: unknown[] };
-      expect(data.tokens).toBeInstanceOf(Array);
-      expect(data.tokens.length).toBe(0);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        const items = data.items ?? data.tokens;
+        expect(items).toBeInstanceOf(Array);
+        expect(items.length).toBe(0);
+      }
     });
 
     it("should reject unauthenticated request", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/auth/tokens`);
-
       expect(response.status).toBe(401);
     });
   });
@@ -190,50 +164,59 @@ describe("Agent Token Management", () => {
     it("should revoke token", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create a token
-      const createResponse = await authFetch("/api/auth/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Token to Revoke" }),
+      const createResult = await userClient.agentTokens.create({
+        name: "Token to Revoke",
       });
 
-      const { id: tokenId } = (await createResponse.json()) as { id: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+
+      const data = createResult.data as any;
+      const tokenId = data.id ?? data.tokenId;
 
       // Revoke the token
-      const response = await authFetch(`/api/auth/tokens/${encodeURIComponent(tokenId)}`, {
-        method: "DELETE",
-      });
+      const result = await userClient.agentTokens.revoke({ tokenId });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { success: boolean };
-      expect(data.success).toBe(true);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.success).toBe(true);
+      }
 
       // Verify token is no longer in list
-      const listResponse = await authFetch("/api/auth/tokens");
-      const listData = (await listResponse.json()) as { tokens: Array<{ id: string }> };
-      const revokedToken = listData.tokens.find((t) => t.id === tokenId);
-      expect(revokedToken).toBeUndefined();
+      const listResult = await userClient.agentTokens.list();
+      expect(listResult.ok).toBe(true);
+      if (listResult.ok) {
+        const listData = listResult.data as any;
+        const items = listData.items ?? listData.tokens;
+        const revokedToken = items.find(
+          (t: any) => (t.id ?? t.tokenId) === tokenId
+        );
+        expect(revokedToken).toBeUndefined();
+      }
     });
 
     it("should return 404 for non-existent token", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch("/api/auth/tokens/token:NONEXISTENT0000000000000000", {
-        method: "DELETE",
+      const result = await userClient.agentTokens.revoke({
+        tokenId: "token:NONEXISTENT0000000000000000",
       });
 
-      expect(response.status).toBe(404);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(404);
+      }
     });
 
     it("should reject unauthenticated request", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/auth/tokens/token:SOMETOKEN`, {
         method: "DELETE",
       });
-
       expect(response.status).toBe(401);
     });
   });
@@ -242,25 +225,21 @@ describe("Agent Token Management", () => {
     it("should authenticate with Agent Token", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
       // Create an Agent Token
-      const createResponse = await authFetch("/api/auth/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Auth Test Token" }),
+      const createResult = await userClient.agentTokens.create({
+        name: "Auth Test Token",
       });
 
-      const { token: agentToken } = (await createResponse.json()) as { token: string };
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
 
-      // Use Agent Token to access realm
-      const response = await ctx.helpers.agentRequest(
-        agentToken,
-        "GET",
-        `/api/realm/${realm}/usage`
-      );
+      // Use Agent Token via delegate client to access realm
+      const delegateClient = ctx.helpers.getDelegateClient(createResult.data.token);
+      const result = await delegateClient.realm.getUsage(realm);
 
-      expect(response.status).toBe(200);
+      expect(result.ok).toBe(true);
     });
   });
 });

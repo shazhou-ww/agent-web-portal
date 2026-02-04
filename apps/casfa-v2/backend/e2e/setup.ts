@@ -40,6 +40,18 @@ import {
 // Auth service
 import { type AuthService, createAuthService } from "../src/services/auth.ts";
 
+// casfa-client-v2 SDK
+import {
+  createCasfaClient,
+  createUserClient,
+  createDelegateClient,
+  createTicketClient,
+  type CasfaAnonymousClient,
+  type CasfaUserClient,
+  type CasfaDelegateClient,
+  type CasfaTicketClient,
+} from "@agent-web-portal/casfa-client-v2";
+
 // ============================================================================
 // Test Utilities
 // ============================================================================
@@ -209,6 +221,19 @@ export type TestHelpers = {
     path: string,
     body?: unknown
   ) => Promise<Response>;
+
+  // ========================================================================
+  // SDK Client Factory Methods
+  // ========================================================================
+
+  /** Create an anonymous SDK client (no authentication) */
+  getAnonymousClient: () => CasfaAnonymousClient;
+  /** Create a user-authenticated SDK client */
+  getUserClient: (token: string) => CasfaUserClient;
+  /** Create an agent-authenticated SDK client (delegate) */
+  getDelegateClient: (agentToken: string) => CasfaDelegateClient;
+  /** Create a ticket-authenticated SDK client */
+  getTicketClient: (ticketId: string, realmId: string) => CasfaTicketClient;
 };
 
 // ============================================================================
@@ -382,6 +407,18 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       });
       return app.fetch(request);
     },
+
+    // SDK Client Factory Methods
+    getAnonymousClient: () => createCasfaClient({ baseUrl: url }),
+
+    getUserClient: (token: string) =>
+      createUserClient({ baseUrl: url, accessToken: token }),
+
+    getDelegateClient: (agentToken: string) =>
+      createDelegateClient({ baseUrl: url, authType: "token", token: agentToken }),
+
+    getTicketClient: (ticketId: string, realmId: string) =>
+      createTicketClient({ baseUrl: url, ticketId, realmId }),
   };
 
   const stop = () => {
@@ -508,4 +545,15 @@ export const createAuthFetcher = (baseUrl: string, token: string) => {
       headers,
     });
   };
+};
+
+// ============================================================================
+// Re-export SDK Types for Test Convenience
+// ============================================================================
+
+export type {
+  CasfaAnonymousClient,
+  CasfaUserClient,
+  CasfaDelegateClient,
+  CasfaTicketClient,
 };

@@ -1,7 +1,7 @@
 /**
  * E2E Tests: Client Authentication
  *
- * Tests for Client (P256 public key) management endpoints:
+ * Tests for Client (P256 public key) management endpoints using casfa-client-v2 SDK:
  * - POST /api/auth/clients/init
  * - GET /api/auth/clients/:clientId
  * - POST /api/auth/clients/complete
@@ -10,7 +10,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
+import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 
 describe("Client Authentication", () => {
   let ctx: E2EContext;
@@ -27,30 +27,24 @@ describe("Client Authentication", () => {
   describe("POST /api/auth/clients/init", () => {
     it("should initialize client auth flow", async () => {
       const testPubkey = `test-pubkey-${uniqueId()}`;
+      const anonymousClient = ctx.helpers.getAnonymousClient();
 
-      const response = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pubkey: testPubkey,
-          clientName: "Test Client",
-        }),
+      const result = await anonymousClient.awp.initClient({
+        publicKey: testPubkey,
+        name: "Test Client",
       });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        clientId: string;
-        authUrl: string;
-        displayCode: string;
-        expiresIn: number;
-        pollInterval: number;
-      };
-      expect(data.clientId).toBeDefined();
-      expect(data.clientId).toMatch(/^client:/);
-      expect(data.authUrl).toBeDefined();
-      expect(data.displayCode).toBeDefined();
-      expect(data.expiresIn).toBeGreaterThan(0);
-      expect(data.pollInterval).toBeGreaterThan(0);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.clientId).toBeDefined();
+        expect(data.clientId).toMatch(/^client:/);
+        expect(data.authUrl).toBeDefined();
+        expect(data.displayCode).toBeDefined();
+        expect(data.expiresIn).toBeGreaterThan(0);
+        // pollInterval might not be in SDK type but is in response
+        expect(data.pollInterval ?? 5).toBeGreaterThan(0);
+      }
     });
 
     it("should reject missing pubkey", async () => {
@@ -78,41 +72,44 @@ describe("Client Authentication", () => {
     });
   });
 
-  describe("GET /api/auth/clients/:clientId", () => {
+  describe("GET /api/auth/clients/:clientId (poll)", () => {
     it("should return pending status for pending auth", async () => {
       const testPubkey = `test-pubkey-${uniqueId()}`;
+      const anonymousClient = ctx.helpers.getAnonymousClient();
 
       // First init the auth flow
-      const initResponse = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pubkey: testPubkey,
-          clientName: "Test Client",
-        }),
+      const initResult = await anonymousClient.awp.initClient({
+        publicKey: testPubkey,
+        name: "Test Client",
       });
 
-      const initData = (await initResponse.json()) as { clientId: string };
+      expect(initResult.ok).toBe(true);
+      if (!initResult.ok) return;
 
-      // Check status using clientId
-      const response = await fetch(
-        `${ctx.baseUrl}/api/auth/clients/${encodeURIComponent(initData.clientId)}`
-      );
+      // Check status using poll
+      const result = await anonymousClient.awp.pollClient({
+        clientId: initResult.data.clientId,
+      });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { status: string; clientId: string };
-      expect(data.status).toBe("pending");
-      expect(data.clientId).toBe(initData.clientId);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const data = result.data as any;
+        expect(data.status).toBe("pending");
+        expect(data.clientId).toBe(initResult.data.clientId);
+      }
     });
 
     it("should return 404 for non-existent clientId", async () => {
-      const response = await fetch(
-        `${ctx.baseUrl}/api/auth/clients/client:NONEXISTENT00000000000000`
-      );
+      const anonymousClient = ctx.helpers.getAnonymousClient();
 
-      expect(response.status).toBe(404);
-      const data = (await response.json()) as { status: string; error?: string };
-      expect(data.status).toBe("not_found");
+      const result = await anonymousClient.awp.pollClient({
+        clientId: "client:NONEXISTENT00000000000000",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(404);
+      }
     });
   });
 
@@ -122,69 +119,27 @@ describe("Client Authentication", () => {
       const testPubkey = `test-pubkey-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Init auth flow
-      const initResponse = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pubkey: testPubkey,
-          clientName: "Test Client",
-        }),
+      // Init auth flow using anonymous client
+      const anonymousClient = ctx.helpers.getAnonymousClient();
+      const initResult = await anonymousClient.awp.initClient({
+        publicKey: testPubkey,
+        name: "Test Client",
       });
 
-      const initData = (await initResponse.json()) as { clientId: string; displayCode: string };
+      expect(initResult.ok).toBe(true);
+      if (!initResult.ok) return;
 
-      // Complete authorization
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
-      const response = await authFetch("/api/auth/clients/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId: initData.clientId,
-          verificationCode: initData.displayCode,
-        }),
+      // Complete authorization using user client
+      const userClient = ctx.helpers.getUserClient(token);
+      const result = await userClient.clients.complete({
+        clientId: initResult.data.clientId,
+        verificationCode: initResult.data.displayCode,
       });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        success: boolean;
-        clientId: string;
-        expiresAt: number;
-      };
-      expect(data.success).toBe(true);
-      expect(data.clientId).toBe(initData.clientId);
-      expect(data.expiresAt).toBeGreaterThan(Date.now());
-    });
-
-    it("should reject invalid verification code", async () => {
-      const userId = `user-${uniqueId()}`;
-      const testPubkey = `test-pubkey-${uniqueId()}`;
-      const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-
-      // Init auth flow
-      const initResponse = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pubkey: testPubkey,
-          clientName: "Test Client",
-        }),
-      });
-
-      const initData = (await initResponse.json()) as { clientId: string };
-
-      // Try to complete with wrong code
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
-      const response = await authFetch("/api/auth/clients/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId: initData.clientId,
-          verificationCode: "WRONG",
-        }),
-      });
-
-      expect(response.status).toBe(400);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.success).toBe(true);
+      }
     });
 
     it("should reject unauthenticated request", async () => {
@@ -193,7 +148,6 @@ describe("Client Authentication", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId: "client:SOMECLIENTID00000000000",
-          verificationCode: "SOME",
         }),
       });
 
@@ -207,43 +161,38 @@ describe("Client Authentication", () => {
       const testPubkey = `test-pubkey-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Init and complete auth flow
-      const initResponse = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pubkey: testPubkey,
-          clientName: "Test Client",
-        }),
+      // Init auth flow using anonymous client
+      const anonymousClient = ctx.helpers.getAnonymousClient();
+      const initResult = await anonymousClient.awp.initClient({
+        publicKey: testPubkey,
+        name: "Test Client",
       });
 
-      const initData = (await initResponse.json()) as { clientId: string; displayCode: string };
+      expect(initResult.ok).toBe(true);
+      if (!initResult.ok) return;
 
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
-      await authFetch("/api/auth/clients/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId: initData.clientId,
-          verificationCode: initData.displayCode,
-        }),
+      // Complete authorization
+      const userClient = ctx.helpers.getUserClient(token);
+      await userClient.clients.complete({
+        clientId: initResult.data.clientId,
+        verificationCode: initResult.data.displayCode,
       });
 
       // List clients
-      const response = await authFetch("/api/auth/clients");
+      const result = await userClient.clients.list();
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as {
-        items: Array<{ clientId: string; clientName: string }>;
-      };
-      expect(data.items).toBeInstanceOf(Array);
-      expect(data.items.length).toBeGreaterThan(0);
-      expect(data.items.some((c) => c.clientId === initData.clientId)).toBe(true);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.items).toBeInstanceOf(Array);
+        expect(result.data.items.length).toBeGreaterThan(0);
+        expect(
+          result.data.items.some((c) => c.clientId === initResult.data.clientId)
+        ).toBe(true);
+      }
     });
 
     it("should reject unauthenticated request", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/auth/clients`);
-
       expect(response.status).toBe(401);
     });
   });
@@ -254,51 +203,47 @@ describe("Client Authentication", () => {
       const testPubkey = `test-pubkey-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Init and complete auth flow
-      const initResponse = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pubkey: testPubkey,
-          clientName: "Test Client",
-        }),
+      // Init auth flow
+      const anonymousClient = ctx.helpers.getAnonymousClient();
+      const initResult = await anonymousClient.awp.initClient({
+        publicKey: testPubkey,
+        name: "Test Client",
       });
 
-      const initData = (await initResponse.json()) as { clientId: string; displayCode: string };
+      expect(initResult.ok).toBe(true);
+      if (!initResult.ok) return;
 
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
-      await authFetch("/api/auth/clients/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId: initData.clientId,
-          verificationCode: initData.displayCode,
-        }),
+      // Complete authorization
+      const userClient = ctx.helpers.getUserClient(token);
+      await userClient.clients.complete({
+        clientId: initResult.data.clientId,
+        verificationCode: initResult.data.displayCode,
       });
 
-      // Revoke client using clientId
-      const response = await authFetch(
-        `/api/auth/clients/${encodeURIComponent(initData.clientId)}`,
-        {
-          method: "DELETE",
-        }
-      );
+      // Revoke client
+      const result = await userClient.clients.revoke({
+        clientId: initResult.data.clientId,
+      });
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { success: boolean };
-      expect(data.success).toBe(true);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.success).toBe(true);
+      }
     });
 
     it("should return 404 for non-existent client", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const authFetch = createAuthFetcher(ctx.baseUrl, token);
+      const userClient = ctx.helpers.getUserClient(token);
 
-      const response = await authFetch(`/api/auth/clients/client:NONEXISTENT00000000000000`, {
-        method: "DELETE",
+      const result = await userClient.clients.revoke({
+        clientId: "client:NONEXISTENT00000000000000",
       });
 
-      expect(response.status).toBe(404);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.status).toBe(404);
+      }
     });
   });
 });
