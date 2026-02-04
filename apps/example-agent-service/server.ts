@@ -122,9 +122,9 @@ function createMockContext(): Context {
     logGroupName: "/aws/lambda/awp-agent-service-local",
     logStreamName: "local",
     getRemainingTimeInMillis: () => 30000,
-    done: () => {},
-    fail: () => {},
-    succeed: () => {},
+    done: () => { },
+    fail: () => { },
+    succeed: () => { },
   };
 }
 

@@ -251,6 +251,55 @@ frontmatter: {
 | `@agent-web-portal/client` | Client SDK with blob handling and auth support |
 | `@agent-web-portal/aws-lambda` | AWS Lambda adapter |
 | `@agent-web-portal/aws-cli` | CLI for deploying Skills |
+| `@agent-web-portal/casfa-v2` | Content-Addressable Storage for Agents |
+| `@agent-web-portal/cas-core` | CAS binary format and node operations |
+| `@agent-web-portal/casfa-client-v2` | CASFA v2 client SDK |
+
+## Apps
+
+| App | Description | Port |
+|-----|-------------|------|
+| `casfa` | CASFA v1 - Legacy CAS service | 8800 |
+| `casfa-v2` | CASFA v2 - Refactored CAS service | 8801 |
+| `image-workshop` | Image processing demo | 8802 |
+| `example-stack` | Example AWP server | 8803 |
+| `example-agent-service` | Example agent service | 8804 |
+
+## Local Development
+
+### Port Convention
+
+All projects in this monorepo follow a unified port allocation:
+
+| Type | Range | Assignments |
+|------|-------|-------------|
+| **Databases** | 87xx | DynamoDB Local: **8700** |
+| **Backend APIs** | 88xx | casfa: 8800, casfa-v2: 8801, image-workshop: 8802, example-stack: 8803, example-agent-service: 8804 |
+| **Frontend** | 89xx | casfa: 8900, image-workshop: 8902, example-agent: 8904, example-webui: 8905 |
+
+### Quick Start
+
+```bash
+# Install dependencies
+bun install
+
+# Start DynamoDB Local
+docker compose up -d dynamodb
+
+# Run a specific app (e.g., casfa-v2)
+cd apps/casfa-v2
+bun run dev:setup  # One-command setup
+bun run dev        # Start dev server
+```
+
+### Environment Configuration
+
+Environment variables are organized in a two-level hierarchy:
+
+1. **Root `.env`**: Shared configuration (Cognito, ports, DynamoDB endpoint)
+2. **App-level `.env`**: Project-specific overrides
+
+Copy `.env.example` files to `.env` and customize as needed.
 
 ## Authentication
 

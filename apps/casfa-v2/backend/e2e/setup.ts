@@ -82,8 +82,8 @@ async function waitForDynamoDB(): Promise<void> {
       if (i === TEST_CONFIG.DYNAMODB_MAX_RETRIES - 1) {
         throw new Error(
           `DynamoDB at ${endpoint} not available after ${TEST_CONFIG.DYNAMODB_MAX_RETRIES} retries.\n` +
-            "Please ensure DynamoDB Local is running: docker compose up -d dynamodb\n" +
-            "Then create tables: bun run db:create"
+          "Please ensure DynamoDB Local is running: docker compose up -d dynamodb\n" +
+          "Then create tables: bun run db:create"
         );
       }
       await Bun.sleep(TEST_CONFIG.DYNAMODB_RETRY_DELAY_MS);
