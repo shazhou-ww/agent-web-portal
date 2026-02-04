@@ -14,11 +14,21 @@ export {
   CLIENT_ID_REGEX,
   // ID schemas
   ClientIdSchema,
+  // Crockford Base32 encoding
+  decodeCrockfordBase32,
   DEPOT_ID_REGEX,
   DepotIdSchema,
+  // Well-known keys
+  EMPTY_DICT_NODE_KEY,
+  encodeCrockfordBase32,
+  // Node key conversion
+  hashToNodeKey,
+  hexToNodeKey,
   ISSUER_ID_REGEX,
   IssuerIdSchema,
   NODE_KEY_REGEX,
+  nodeKeyToHash,
+  nodeKeyToHex,
   NodeKeySchema,
   // Enum schemas
   NodeKindSchema,

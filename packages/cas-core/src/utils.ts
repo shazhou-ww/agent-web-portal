@@ -3,6 +3,7 @@
  *
  * - Pascal string encoding (u16 LE length + utf8 bytes)
  * - Hex/bytes conversion
+ * - Crockford Base32 encoding/decoding
  */
 
 const textEncoder = new TextEncoder();
@@ -120,18 +121,16 @@ export function concatBytes(...arrays: Uint8Array[]): Uint8Array {
 }
 
 /**
- * Format hash as "blake3s:XXXX" key
+ * Format hash as hex string (storage key)
+ * This is the internal storage format, used across all storage implementations.
  */
 export function hashToKey(hash: Uint8Array): string {
-  return `blake3s:${bytesToHex(hash)}`;
+  return bytesToHex(hash);
 }
 
 /**
- * Extract hash bytes from "blake3s:XXXX" key
+ * Extract hash bytes from hex string (storage key)
  */
 export function keyToHash(key: string): Uint8Array {
-  if (!key.startsWith("blake3s:")) {
-    throw new Error(`Invalid key format: ${key}`);
-  }
-  return hexToBytes(key.slice(8));
+  return hexToBytes(key);
 }

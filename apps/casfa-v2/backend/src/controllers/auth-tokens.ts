@@ -2,6 +2,7 @@
  * Agent Token management controller
  */
 
+import { CreateTokenSchema } from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { TokensDb } from "../db/tokens.ts";
 import type { Env } from "../types.ts";
@@ -25,11 +26,11 @@ export const createAuthTokensController = (
   return {
     create: async (c) => {
       const auth = c.get("auth");
-      const body = await c.req.json();
+      const { name, description, expiresIn } = CreateTokenSchema.parse(await c.req.json());
 
-      const agentToken = await tokensDb.createAgentToken(auth.userId, body.name, {
-        description: body.description,
-        expiresIn: body.expiresIn,
+      const agentToken = await tokensDb.createAgentToken(auth.userId, name, {
+        description,
+        expiresIn,
       });
 
       const tokenId = extractTokenId(agentToken.pk);

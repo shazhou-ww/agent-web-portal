@@ -5,10 +5,67 @@
  */
 
 // =============================================================================
-// Main Client
+// New Stateless Client Architecture (Recommended)
 // =============================================================================
 
-export { type CasfaClient, type CasfaClientConfig, createCasfaClient } from "./client.ts";
+export {
+  // Main entry point
+  createCasfaClient,
+  // Individual client factories
+  createTicketClient,
+  createDelegateClient,
+  createUserClient,
+  // Types
+  type ClientConfig,
+  type CasfaBaseClient,
+  type CasfaAnonymousClient,
+  type CasfaTicketClient,
+  type CasfaDelegateClient,
+  type CasfaDelegateRealmView,
+  type CasfaUserClient,
+  type CasfaUserRealmView,
+  type TicketClientConfig,
+  type DelegateClientConfig,
+  type UserClientConfig,
+  // API parameter types
+  type BuildAuthUrlParams,
+  type CallMcpParams,
+  type CallToolParams,
+  type CommitDepotParams,
+  type CommitTicketParams,
+  type CompleteClientParams,
+  type CreateAgentTokenParams,
+  type CreateDepotParams,
+  type CreateTicketParams,
+  type ExchangeCodeParams,
+  type GetDepotParams,
+  type InitClientParams,
+  type ListAgentTokensParams,
+  type ListClientsParams,
+  type ListDepotsParams,
+  type ListTicketsParams,
+  type ListUsersParams,
+  type LoginParams,
+  type PollClientParams,
+  type PrepareNodesParams,
+  type PutNodeParams,
+  type RefreshParams,
+  type RevokeAgentTokenParams,
+  type RevokeClientParams,
+  type UpdateDepotParams,
+  type UpdateUserRoleParams,
+} from "./clients/index.ts";
+
+// =============================================================================
+// Legacy Client (Deprecated - use createCasfaClient from clients/ instead)
+// =============================================================================
+
+export {
+  /** @deprecated Use createCasfaClient from clients/ instead */
+  createCasfaClient as createLegacyCasfaClient,
+  type CasfaClient as LegacyCasfaClient,
+  type CasfaClientConfig as LegacyCasfaClientConfig,
+} from "./client.ts";
 
 // =============================================================================
 // Types

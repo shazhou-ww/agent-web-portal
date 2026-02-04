@@ -104,14 +104,14 @@ describe("Utils", () => {
   });
 
   describe("Hash key conversion", () => {
-    it("should create blake3s: prefixed key", () => {
+    it("should create pure hex key (no prefix)", () => {
       const hash = new Uint8Array(16).fill(0xab);
       const key = hashToKey(hash);
-      expect(key).toBe("blake3s:" + "ab".repeat(16));
+      expect(key).toBe("ab".repeat(16));
     });
 
-    it("should extract hash from key", () => {
-      const key = "blake3s:" + "cd".repeat(16);
+    it("should extract hash from hex key", () => {
+      const key = "cd".repeat(16);
       const hash = keyToHash(key);
       expect(hash).toEqual(new Uint8Array(16).fill(0xcd));
     });
@@ -120,10 +120,6 @@ describe("Utils", () => {
       const original = new Uint8Array(16);
       for (let i = 0; i < 16; i++) original[i] = i;
       expect(keyToHash(hashToKey(original))).toEqual(original);
-    });
-
-    it("should throw on invalid key format", () => {
-      expect(() => keyToHash("invalid:abc")).toThrow(/Invalid key format/);
     });
   });
 });

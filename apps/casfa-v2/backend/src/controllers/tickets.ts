@@ -4,6 +4,10 @@
  * Handles ticket management under /api/realm/{realmId}/tickets/*
  */
 
+import {
+  CreateTicketSchema,
+  TicketCommitSchema,
+} from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { ServerConfig } from "../config.ts";
 import type { TokensDb } from "../db/tokens.ts";
@@ -81,7 +85,7 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
     create: async (c) => {
       const auth = c.get("auth");
       const realmId = c.req.param("realmId");
-      const body = await c.req.json();
+      const body = CreateTicketSchema.parse(await c.req.json());
 
       // Use the caller's issuerId directly
       const issuerId = auth.issuerId;
@@ -158,8 +162,7 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const realmId = c.req.param("realmId");
       const rawTicketId = c.req.param("ticketId");
       const ticketId = rawTicketId.startsWith("ticket:") ? rawTicketId.slice(7) : rawTicketId;
-      const body = await c.req.json();
-      const output = body.output;
+      const { output } = TicketCommitSchema.parse(await c.req.json());
 
       // Only Ticket auth can commit
       const auth = c.get("auth");

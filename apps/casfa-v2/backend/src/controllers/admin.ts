@@ -2,10 +2,11 @@
  * Admin controller
  */
 
+import { UpdateUserRoleSchema } from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { CognitoConfig } from "../config.ts";
 import type { UserRolesDb } from "../db/user-roles.ts";
-import type { Env, UserRole } from "../types.ts";
+import type { Env } from "../types.ts";
 
 export type AdminController = {
   listUsers: (c: Context<Env>) => Promise<Response>;
@@ -38,8 +39,7 @@ export const createAdminController = (deps: AdminControllerDeps): AdminControlle
 
     updateRole: async (c) => {
       const targetUserId = decodeURIComponent(c.req.param("userId"));
-      const body = await c.req.json();
-      const role = body.role as UserRole;
+      const { role } = UpdateUserRoleSchema.parse(await c.req.json());
 
       await userRolesDb.setRole(targetUserId, role);
 

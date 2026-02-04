@@ -14,10 +14,10 @@ import {
   createWebCryptoHash,
   decodeNode,
   type HashProvider,
-  hashToKey,
   type StorageProvider,
   writeFile,
 } from "@agent-web-portal/cas-core";
+import { hashToNodeKey } from "@agent-web-portal/casfa-protocol";
 
 import type {
   CasBlobRef,
@@ -172,7 +172,7 @@ export class CasfaEndpoint {
 
     if (node.children) {
       for (const childHash of node.children) {
-        const childKey = hashToKey(childHash);
+        const childKey = hashToNodeKey(childHash);
         const childNode = await this.getNode(childKey);
         if (childNode.kind === "file" || childNode.kind === "successor") {
           parts.push(await this.readNodeData(childNode));
@@ -198,7 +198,7 @@ export class CasfaEndpoint {
 
     if (node.children) {
       for (const childHash of node.children) {
-        const childKey = hashToKey(childHash);
+        const childKey = hashToNodeKey(childHash);
         const childNode = await this.getNode(childKey);
         if (childNode.kind === "file" || childNode.kind === "successor") {
           yield* this.streamNodeData(childNode);
@@ -237,7 +237,7 @@ export class CasfaEndpoint {
         throw new Error(`Child hash not found for "${segment}"`);
       }
 
-      currentKey = hashToKey(childHash);
+      currentKey = hashToNodeKey(childHash);
     }
 
     return currentKey;

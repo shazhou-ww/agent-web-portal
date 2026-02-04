@@ -18,13 +18,9 @@ export type {
   StorageProvider,
 } from "@agent-web-portal/cas-core";
 // Re-export useful utilities from cas-core
-export {
-  createMemoryStorage,
-  createWebCryptoHash,
-  decodeNode,
-  hashToKey,
-  keyToHash,
-} from "@agent-web-portal/cas-core";
+export { createMemoryStorage, createWebCryptoHash, decodeNode } from "@agent-web-portal/cas-core";
+// Re-export node key utilities from casfa-protocol
+export { hashToNodeKey, nodeKeyToHash } from "@agent-web-portal/casfa-protocol";
 
 // Client (full user features)
 export { CasfaClient } from "./client.ts";

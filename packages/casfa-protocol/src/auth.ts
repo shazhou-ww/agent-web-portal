@@ -34,7 +34,7 @@ export type TokenExchange = z.infer<typeof TokenExchangeSchema>;
 
 export const ClientInitSchema = z.object({
   pubkey: z.string().min(1),
-  clientName: z.string().min(1).optional(),
+  clientName: z.string().min(1),
 });
 
 export type ClientInit = z.infer<typeof ClientInitSchema>;

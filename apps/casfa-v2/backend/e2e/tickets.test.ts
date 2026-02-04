@@ -11,7 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
+import { createAuthFetcher, createE2EContext, type E2EContext, testNodeKey, uniqueId } from "./setup.ts";
 
 describe("Ticket Management", () => {
   let ctx: E2EContext;
@@ -92,8 +92,8 @@ describe("Ticket Management", () => {
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
       const inputNodes = [
-        "node:0000000000000000000000000000000000000000000000000000000000000001",
-        "node:0000000000000000000000000000000000000000000000000000000000000002",
+        testNodeKey(1),
+        testNodeKey(2),
       ];
 
       const response = await authFetch(`/api/realm/${realm}/tickets`, {
@@ -302,7 +302,7 @@ describe("Ticket Management", () => {
       const { ticketId } = (await createResponse.json()) as { ticketId: string };
 
       // Commit (note: would fail in real scenario as output node doesn't exist)
-      const outputNode = "node:0000000000000000000000000000000000000000000000000000000000000001";
+      const outputNode = testNodeKey(1);
       const response = await ctx.helpers.ticketRequest(
         ticketId,
         "POST",
@@ -333,7 +333,7 @@ describe("Ticket Management", () => {
         ticketId,
         "POST",
         `/api/realm/${realm}/tickets/${ticketId}/commit`,
-        { output: "node:0000000000000000000000000000000000000000000000000000000000000001" }
+        { output: testNodeKey(1) }
       );
 
       expect(response.status).toBe(403);

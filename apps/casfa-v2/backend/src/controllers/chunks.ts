@@ -5,10 +5,19 @@
 import {
   decodeNode,
   type HashProvider,
-  hashToKey,
   validateNode,
   validateNodeStructure,
 } from "@agent-web-portal/cas-core";
+import {
+  hashToNodeKey,
+  nodeKeyToHex,
+  PrepareNodesSchema,
+  type DictNodeMetadata,
+  type FileNodeMetadata,
+  type NodeUploadResponse,
+  type PrepareNodesResponse,
+  type SuccessorNodeMetadata,
+} from "@agent-web-portal/casfa-protocol";
 import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 import type { Context } from "hono";
 import type { OwnershipDb } from "../db/ownership.ts";
@@ -40,39 +49,21 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     return c.req.param("realmId") ?? c.get("auth").realm;
   };
 
-  // Normalize node key (strip node: prefix)
-  const normalizeKey = (key: string): string => (key.startsWith("node:") ? key.slice(5) : key);
+  // Convert node key to hex storage key
+  const toStorageKey = (nodeKey: string): string => nodeKeyToHex(nodeKey);
 
   return {
     prepareNodes: async (c) => {
       const realm = getRealm(c);
-      const body = await c.req.json();
-      const keys = body.keys as string[];
-
-      if (!keys || keys.length === 0) {
-        return c.json({ error: "invalid_request", message: "keys array is required" }, 400);
-      }
-
-      // Validate key format: node:{64 hex chars} or plain 64 hex chars
-      const validKeyRegex = /^(node:)?[0-9a-f]{64}$/i;
-      for (const key of keys) {
-        if (!validKeyRegex.test(key)) {
-          return c.json(
-            { error: "invalid_request", message: `Invalid node key format: ${key}` },
-            400
-          );
-        }
-      }
-
-      // Normalize keys (strip node: prefix for storage lookup)
+      const { keys } = PrepareNodesSchema.parse(await c.req.json());
 
       // Check which nodes are missing
       const missing: string[] = [];
       const exists: string[] = [];
 
       for (const key of keys) {
-        const normalizedKey = normalizeKey(key);
-        const hasNode = await ownershipDb.hasOwnership(realm, normalizedKey);
+        const storageKey = toStorageKey(key);
+        const hasNode = await ownershipDb.hasOwnership(realm, storageKey);
         if (hasNode) {
           exists.push(key);
         } else {
@@ -80,13 +71,14 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         }
       }
 
-      return c.json({ missing, exists });
+      return c.json<PrepareNodesResponse>({ missing, exists });
     },
 
     put: async (c) => {
       const auth = c.get("auth");
       const realm = getRealm(c);
-      const key = decodeURIComponent(c.req.param("key"));
+      const nodeKey = decodeURIComponent(c.req.param("key"));
+      const storageKey = toStorageKey(nodeKey);
 
       // Get binary content
       const arrayBuffer = await c.req.arrayBuffer();
@@ -125,10 +117,10 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         }
       };
 
-      // Full validation
+      // Full validation (use storageKey which is hex format)
       const validationResult = await validateNode(
         bytes,
-        key,
+        storageKey,
         hashProvider,
         (childKey) => storage.has(childKey),
         structureResult.kind === "dict" ? getChildSize : undefined
@@ -153,7 +145,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       const childKeys = validationResult.childKeys ?? [];
 
       // Check realm quota
-      const existingRef = await refCountDb.getRefCount(realm, key);
+      const existingRef = await refCountDb.getRefCount(realm, storageKey);
       const estimatedNewBytes = existingRef ? 0 : physicalSize;
 
       if (estimatedNewBytes > 0) {
@@ -175,14 +167,14 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       }
 
       // Store the node
-      await storage.put(key, bytes);
+      await storage.put(storageKey, bytes);
 
       // Add ownership
       const tokenId = extractTokenId(auth.token.pk);
       // NodeKind from cas-core matches our local type
       await ownershipDb.addOwnership(
         realm,
-        key,
+        storageKey,
         tokenId,
         "application/octet-stream",
         validationResult.size ?? bytes.length,
@@ -190,7 +182,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       );
 
       // Increment reference count
-      const { isNewToRealm } = await refCountDb.incrementRef(realm, key, physicalSize, logicalSize);
+      const { isNewToRealm } = await refCountDb.incrementRef(realm, storageKey, physicalSize, logicalSize);
 
       // Increment ref for children
       for (const childKey of childKeys) {
@@ -214,17 +206,17 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         });
       }
 
-      return c.json({
-        key,
-        size: validationResult.size,
-        kind: validationResult.kind,
+      return c.json<NodeUploadResponse>({
+        key: nodeKey,
+        payloadSize: validationResult.size ?? 0,
+        kind: validationResult.kind!,
       });
     },
 
     get: async (c) => {
       const realm = getRealm(c);
-      const rawKey = decodeURIComponent(c.req.param("key"));
-      const key = normalizeKey(rawKey);
+      const nodeKey = decodeURIComponent(c.req.param("key"));
+      const key = toStorageKey(nodeKey);
 
       // Check ownership
       const hasAccess = await ownershipDb.hasOwnership(realm, key);
@@ -256,7 +248,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         "Content-Length": String(bytes.length),
       };
       if (kind) headers["X-CAS-Kind"] = kind;
-      if (size !== undefined) headers["X-CAS-Size"] = String(size);
+      if (size !== undefined) headers["X-CAS-Payload-Size"] = String(size);
       if (contentType) headers["X-CAS-Content-Type"] = contentType;
 
       return new Response(bytes, { status: 200, headers });
@@ -264,8 +256,8 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
     getMetadata: async (c) => {
       const realm = getRealm(c);
-      const rawKey = decodeURIComponent(c.req.param("key"));
-      const key = normalizeKey(rawKey);
+      const nodeKey = decodeURIComponent(c.req.param("key"));
+      const key = toStorageKey(nodeKey);
 
       // Check ownership
       const hasAccess = await ownershipDb.hasOwnership(realm, key);
@@ -281,6 +273,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
       try {
         const node = decodeNode(bytes);
+        // nodeKey is already provided by the request
 
         if (node.kind === "dict") {
           // d-node: directory
@@ -290,32 +283,38 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
               const name = node.childNames[i];
               const childHash = node.children[i];
               if (name && childHash) {
-                children[name] = hashToKey(childHash);
+                children[name] = hashToNodeKey(childHash);
               }
             }
           }
-          return c.json({
+          return c.json<DictNodeMetadata>({
+            key: nodeKey,
             kind: "dict",
-            size: node.size,
+            payloadSize: node.size,
             children,
           });
         }
 
         if (node.kind === "file") {
           // f-node: file
-          return c.json({
+          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+          return c.json<FileNodeMetadata>({
+            key: nodeKey,
             kind: "file",
-            size: node.size,
-            contentType: node.fileInfo?.contentType,
+            payloadSize: node.size,
+            contentType: node.fileInfo?.contentType ?? "application/octet-stream",
+            successor,
           });
         }
 
         if (node.kind === "successor") {
           // s-node: continuation
-          return c.json({
+          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+          return c.json<SuccessorNodeMetadata>({
+            key: nodeKey,
             kind: "successor",
-            size: node.size,
-            next: node.children?.[0] ? hashToKey(node.children[0]) : undefined,
+            payloadSize: node.size,
+            successor,
           });
         }
 

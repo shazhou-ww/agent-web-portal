@@ -3,6 +3,10 @@
  */
 
 import { generateVerificationCode } from "@agent-web-portal/auth";
+import {
+  ClientCompleteSchema,
+  ClientInitSchema,
+} from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { ClientPendingDb } from "../db/client-pending";
 import type { ClientPubkeysDb } from "../db/client-pubkeys";
@@ -33,17 +37,7 @@ export const createAuthClientsController = (
      * Initialize client authentication flow
      */
     init: async (c) => {
-      const body = await c.req.json();
-      const { pubkey, clientName } = body;
-
-      // Validate required fields
-      if (!pubkey || typeof pubkey !== "string") {
-        return c.json({ error: "Missing or invalid pubkey" }, 400);
-      }
-      if (!clientName || typeof clientName !== "string") {
-        return c.json({ error: "Missing or invalid clientName" }, 400);
-      }
-
+      const { pubkey, clientName } = ClientInitSchema.parse(await c.req.json());
       const clientId = computeClientId(pubkey);
       const displayCode = generateVerificationCode();
       const now = Date.now();
@@ -113,8 +107,7 @@ export const createAuthClientsController = (
      */
     complete: async (c) => {
       const auth = c.get("auth");
-      const body = await c.req.json();
-      const { clientId, verificationCode } = body;
+      const { clientId, verificationCode } = ClientCompleteSchema.parse(await c.req.json());
 
       const pending = await clientPendingDb.getByClientId(clientId);
       if (!pending) {

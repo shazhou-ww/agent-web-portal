@@ -44,8 +44,20 @@ import { type AuthService, createAuthService } from "../src/services/auth.ts";
 // Test Utilities
 // ============================================================================
 
+import { hexToNodeKey } from "@agent-web-portal/casfa-protocol";
+
 /** Generate a unique test ID */
 export const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * Generate a test node key from a simple numeric value
+ * Creates a valid node:base32 format key
+ */
+export const testNodeKey = (n: number): string => {
+  // Create a 16-byte hash with the number at the end
+  const hex = n.toString(16).padStart(32, "0");
+  return hexToNodeKey(hex);
+};
 
 // ============================================================================
 // Test Configuration

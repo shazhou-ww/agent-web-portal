@@ -4,7 +4,6 @@
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { CasNode } from "@agent-web-portal/cas-core";
-import { hashToKey } from "@agent-web-portal/cas-core";
 import type { CasfaEndpoint } from "../src/endpoint.ts";
 import { VirtualFS } from "../src/vfs.ts";
 

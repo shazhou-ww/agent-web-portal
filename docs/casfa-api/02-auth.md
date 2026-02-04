@@ -11,10 +11,10 @@ AWP (Agent Web Portal) 客户端使用 P256 公钥进行认证。
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
 | POST | `/api/auth/clients/init` | 初始化认证流程 | 无 |
-| GET | `/api/auth/clients/status` | 轮询认证状态 | 无 |
+| GET | `/api/auth/clients/:clientId` | 获取客户端状态 | 无 |
 | POST | `/api/auth/clients/complete` | 完成授权 | User Token |
 | GET | `/api/auth/clients` | 列出已授权客户端 | User Token |
-| DELETE | `/api/auth/clients/:pubkey` | 撤销客户端 | User Token |
+| DELETE | `/api/auth/clients/:clientId` | 撤销客户端 | User Token |
 
 ---
 
@@ -27,7 +27,7 @@ AWP (Agent Web Portal) 客户端使用 P256 公钥进行认证。
 ```json
 {
   "pubkey": "P256 公钥（Base64 或 PEM 格式）",
-  "client_name": "客户端名称"
+  "clientName": "客户端名称"
 }
 ```
 
@@ -35,40 +35,44 @@ AWP (Agent Web Portal) 客户端使用 P256 公钥进行认证。
 
 ```json
 {
-  "auth_url": "https://example.com/auth/awp?pubkey=xxx",
-  "verification_code": "ABCD-1234",
-  "expires_in": 600,
-  "poll_interval": 5
+  "clientId": "client:A6JCHNMFWRT90AXMYWHJ8HKS90",
+  "authUrl": "https://example.com/auth/client?id=xxx",
+  "displayCode": "ABCD",
+  "expiresIn": 600,
+  "pollInterval": 5
 }
 ```
 
 | 字段 | 描述 |
 |------|------|
-| `auth_url` | 用户授权页面 URL |
-| `verification_code` | 验证码，显示给用户核对 |
-| `expires_in` | 过期时间（秒） |
-| `poll_interval` | 建议的轮询间隔（秒） |
+| `clientId` | 客户端 ID（公钥的 Blake3s 哈希） |
+| `authUrl` | 用户授权页面 URL |
+| `displayCode` | 验证码，显示给用户核对 |
+| `expiresIn` | 过期时间（秒） |
+| `pollInterval` | 建议的轮询间隔（秒） |
 
 ---
 
-### GET /api/auth/clients/status
+### GET /api/auth/clients/:clientId
 
-轮询认证完成状态。
+获取客户端状态（等待授权或已授权）。
 
-#### 请求参数
+#### 路径参数
 
 | 参数 | 描述 |
 |------|------|
-| `pubkey` | 公钥（URL 编码） |
+| `clientId` | 客户端 ID（从 init 响应获取） |
 
 #### 响应
 
-认证成功：
+已授权：
 
 ```json
 {
-  "authorized": true,
-  "expires_at": 1709294400000
+  "status": "authorized",
+  "clientId": "client:A6JCHNMFWRT90AXMYWHJ8HKS90",
+  "clientName": "My Agent",
+  "expiresAt": 1709294400000
 }
 ```
 
@@ -76,16 +80,18 @@ AWP (Agent Web Portal) 客户端使用 P256 公钥进行认证。
 
 ```json
 {
-  "authorized": false
+  "status": "pending",
+  "clientId": "client:A6JCHNMFWRT90AXMYWHJ8HKS90",
+  "expiresAt": 1709294400000
 }
 ```
 
-无待处理的认证：
+未找到（404）：
 
 ```json
 {
-  "authorized": false,
-  "error": "No pending authorization found"
+  "status": "not_found",
+  "error": "No pending or authorized client found"
 }
 ```
 
@@ -105,8 +111,8 @@ Authorization: Bearer {userToken}
 
 ```json
 {
-  "pubkey": "P256 公钥",
-  "verification_code": "ABCD-1234"
+  "clientId": "client:A6JCHNMFWRT90AXMYWHJ8HKS90",
+  "verificationCode": "ABCD"
 }
 ```
 
@@ -115,7 +121,8 @@ Authorization: Bearer {userToken}
 ```json
 {
   "success": true,
-  "expires_at": 1709294400000
+  "clientId": "client:A6JCHNMFWRT90AXMYWHJ8HKS90",
+  "expiresAt": 1709294400000
 }
 ```
 
@@ -123,7 +130,7 @@ Authorization: Bearer {userToken}
 
 | 状态码 | 描述 |
 |--------|------|
-| 400 | 验证码无效或已过期 |
+| 400 | 验证码无效、已过期或待授权记录不存在 |
 | 401 | 需要用户认证 |
 
 ---
@@ -154,7 +161,7 @@ Authorization: Bearer {userToken}
 
 ---
 
-### DELETE /api/auth/clients/:pubkey
+### DELETE /api/auth/clients/:clientId
 
 撤销指定的 AWP 客户端授权。
 
@@ -164,7 +171,7 @@ Authorization: Bearer {userToken}
 
 路径参数：
 
-- `pubkey`: URL 编码的公钥
+- `clientId`: 客户端 ID
 
 #### 响应
 

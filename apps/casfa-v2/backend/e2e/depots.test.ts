@@ -11,7 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
+import { createAuthFetcher, createE2EContext, type E2EContext, testNodeKey, uniqueId } from "./setup.ts";
 
 describe("Depot Management", () => {
   let ctx: E2EContext;
@@ -320,7 +320,7 @@ describe("Depot Management", () => {
       const { depotId } = (await createResponse.json()) as { depotId: string };
 
       // Commit new root (note: would fail if node doesn't exist)
-      const newRoot = "node:0000000000000000000000000000000000000000000000000000000000000001";
+      const newRoot = testNodeKey(1);
       const response = await authFetch(`/api/realm/${realm}/depots/${depotId}/commit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -366,7 +366,7 @@ describe("Depot Management", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            root: "node:0000000000000000000000000000000000000000000000000000000000000001",
+            root: testNodeKey(1),
           }),
         }
       );

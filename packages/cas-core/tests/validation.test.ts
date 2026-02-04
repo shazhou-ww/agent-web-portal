@@ -282,7 +282,7 @@ describe("Validation", () => {
       );
 
       // Use wrong key (128-bit = 32 hex chars)
-      const wrongKey = "blake3s:00000000000000000000000000000000";
+      const wrongKey = "00000000000000000000000000000000";
       const result = await validateNode(encoded.bytes, wrongKey, hashProvider);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Hash mismatch");

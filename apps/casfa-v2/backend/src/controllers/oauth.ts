@@ -2,6 +2,11 @@
  * OAuth controller
  */
 
+import {
+  LoginSchema,
+  RefreshSchema,
+  TokenExchangeSchema,
+} from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { CognitoConfig } from "../config.ts";
 import type { AuthService } from "../services/auth.ts";
@@ -32,8 +37,8 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
       }),
 
     login: async (c) => {
-      const body = await c.req.json();
-      const result = await authService.login(body.email, body.password);
+      const { email, password } = LoginSchema.parse(await c.req.json());
+      const result = await authService.login(email, password);
 
       if (!result.ok) {
         return c.json({ error: result.error }, 401);
@@ -43,8 +48,8 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
     },
 
     refresh: async (c) => {
-      const body = await c.req.json();
-      const result = await authService.refresh(body.refreshToken);
+      const { refreshToken } = RefreshSchema.parse(await c.req.json());
+      const result = await authService.refresh(refreshToken);
 
       if (!result.ok) {
         return c.json({ error: result.error }, 401);
@@ -54,7 +59,7 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
     },
 
     exchangeToken: async (c) => {
-      const body = await c.req.json();
+      const { code, redirect_uri } = TokenExchangeSchema.parse(await c.req.json());
 
       if (!cognitoConfig.hostedUiUrl || !cognitoConfig.clientId) {
         return c.json({ error: "OAuth not configured" }, 503);
@@ -63,8 +68,8 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
       const tokenBody = new URLSearchParams({
         grant_type: "authorization_code",
         client_id: cognitoConfig.clientId,
-        code: body.code,
-        redirect_uri: body.redirect_uri,
+        code,
+        redirect_uri,
       });
 
       const tokenRes = await fetch(`${cognitoConfig.hostedUiUrl}/oauth2/token`, {

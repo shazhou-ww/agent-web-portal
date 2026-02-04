@@ -43,8 +43,8 @@ describe("Well-known Keys", () => {
   });
 
   describe("EMPTY_DICT_KEY", () => {
-    it("should be a valid blake3s key format", () => {
-      expect(EMPTY_DICT_KEY).toMatch(/^blake3s:[a-f0-9]{32}$/);
+    it("should be a valid hex storage key format (32 chars)", () => {
+      expect(EMPTY_DICT_KEY).toMatch(/^[a-f0-9]{32}$/);
     });
 
     it("should match the hash of EMPTY_DICT_BYTES (using truncated SHA-256 for testing)", async () => {
@@ -52,7 +52,7 @@ describe("Well-known Keys", () => {
       const truncatedHashHex = Array.from(new Uint8Array(hash).slice(0, 16))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      expect(EMPTY_DICT_KEY).toBe(`blake3s:${truncatedHashHex}`);
+      expect(EMPTY_DICT_KEY).toBe(truncatedHashHex);
     });
   });
 

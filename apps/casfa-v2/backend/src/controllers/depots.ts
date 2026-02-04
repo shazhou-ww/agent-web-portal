@@ -7,6 +7,11 @@
 
 import { EMPTY_DICT_KEY } from "@agent-web-portal/cas-core";
 import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
+import {
+  CreateDepotSchema,
+  DepotCommitSchema,
+  UpdateDepotSchema,
+} from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import {
   DEFAULT_MAX_HISTORY,
@@ -102,10 +107,10 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       }
 
       const realm = getRealm(c);
-      const body = await c.req.json();
+      const body = CreateDepotSchema.parse(await c.req.json());
       const { title, maxHistory = DEFAULT_MAX_HISTORY } = body;
 
-      // Validate maxHistory
+      // Validate maxHistory (schema allows up to MAX_HISTORY_LIMIT, but system may have stricter limit)
       if (maxHistory > SYSTEM_MAX_HISTORY) {
         return c.json({ error: `maxHistory cannot exceed ${SYSTEM_MAX_HISTORY}` }, 400);
       }
@@ -151,10 +156,9 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
 
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
-      const body = await c.req.json();
-      const { title, maxHistory } = body;
+      const { title, maxHistory } = UpdateDepotSchema.parse(await c.req.json());
 
-      // Validate maxHistory
+      // Validate maxHistory (schema allows up to MAX_HISTORY_LIMIT, but system may have stricter limit)
       if (maxHistory !== undefined && maxHistory > SYSTEM_MAX_HISTORY) {
         return c.json({ error: `maxHistory cannot exceed ${SYSTEM_MAX_HISTORY}` }, 400);
       }
@@ -181,20 +185,10 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
         return c.json({ error: "Depot not found" }, 404);
       }
 
-      const body = await c.req.json();
-      const { root: newRoot } = body;
-
-      if (!newRoot) {
-        return c.json({ error: "root is required" }, 400);
-      }
+      const { root: newRoot } = DepotCommitSchema.parse(await c.req.json());
 
       // Normalize root (remove node: prefix if present)
       const normalizedRoot = newRoot.startsWith("node:") ? newRoot.slice(5) : newRoot;
-
-      // Validate root format (should be a valid hash)
-      if (!/^[a-zA-Z0-9_-]{20,}$/.test(normalizedRoot)) {
-        return c.json({ error: "Invalid root key format" }, 400);
-      }
 
       // Check if new root exists in storage
       const exists = await storage.has(normalizedRoot);

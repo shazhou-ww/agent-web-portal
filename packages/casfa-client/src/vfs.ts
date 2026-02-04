@@ -6,7 +6,7 @@
  * is called to generate the new root key.
  */
 
-import { hashToKey } from "@agent-web-portal/cas-core";
+import { hashToNodeKey } from "@agent-web-portal/casfa-protocol";
 
 import type { CasfaEndpoint } from "./endpoint.ts";
 
@@ -207,7 +207,7 @@ export class VirtualFS {
     if (node.children && node.childNames) {
       for (let i = 0; i < node.children.length; i++) {
         const name = node.childNames[i]!;
-        const key = hashToKey(node.children[i]!);
+        const key = hashToNodeKey(node.children[i]!);
         children.set(name, { type: "node", key });
       }
     }

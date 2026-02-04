@@ -9,7 +9,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
+import { createAuthFetcher, createE2EContext, type E2EContext, testNodeKey, uniqueId } from "./setup.ts";
 
 describe("Node Operations", () => {
   let ctx: E2EContext;
@@ -29,10 +29,7 @@ describe("Node Operations", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const testKeys = [
-        "node:0000000000000000000000000000000000000000000000000000000000000001",
-        "node:0000000000000000000000000000000000000000000000000000000000000002",
-      ];
+      const testKeys = [testNodeKey(1), testNodeKey(2)];
 
       const response = await authFetch(`/api/realm/${realm}/prepare-nodes`, {
         method: "POST",
@@ -83,7 +80,7 @@ describe("Node Operations", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          keys: ["node:0000000000000000000000000000000000000000000000000000000000000001"],
+          keys: [testNodeKey(1)],
         }),
       });
 
@@ -99,7 +96,7 @@ describe("Node Operations", () => {
 
       // Create a simple test node (this would normally be a properly formatted CAS node)
       const nodeData = new Uint8Array([1, 2, 3, 4, 5]);
-      const nodeKey = "node:0000000000000000000000000000000000000000000000000000000000000001";
+      const nodeKey = testNodeKey(1);
 
       const response = await authFetch(`/api/realm/${realm}/nodes/${nodeKey}`, {
         method: "PUT",
@@ -114,7 +111,7 @@ describe("Node Operations", () => {
 
     it("should reject unauthenticated requests", async () => {
       const nodeData = new Uint8Array([1, 2, 3, 4, 5]);
-      const nodeKey = "node:0000000000000000000000000000000000000000000000000000000000000001";
+      const nodeKey = testNodeKey(1);
 
       const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}`, {
         method: "PUT",
@@ -132,7 +129,7 @@ describe("Node Operations", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const nodeKey = "node:0000000000000000000000000000000000000000000000000000000000000099";
+      const nodeKey = testNodeKey(99);
 
       const response = await authFetch(`/api/realm/${realm}/nodes/${nodeKey}/metadata`);
 
@@ -140,7 +137,7 @@ describe("Node Operations", () => {
     });
 
     it("should reject unauthenticated requests", async () => {
-      const nodeKey = "node:0000000000000000000000000000000000000000000000000000000000000001";
+      const nodeKey = testNodeKey(1);
 
       const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}/metadata`);
 
@@ -154,7 +151,7 @@ describe("Node Operations", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const nodeKey = "node:0000000000000000000000000000000000000000000000000000000000000099";
+      const nodeKey = testNodeKey(99);
 
       const response = await authFetch(`/api/realm/${realm}/nodes/${nodeKey}`);
 
@@ -162,7 +159,7 @@ describe("Node Operations", () => {
     });
 
     it("should reject unauthenticated requests", async () => {
-      const nodeKey = "node:0000000000000000000000000000000000000000000000000000000000000001";
+      const nodeKey = testNodeKey(1);
 
       const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}`);
 
@@ -178,7 +175,7 @@ describe("Node Operations", () => {
       await ctx.helpers.createTestUser(userId2, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const nodeKey = "node:0000000000000000000000000000000000000000000000000000000000000001";
+      const nodeKey = testNodeKey(1);
 
       const response = await authFetch(`/api/realm/usr_${userId2}/nodes/${nodeKey}`);
 

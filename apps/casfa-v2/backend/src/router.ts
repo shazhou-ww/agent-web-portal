@@ -6,6 +6,7 @@ import { zValidator } from "@hono/zod-validator";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { ZodError } from "zod";
 import type { AdminController } from "./controllers/admin.ts";
 import type { AuthClientsController } from "./controllers/auth-clients.ts";
 import type { AuthTokensController } from "./controllers/auth-tokens.ts";
@@ -65,6 +66,33 @@ export type RouterDeps = {
 
 export const createRouter = (deps: RouterDeps): Hono<Env> => {
   const app = new Hono<Env>();
+
+  // Global error handler for Zod validation errors and other errors
+  app.onError((err, c) => {
+    if (err instanceof ZodError) {
+      return c.json(
+        {
+          error: "validation_error",
+          message: "Request validation failed",
+          details: err.errors.map((e) => ({
+            path: e.path.join("."),
+            message: e.message,
+          })),
+        },
+        400
+      );
+    }
+
+    // Re-throw other errors to be handled by default error handler
+    console.error("Unhandled error:", err);
+    return c.json(
+      {
+        error: "internal_error",
+        message: err.message || "An unexpected error occurred",
+      },
+      500
+    );
+  });
 
   // CORS
   app.use(

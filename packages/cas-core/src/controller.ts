@@ -77,16 +77,15 @@ export type WriteResult = {
 // ============================================================================
 
 /**
- * Convert key string to hash bytes
+ * Convert hex key string to hash bytes
  */
 const keyToHashBytes = (key: string): Uint8Array => {
-  if (!key.startsWith("blake3s:")) {
-    throw new Error(`Invalid key format: ${key}`);
+  if (key.length !== HASH_SIZE * 2) {
+    throw new Error(`Invalid key format: expected ${HASH_SIZE * 2} hex chars, got ${key.length}`);
   }
-  const hex = key.slice(8);
   const bytes = new Uint8Array(HASH_SIZE);
   for (let i = 0; i < HASH_SIZE; i++) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    bytes[i] = Number.parseInt(key.slice(i * 2, i * 2 + 2), 16);
   }
   return bytes;
 };
