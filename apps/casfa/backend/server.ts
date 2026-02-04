@@ -891,8 +891,8 @@ const COGNITO_ISSUER = COGNITO_USER_POOL_ID
 // JWKS for Cognito JWT verification
 const cognitoJwks = COGNITO_USER_POOL_ID
   ? createRemoteJWKSet(new URL(`${COGNITO_ISSUER}/.well-known/jwks.json`), {
-    timeoutDuration: 10000, // 10 seconds timeout
-  })
+      timeoutDuration: 10000, // 10 seconds timeout
+    })
   : null;
 
 interface CognitoTokenPayload {

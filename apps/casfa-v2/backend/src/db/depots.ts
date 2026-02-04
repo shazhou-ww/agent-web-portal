@@ -88,7 +88,6 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
       new PutCommand({
         TableName: tableName,
         Item: {
-          realm,
           key: toDepotKey(depotId),
           gsi1pk: `${realm}#DEPOT_TITLE`,
           gsi1sk: options.title,

@@ -4,11 +4,12 @@
 
 import {
   decodeNode,
+  type HashProvider,
   hashToKey,
   validateNode,
   validateNodeStructure,
 } from "@agent-web-portal/cas-core";
-import type { HashProvider, StorageProvider } from "@agent-web-portal/cas-storage-core";
+import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 import type { Context } from "hono";
 import type { OwnershipDb } from "../db/ownership.ts";
 import type { RefCountDb } from "../db/refcount.ts";

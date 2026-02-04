@@ -5,8 +5,7 @@
  * All dependencies must be injected - no fallback logic.
  */
 
-import { createHash } from "node:crypto";
-import type { HashProvider, StorageProvider } from "@agent-web-portal/cas-storage-core";
+import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 import type { Hono } from "hono";
 import type { DbInstances } from "./bootstrap.ts";
 import type { AppConfig } from "./config.ts";
@@ -40,20 +39,13 @@ import { createRouter } from "./router.ts";
 // Services
 import type { AuthService } from "./services/auth.ts";
 import type { Env } from "./types.ts";
+import type { CombinedHashProvider } from "./util/hash-provider.ts";
 
 // Re-export DbInstances for convenience
 export type { DbInstances } from "./bootstrap.ts";
 
-// ============================================================================
-// Hash Provider (Node.js)
-// ============================================================================
-
-export const createNodeHashProvider = (): HashProvider => ({
-  sha256: async (data) => {
-    const hash = createHash("sha256").update(data).digest();
-    return new Uint8Array(hash);
-  },
-});
+// Re-export hash provider from util
+export { type CombinedHashProvider, createNodeHashProvider } from "./util/hash-provider.ts";
 
 // ============================================================================
 // Types
@@ -68,7 +60,7 @@ export type AppDependencies = {
   db: DbInstances;
   storage: StorageProvider;
   authService: AuthService;
-  hashProvider: HashProvider;
+  hashProvider: CombinedHashProvider;
   /** Optional JWT verifier for Bearer token auth. If not provided, JWT auth is disabled. */
   jwtVerifier?: JwtVerifier;
   /** Runtime configuration for /api/info endpoint */

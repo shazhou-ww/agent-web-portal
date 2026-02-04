@@ -7,47 +7,7 @@
  * Format: client:{26 characters Crockford Base32}
  */
 
-import { blake3 } from "@noble/hashes/blake3";
-
-// Crockford Base32 alphabet (excludes I, L, O, U to avoid ambiguity)
-const CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-/**
- * Encode bytes to Crockford Base32
- */
-const toCrockfordBase32 = (bytes: Uint8Array): string => {
-  let bits = 0;
-  let value = 0;
-  let result = "";
-
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-
-    while (bits >= 5) {
-      bits -= 5;
-      result += CROCKFORD_ALPHABET[(value >> bits) & 0x1f];
-    }
-  }
-
-  // Handle remaining bits
-  if (bits > 0) {
-    result += CROCKFORD_ALPHABET[(value << (5 - bits)) & 0x1f];
-  }
-
-  return result;
-};
-
-/**
- * Compute Blake3s-128 hash and encode to Crockford Base32
- *
- * @param data - Input string to hash
- * @returns 26-character Crockford Base32 encoded hash
- */
-export const blake3sBase32 = (data: string): string => {
-  const hash = blake3(data, { dkLen: 16 }); // 128 bits = 16 bytes
-  return toCrockfordBase32(hash);
-};
+import { blake3sBase32 } from "./hashing.ts";
 
 /**
  * Compute client ID from public key
