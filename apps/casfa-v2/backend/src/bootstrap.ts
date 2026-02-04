@@ -8,10 +8,14 @@
 import type { AppConfig } from "./config.ts";
 import type { AwpPendingDb } from "./db/awp-pending.ts";
 import type { AwpPubkeysDb } from "./db/awp-pubkeys.ts";
+import type { ClientPendingDb } from "./db/client-pending.ts";
+import type { ClientPubkeysDb } from "./db/client-pubkeys.ts";
 import type { DepotsDb } from "./db/depots.ts";
 import {
   createAwpPendingDb,
   createAwpPubkeysDb,
+  createClientPendingDb,
+  createClientPubkeysDb,
   createDepotsDb,
   createOwnershipDb,
   createRefCountDb,
@@ -37,8 +41,12 @@ export type DbInstances = {
   refCountDb: RefCountDb;
   usageDb: UsageDb;
   userRolesDb: UserRolesDb;
+  // Legacy AWP naming (for backwards compatibility)
   awpPendingDb: AwpPendingDb;
   awpPubkeysDb: AwpPubkeysDb;
+  // New client-based naming
+  clientPendingDb: ClientPendingDb;
+  clientPubkeysDb: ClientPubkeysDb;
 };
 
 // ============================================================================
@@ -55,8 +63,12 @@ export const createDbInstances = (config: AppConfig): DbInstances => ({
   refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
   usageDb: createUsageDb({ tableName: config.db.usageTable }),
   userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
+  // Legacy AWP naming
   awpPendingDb: createAwpPendingDb({ tableName: config.db.tokensTable }),
   awpPubkeysDb: createAwpPubkeysDb({ tableName: config.db.tokensTable }),
+  // New client-based naming
+  clientPendingDb: createClientPendingDb({ tableName: config.db.tokensTable }),
+  clientPubkeysDb: createClientPubkeysDb({ tableName: config.db.tokensTable }),
 });
 
 /**

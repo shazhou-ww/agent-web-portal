@@ -97,8 +97,9 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     refCountDb,
     usageDb,
     userRolesDb,
-    awpPendingDb,
     awpPubkeysDb,
+    clientPendingDb,
+    clientPubkeysDb,
   } = db;
 
   // Middleware
@@ -127,8 +128,8 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     authService,
   });
   const authClients = createAuthClientsController({
-    awpPendingDb,
-    awpPubkeysDb,
+    clientPendingDb,
+    clientPubkeysDb,
   });
   const authTokens = createAuthTokensController({ tokensDb });
   const admin = createAdminController({

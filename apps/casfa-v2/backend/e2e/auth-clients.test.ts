@@ -1,18 +1,18 @@
 /**
- * E2E Tests: AWP Client Authentication
+ * E2E Tests: Client Authentication
  *
- * Tests for AWP (Agent Web Portal) client management endpoints:
+ * Tests for Client (P256 public key) management endpoints:
  * - POST /api/auth/clients/init
- * - GET /api/auth/clients/status
+ * - GET /api/auth/clients/:clientId
  * - POST /api/auth/clients/complete
  * - GET /api/auth/clients
- * - DELETE /api/auth/clients/:pubkey
+ * - DELETE /api/auth/clients/:clientId
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createAuthFetcher, createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 
-describe("AWP Client Authentication", () => {
+describe("Client Authentication", () => {
   let ctx: E2EContext;
 
   beforeAll(async () => {
@@ -33,21 +33,24 @@ describe("AWP Client Authentication", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pubkey: testPubkey,
-          client_name: "Test Client",
+          clientName: "Test Client",
         }),
       });
 
       expect(response.status).toBe(200);
       const data = (await response.json()) as {
-        auth_url: string;
-        verification_code: string;
-        expires_in: number;
-        poll_interval: number;
+        clientId: string;
+        authUrl: string;
+        displayCode: string;
+        expiresIn: number;
+        pollInterval: number;
       };
-      expect(data.auth_url).toBeDefined();
-      expect(data.verification_code).toBeDefined();
-      expect(data.expires_in).toBeGreaterThan(0);
-      expect(data.poll_interval).toBeGreaterThan(0);
+      expect(data.clientId).toBeDefined();
+      expect(data.clientId).toMatch(/^client:/);
+      expect(data.authUrl).toBeDefined();
+      expect(data.displayCode).toBeDefined();
+      expect(data.expiresIn).toBeGreaterThan(0);
+      expect(data.pollInterval).toBeGreaterThan(0);
     });
 
     it("should reject missing pubkey", async () => {
@@ -55,14 +58,14 @@ describe("AWP Client Authentication", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          client_name: "Test Client",
+          clientName: "Test Client",
         }),
       });
 
       expect(response.status).toBe(400);
     });
 
-    it("should reject missing client_name", async () => {
+    it("should reject missing clientName", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,39 +78,41 @@ describe("AWP Client Authentication", () => {
     });
   });
 
-  describe("GET /api/auth/clients/status", () => {
-    it("should return unauthorized status for pending auth", async () => {
+  describe("GET /api/auth/clients/:clientId", () => {
+    it("should return pending status for pending auth", async () => {
       const testPubkey = `test-pubkey-${uniqueId()}`;
 
       // First init the auth flow
-      await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
+      const initResponse = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pubkey: testPubkey,
-          client_name: "Test Client",
+          clientName: "Test Client",
         }),
       });
 
-      // Check status
+      const initData = (await initResponse.json()) as { clientId: string };
+
+      // Check status using clientId
       const response = await fetch(
-        `${ctx.baseUrl}/api/auth/clients/status?pubkey=${encodeURIComponent(testPubkey)}`
+        `${ctx.baseUrl}/api/auth/clients/${encodeURIComponent(initData.clientId)}`
       );
 
       expect(response.status).toBe(200);
-      const data = (await response.json()) as { authorized: boolean };
-      expect(data.authorized).toBe(false);
+      const data = (await response.json()) as { status: string; clientId: string };
+      expect(data.status).toBe("pending");
+      expect(data.clientId).toBe(initData.clientId);
     });
 
-    it("should return error for non-existent pending auth", async () => {
+    it("should return 404 for non-existent clientId", async () => {
       const response = await fetch(
-        `${ctx.baseUrl}/api/auth/clients/status?pubkey=${encodeURIComponent("non-existent-key")}`
+        `${ctx.baseUrl}/api/auth/clients/client:NONEXISTENT00000000000000`
       );
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { authorized: boolean; error?: string };
-      expect(data.authorized).toBe(false);
-      expect(data.error).toBeDefined();
+      expect(response.status).toBe(404);
+      const data = (await response.json()) as { status: string; error?: string };
+      expect(data.status).toBe("not_found");
     });
   });
 
@@ -123,11 +128,11 @@ describe("AWP Client Authentication", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pubkey: testPubkey,
-          client_name: "Test Client",
+          clientName: "Test Client",
         }),
       });
 
-      const initData = (await initResponse.json()) as { verification_code: string };
+      const initData = (await initResponse.json()) as { clientId: string; displayCode: string };
 
       // Complete authorization
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
@@ -135,15 +140,20 @@ describe("AWP Client Authentication", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pubkey: testPubkey,
-          verification_code: initData.verification_code,
+          clientId: initData.clientId,
+          verificationCode: initData.displayCode,
         }),
       });
 
       expect(response.status).toBe(200);
-      const data = (await response.json()) as { success: boolean; expires_at: number };
+      const data = (await response.json()) as {
+        success: boolean;
+        clientId: string;
+        expiresAt: number;
+      };
       expect(data.success).toBe(true);
-      expect(data.expires_at).toBeGreaterThan(Date.now());
+      expect(data.clientId).toBe(initData.clientId);
+      expect(data.expiresAt).toBeGreaterThan(Date.now());
     });
 
     it("should reject invalid verification code", async () => {
@@ -152,14 +162,16 @@ describe("AWP Client Authentication", () => {
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Init auth flow
-      await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
+      const initResponse = await fetch(`${ctx.baseUrl}/api/auth/clients/init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pubkey: testPubkey,
-          client_name: "Test Client",
+          clientName: "Test Client",
         }),
       });
+
+      const initData = (await initResponse.json()) as { clientId: string };
 
       // Try to complete with wrong code
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
@@ -167,8 +179,8 @@ describe("AWP Client Authentication", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pubkey: testPubkey,
-          verification_code: "WRONG-CODE",
+          clientId: initData.clientId,
+          verificationCode: "WRONG",
         }),
       });
 
@@ -180,8 +192,8 @@ describe("AWP Client Authentication", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pubkey: "some-key",
-          verification_code: "SOME-CODE",
+          clientId: "client:SOMECLIENTID00000000000",
+          verificationCode: "SOME",
         }),
       });
 
@@ -201,19 +213,19 @@ describe("AWP Client Authentication", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pubkey: testPubkey,
-          client_name: "Test Client",
+          clientName: "Test Client",
         }),
       });
 
-      const initData = (await initResponse.json()) as { verification_code: string };
+      const initData = (await initResponse.json()) as { clientId: string; displayCode: string };
 
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
       await authFetch("/api/auth/clients/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pubkey: testPubkey,
-          verification_code: initData.verification_code,
+          clientId: initData.clientId,
+          verificationCode: initData.displayCode,
         }),
       });
 
@@ -221,8 +233,12 @@ describe("AWP Client Authentication", () => {
       const response = await authFetch("/api/auth/clients");
 
       expect(response.status).toBe(200);
-      const data = (await response.json()) as { clients: unknown[] };
-      expect(data.clients).toBeInstanceOf(Array);
+      const data = (await response.json()) as {
+        items: Array<{ clientId: string; clientName: string }>;
+      };
+      expect(data.items).toBeInstanceOf(Array);
+      expect(data.items.length).toBeGreaterThan(0);
+      expect(data.items.some((c) => c.clientId === initData.clientId)).toBe(true);
     });
 
     it("should reject unauthenticated request", async () => {
@@ -232,7 +248,7 @@ describe("AWP Client Authentication", () => {
     });
   });
 
-  describe("DELETE /api/auth/clients/:pubkey", () => {
+  describe("DELETE /api/auth/clients/:clientId", () => {
     it("should revoke authorized client", async () => {
       const userId = `user-${uniqueId()}`;
       const testPubkey = `test-pubkey-${uniqueId()}`;
@@ -244,26 +260,29 @@ describe("AWP Client Authentication", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pubkey: testPubkey,
-          client_name: "Test Client",
+          clientName: "Test Client",
         }),
       });
 
-      const initData = (await initResponse.json()) as { verification_code: string };
+      const initData = (await initResponse.json()) as { clientId: string; displayCode: string };
 
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
       await authFetch("/api/auth/clients/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pubkey: testPubkey,
-          verification_code: initData.verification_code,
+          clientId: initData.clientId,
+          verificationCode: initData.displayCode,
         }),
       });
 
-      // Revoke client
-      const response = await authFetch(`/api/auth/clients/${encodeURIComponent(testPubkey)}`, {
-        method: "DELETE",
-      });
+      // Revoke client using clientId
+      const response = await authFetch(
+        `/api/auth/clients/${encodeURIComponent(initData.clientId)}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       expect(response.status).toBe(200);
       const data = (await response.json()) as { success: boolean };
@@ -275,7 +294,7 @@ describe("AWP Client Authentication", () => {
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const response = await authFetch(`/api/auth/clients/${encodeURIComponent("non-existent")}`, {
+      const response = await authFetch(`/api/auth/clients/client:NONEXISTENT00000000000000`, {
         method: "DELETE",
       });
 

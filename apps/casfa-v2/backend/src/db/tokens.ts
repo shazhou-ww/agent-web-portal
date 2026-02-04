@@ -11,13 +11,8 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { loadServerConfig } from "../config.ts";
-import type { AgentToken, CommitConfig, Ticket, Token, UserToken } from "../types.ts";
-import {
-  extractTokenId,
-  generateAgentTokenId,
-  generateTicketId,
-  toTokenPk,
-} from "../util/token-id.ts";
+import type { AgentToken, Ticket, Token, UserToken } from "../types.ts";
+import { generateAgentTokenId, generateTicketId, toTokenPk } from "../util/token-id.ts";
 import { createDocClient } from "./client.ts";
 
 // ============================================================================
@@ -43,17 +38,16 @@ export type TokensDb = {
       purpose?: string;
       commit?: { quota?: number; accept?: string[] };
       expiresIn?: number;
-      issuerFingerprint?: string;
     }
   ) => Promise<Ticket>;
   markTicketCommitted: (ticketId: string, root: string) => Promise<boolean>;
   revokeAgentToken: (userId: string, tokenId: string) => Promise<void>;
   /**
    * Revoke a ticket with permission check.
-   * - User Token (agentFingerprint undefined): can revoke any ticket in their realm
-   * - Agent Token / AWP Client: can only revoke tickets they issued (matching fingerprint)
+   * - User Token (agentIssuerId undefined): can revoke any ticket in their realm
+   * - Agent Token / Client: can only revoke tickets they issued (matching issuerId)
    */
-  revokeTicket: (realm: string, ticketId: string, agentFingerprint?: string) => Promise<void>;
+  revokeTicket: (realm: string, ticketId: string, agentIssuerId?: string) => Promise<void>;
   deleteToken: (tokenId: string) => Promise<void>;
   listAgentTokensByUser: (userId: string) => Promise<AgentToken[]>;
   listTicketsByRealm: (
@@ -173,10 +167,9 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
       purpose?: string;
       commit?: { quota?: number; accept?: string[] };
       expiresIn?: number;
-      issuerFingerprint?: string;
     }
   ): Promise<Ticket> => {
-    const { scope, purpose, commit, expiresIn, issuerFingerprint } = options ?? {};
+    const { scope, purpose, commit, expiresIn } = options ?? {};
     const serverConfig = loadServerConfig();
     const ticketId = generateTicketId();
     const now = Date.now();
@@ -190,7 +183,6 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
       type: "ticket",
       realm,
       issuerId,
-      issuerFingerprint,
       purpose,
       scope,
       commit,
@@ -270,7 +262,7 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
   const revokeTicket = async (
     realm: string,
     ticketId: string,
-    agentFingerprint?: string
+    agentIssuerId?: string
   ): Promise<void> => {
     const ticket = await getTicket(ticketId);
     if (!ticket) {
@@ -283,10 +275,10 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     }
 
     // Permission check:
-    // - User Token (agentFingerprint undefined): can revoke any ticket in their realm
-    // - Agent Token / AWP Client: can only revoke tickets they issued (matching fingerprint)
-    if (agentFingerprint !== undefined) {
-      if (ticket.issuerFingerprint !== agentFingerprint) {
+    // - User Token (agentIssuerId undefined): can revoke any ticket in their realm
+    // - Agent Token / Client: can only revoke tickets they issued (matching issuerId)
+    if (agentIssuerId !== undefined) {
+      if (ticket.issuerId !== agentIssuerId) {
         throw new Error("Access denied: can only revoke tickets you issued");
       }
     }

@@ -22,7 +22,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import * as readline from "node:readline";
 import { Command } from "commander";
-import { createAllTables, listTables, createClient } from "./create-local-tables.ts";
+import { createAllTables, createClient, listTables } from "./create-local-tables.ts";
 
 // ============================================================================
 // CLI Configuration
@@ -130,7 +130,11 @@ async function checkDynamoDBConnection(endpoint: string): Promise<boolean> {
   }
 }
 
-async function waitForDynamoDB(endpoint: string, maxAttempts = 10, delayMs = 1000): Promise<boolean> {
+async function waitForDynamoDB(
+  endpoint: string,
+  maxAttempts = 10,
+  delayMs = 1000
+): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     console.log(`  Attempt ${i + 1}/${maxAttempts}...`);
     if (await checkDynamoDBConnection(endpoint)) {
@@ -144,7 +148,7 @@ async function waitForDynamoDB(endpoint: string, maxAttempts = 10, delayMs = 100
 
 function buildEnvVars(config: DevConfig): Record<string, string> {
   const env: Record<string, string> = {
-    ...process.env as Record<string, string>,
+    ...(process.env as Record<string, string>),
     PORT: config.port.toString(),
     STORAGE_TYPE: config.storage,
   };
@@ -257,7 +261,8 @@ program
       // If DynamoDB is not running, prompt to start it
       if (!isReady) {
         console.log(`\nDynamoDB is not running at ${endpoint}`);
-        const shouldStart = autoYes || await promptYesNo(`Do you want to start the ${containerName} container?`);
+        const shouldStart =
+          autoYes || (await promptYesNo(`Do you want to start the ${containerName} container?`));
 
         if (!shouldStart) {
           console.log("\nExiting. Please start DynamoDB manually:");
@@ -290,7 +295,8 @@ program
 
       if (missingTables.length > 0) {
         console.log(`\nMissing tables: ${missingTables.join(", ")}`);
-        const shouldCreate = autoYes || await promptYesNo("Do you want to create the missing tables?");
+        const shouldCreate =
+          autoYes || (await promptYesNo("Do you want to create the missing tables?"));
 
         if (!shouldCreate) {
           console.log("\nExiting. Please create tables manually:");

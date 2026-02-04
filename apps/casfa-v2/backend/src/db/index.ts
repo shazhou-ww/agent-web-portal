@@ -2,9 +2,13 @@
  * Database exports
  */
 
+// Legacy exports for backwards compatibility
 export { type AwpPendingDb, createAwpPendingDb } from "./awp-pending.ts";
 export { type AwpPubkeysDb, createAwpPubkeysDb } from "./awp-pubkeys.ts";
 export { createDocClient, createDynamoClient, resetClient } from "./client.ts";
+// New client-based exports
+export { type ClientPendingDb, createClientPendingDb } from "./client-pending.ts";
+export { type ClientPubkeysDb, createClientPubkeysDb } from "./client-pubkeys.ts";
 export {
   createDepotsDb,
   DEFAULT_MAX_HISTORY,

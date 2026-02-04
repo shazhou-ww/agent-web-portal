@@ -128,14 +128,11 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
       ? parsed.data.scope
       : [parsed.data.scope];
 
-    // Only store issuerFingerprint for agent-level issuers
-    const issuerFingerprint = auth.isAgent ? auth.fingerprint : undefined;
-
-    const ticket = await tokensDb.createTicket(auth.realm, extractTokenId(auth.token.pk), {
+    // Use the caller's issuerId directly
+    const ticket = await tokensDb.createTicket(auth.realm, auth.issuerId, {
       scope: normalizedScope,
       commit: parsed.data.writable ? {} : undefined,
       expiresIn: parsed.data.expiresIn,
-      issuerFingerprint,
     });
 
     const ticketId = extractTokenId(ticket.pk);
@@ -234,7 +231,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     }
 
     // Decode and store content
-    const content = Buffer.from(parsed.data.content, "base64");
+    const _content = Buffer.from(parsed.data.content, "base64");
 
     // For simplicity, we'd need to implement full chunk creation here
     // This is a placeholder

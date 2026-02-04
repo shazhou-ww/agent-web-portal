@@ -27,6 +27,8 @@ import { type AppConfig, loadConfig } from "../src/config.ts";
 import {
   createAwpPendingDb,
   createAwpPubkeysDb,
+  createClientPendingDb,
+  createClientPubkeysDb,
   createDepotsDb,
   createOwnershipDb,
   createRefCountDb,
@@ -78,12 +80,12 @@ async function waitForDynamoDB(): Promise<void> {
     try {
       await client.send(new ListTablesCommand({}));
       return; // Success
-    } catch (err) {
+    } catch (_err) {
       if (i === TEST_CONFIG.DYNAMODB_MAX_RETRIES - 1) {
         throw new Error(
           `DynamoDB at ${endpoint} not available after ${TEST_CONFIG.DYNAMODB_MAX_RETRIES} retries.\n` +
-          "Please ensure DynamoDB Local is running: docker compose up -d dynamodb\n" +
-          "Then create tables: bun run db:create"
+            "Please ensure DynamoDB Local is running: docker compose up -d dynamodb\n" +
+            "Then create tables: bun run db:create"
         );
       }
       await Bun.sleep(TEST_CONFIG.DYNAMODB_RETRY_DELAY_MS);
@@ -228,6 +230,8 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
     awpPendingDb: createAwpPendingDb({ tableName: config.db.tokensTable }),
     awpPubkeysDb: createAwpPubkeysDb({ tableName: config.db.tokensTable }),
+    clientPendingDb: createClientPendingDb({ tableName: config.db.tokensTable }),
+    clientPubkeysDb: createClientPubkeysDb({ tableName: config.db.tokensTable }),
   };
 
   // Create storage

@@ -29,22 +29,22 @@ export const TokenExchangeSchema = z.object({
 export type TokenExchange = z.infer<typeof TokenExchangeSchema>;
 
 // ============================================================================
-// AWP Client Schemas
+// Client Auth Schemas (P256 public key authentication)
 // ============================================================================
 
-export const AwpAuthInitSchema = z.object({
+export const ClientInitSchema = z.object({
   pubkey: z.string().min(1),
-  client_name: z.string().min(1),
+  clientName: z.string().min(1).optional(),
 });
 
-export type AwpAuthInit = z.infer<typeof AwpAuthInitSchema>;
+export type ClientInit = z.infer<typeof ClientInitSchema>;
 
-export const AwpAuthCompleteSchema = z.object({
-  pubkey: z.string().min(1),
-  verification_code: z.string().min(1),
+export const ClientCompleteSchema = z.object({
+  clientId: z.string().min(1),
+  verificationCode: z.string().min(1),
 });
 
-export type AwpAuthComplete = z.infer<typeof AwpAuthCompleteSchema>;
+export type ClientComplete = z.infer<typeof ClientCompleteSchema>;
 
 // ============================================================================
 // Ticket Schemas
@@ -78,14 +78,14 @@ export const CreateTicketSchema = z.object({
 export type CreateTicket = z.infer<typeof CreateTicketSchema>;
 
 // ============================================================================
-// Agent Token Schemas
+// Token Schemas (API access tokens)
 // ============================================================================
 
 /**
  * Schema for POST /api/auth/tokens
- * Create a new Agent Token
+ * Create a new API Token
  */
-export const CreateAgentTokenSchema = z.object({
+export const CreateTokenSchema = z.object({
   /** Token name (required) */
   name: z.string().min(1).max(100),
   /** Optional description */
@@ -94,4 +94,4 @@ export const CreateAgentTokenSchema = z.object({
   expiresIn: z.number().positive().optional(),
 });
 
-export type CreateAgentToken = z.infer<typeof CreateAgentTokenSchema>;
+export type CreateToken = z.infer<typeof CreateTokenSchema>;

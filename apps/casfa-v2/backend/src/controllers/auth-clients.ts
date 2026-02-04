@@ -1,139 +1,183 @@
 /**
- * AWP Client management controller
+ * Client authentication controller (P256 public key authentication)
  */
 
 import { generateVerificationCode } from "@agent-web-portal/auth";
 import type { Context } from "hono";
-import type { AwpPendingDb } from "../db/awp-pending.ts";
-import type { AwpPubkeysDb } from "../db/awp-pubkeys.ts";
+import type { ClientPendingDb } from "../db/client-pending";
+import type { ClientPubkeysDb } from "../db/client-pubkeys";
 import type { Env } from "../types.ts";
+import { computeClientId } from "../util/client-id.ts";
 
 export type AuthClientsController = {
   init: (c: Context) => Promise<Response>;
-  status: (c: Context) => Promise<Response>;
+  get: (c: Context) => Promise<Response>;
   complete: (c: Context<Env>) => Promise<Response>;
   list: (c: Context<Env>) => Promise<Response>;
   revoke: (c: Context<Env>) => Promise<Response>;
 };
 
 type AuthClientsControllerDeps = {
-  awpPendingDb: AwpPendingDb;
-  awpPubkeysDb: AwpPubkeysDb;
+  clientPendingDb: ClientPendingDb;
+  clientPubkeysDb: ClientPubkeysDb;
 };
 
 export const createAuthClientsController = (
   deps: AuthClientsControllerDeps
 ): AuthClientsController => {
-  const { awpPendingDb, awpPubkeysDb } = deps;
+  const { clientPendingDb, clientPubkeysDb } = deps;
 
   return {
+    /**
+     * POST /api/auth/clients/init
+     * Initialize client authentication flow
+     */
     init: async (c) => {
       const body = await c.req.json();
-      const { pubkey, client_name } = body;
+      const { pubkey, clientName } = body;
 
-      const verificationCode = generateVerificationCode();
+      // Validate required fields
+      if (!pubkey || typeof pubkey !== "string") {
+        return c.json({ error: "Missing or invalid pubkey" }, 400);
+      }
+      if (!clientName || typeof clientName !== "string") {
+        return c.json({ error: "Missing or invalid clientName" }, 400);
+      }
+
+      const clientId = computeClientId(pubkey);
+      const displayCode = generateVerificationCode();
       const now = Date.now();
       const expiresIn = 600; // 10 minutes
 
-      await awpPendingDb.create({
+      await clientPendingDb.create({
+        clientId,
         pubkey,
-        clientName: client_name,
-        verificationCode,
+        clientName,
+        displayCode,
         createdAt: now,
         expiresAt: now + expiresIn * 1000,
       });
 
       const origin = c.req.header("origin") ?? "";
-      const authUrl = `${origin}/auth/awp?pubkey=${encodeURIComponent(pubkey)}`;
+      const authUrl = `${origin}/auth/client?id=${encodeURIComponent(clientId)}`;
 
       return c.json({
-        auth_url: authUrl,
-        verification_code: verificationCode,
-        expires_in: expiresIn,
-        poll_interval: 5,
+        clientId,
+        authUrl,
+        displayCode,
+        expiresIn,
+        pollInterval: 5,
       });
     },
 
-    status: async (c) => {
-      const pubkey = c.req.query("pubkey");
-      if (!pubkey) {
-        return c.json({ error: "Missing pubkey parameter" }, 400);
-      }
+    /**
+     * GET /api/auth/clients/:clientId
+     * Get client status (pending or authorized)
+     */
+    get: async (c) => {
+      const clientId = c.req.param("clientId");
 
-      const authorized = await awpPubkeysDb.lookup(pubkey);
+      // Check if already authorized
+      const authorized = await clientPubkeysDb.getByClientId(clientId);
       if (authorized) {
         return c.json({
-          authorized: true,
-          expires_at: authorized.expiresAt,
+          status: "authorized",
+          clientId,
+          clientName: authorized.clientName,
+          expiresAt: authorized.expiresAt,
         });
       }
 
-      const pending = await awpPendingDb.get(pubkey);
+      // Check if pending
+      const pending = await clientPendingDb.getByClientId(clientId);
       if (!pending) {
-        return c.json({
-          authorized: false,
-          error: "No pending authorization found",
-        });
+        return c.json(
+          {
+            status: "not_found",
+            error: "No pending or authorized client found",
+          },
+          404
+        );
       }
 
-      return c.json({ authorized: false });
+      return c.json({
+        status: "pending",
+        clientId,
+        expiresAt: pending.expiresAt,
+      });
     },
 
+    /**
+     * POST /api/auth/clients/complete
+     * Complete client authorization (called by authenticated user)
+     */
     complete: async (c) => {
       const auth = c.get("auth");
       const body = await c.req.json();
-      const { pubkey, verification_code } = body;
+      const { clientId, verificationCode } = body;
 
-      const isValid = await awpPendingDb.validateCode(pubkey, verification_code);
-      if (!isValid) {
-        return c.json({ error: "Invalid or expired verification code" }, 400);
-      }
-
-      const pending = await awpPendingDb.get(pubkey);
+      const pending = await clientPendingDb.getByClientId(clientId);
       if (!pending) {
         return c.json({ error: "Pending authorization not found" }, 400);
+      }
+
+      if (pending.displayCode !== verificationCode) {
+        return c.json({ error: "Invalid verification code" }, 400);
       }
 
       const now = Date.now();
       const expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 days
 
-      await awpPubkeysDb.store({
-        pubkey,
+      await clientPubkeysDb.store({
+        clientId,
+        pubkey: pending.pubkey,
         userId: auth.userId,
         clientName: pending.clientName,
         createdAt: now,
         expiresAt,
       });
 
-      await awpPendingDb.delete(pubkey);
-
-      return c.json({ success: true, expires_at: expiresAt });
-    },
-
-    list: async (c) => {
-      const auth = c.get("auth");
-      const clients = await awpPubkeysDb.listByUser(auth.userId);
+      await clientPendingDb.delete(clientId);
 
       return c.json({
-        clients: clients.map((client) => ({
-          pubkey: client.pubkey,
+        success: true,
+        clientId,
+        expiresAt,
+      });
+    },
+
+    /**
+     * GET /api/auth/clients
+     * List authorized clients for current user
+     */
+    list: async (c) => {
+      const auth = c.get("auth");
+      const clients = await clientPubkeysDb.listByUser(auth.userId);
+
+      return c.json({
+        items: clients.map((client) => ({
+          clientId: client.clientId,
           clientName: client.clientName,
-          createdAt: new Date(client.createdAt).toISOString(),
-          expiresAt: client.expiresAt ? new Date(client.expiresAt).toISOString() : null,
+          createdAt: client.createdAt,
+          expiresAt: client.expiresAt,
         })),
       });
     },
 
+    /**
+     * DELETE /api/auth/clients/:clientId
+     * Revoke an authorized client
+     */
     revoke: async (c) => {
       const auth = c.get("auth");
-      const pubkey = decodeURIComponent(c.req.param("pubkey"));
+      const clientId = c.req.param("clientId");
 
-      const client = await awpPubkeysDb.lookup(pubkey);
+      const client = await clientPubkeysDb.getByClientId(clientId);
       if (!client || client.userId !== auth.userId) {
         return c.json({ error: "Client not found or access denied" }, 404);
       }
 
-      await awpPubkeysDb.revoke(pubkey);
+      await clientPubkeysDb.revokeByClientId(clientId);
       return c.json({ success: true });
     },
   };

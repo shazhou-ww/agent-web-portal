@@ -46,23 +46,23 @@ export { UpdateUserRoleSchema } from "./admin.ts";
 // ============================================================================
 
 export type {
-  AwpAuthComplete,
-  AwpAuthInit,
-  CreateAgentToken,
+  ClientComplete,
+  ClientInit,
   CreateTicket,
+  CreateToken,
   Login,
   Refresh,
   TokenExchange,
   WritableConfig,
 } from "./auth.ts";
 export {
-  // AWP Client
-  AwpAuthCompleteSchema,
-  AwpAuthInitSchema,
-  // Agent Token
-  CreateAgentTokenSchema,
+  // Client Auth
+  ClientCompleteSchema,
+  ClientInitSchema,
   // Ticket
   CreateTicketSchema,
+  // Token
+  CreateTokenSchema,
   // OAuth
   LoginSchema,
   RefreshSchema,

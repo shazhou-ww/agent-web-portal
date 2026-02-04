@@ -5,7 +5,12 @@
  * NOTE: This endpoint should NOT expose sensitive deployment details.
  */
 
-import type { AuthType, DatabaseType, ServiceInfo, StorageType } from "@agent-web-portal/casfa-protocol";
+import type {
+  AuthType,
+  DatabaseType,
+  ServiceInfo,
+  StorageType,
+} from "@agent-web-portal/casfa-protocol";
 import type { Context } from "hono";
 import type { FeaturesConfig, ServerConfig } from "../config.ts";
 

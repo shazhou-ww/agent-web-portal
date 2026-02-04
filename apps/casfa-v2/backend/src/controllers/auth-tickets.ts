@@ -28,14 +28,11 @@ export const createAuthTicketsController = (
       const auth = c.get("auth");
       const body = await c.req.json();
 
-      // Only store issuerFingerprint for agent-level issuers (for permission verification)
-      const issuerFingerprint = auth.isAgent ? auth.fingerprint : undefined;
-
-      const ticket = await tokensDb.createTicket(auth.realm, extractTokenId(auth.token.pk), {
+      // Use the caller's issuerId directly
+      const ticket = await tokensDb.createTicket(auth.realm, auth.issuerId, {
         scope: body.scope,
         commit: body.commit,
         expiresIn: body.expiresIn,
-        issuerFingerprint,
       });
 
       const ticketId = extractTokenId(ticket.pk);
@@ -61,9 +58,9 @@ export const createAuthTicketsController = (
 
       try {
         // User Token (isAgent=false): can revoke any ticket in realm
-        // Agent Token / AWP Client (isAgent=true): can only revoke tickets they issued
-        const agentFingerprint = auth.isAgent ? auth.fingerprint : undefined;
-        await tokensDb.revokeTicket(auth.realm, ticketId, agentFingerprint);
+        // Agent Token / Client (isAgent=true): can only revoke tickets they issued
+        const agentIssuerId = auth.isAgent ? auth.issuerId : undefined;
+        await tokensDb.revokeTicket(auth.realm, ticketId, agentIssuerId);
         return c.json({ success: true });
       } catch (error: unknown) {
         const err = error as Error;

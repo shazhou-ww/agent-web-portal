@@ -2,6 +2,7 @@
  * CasfaClient - Main client factory for CASFA API.
  */
 
+import type { ServiceInfo } from "@agent-web-portal/casfa-protocol";
 import * as adminApi from "./api/admin.ts";
 import * as authApi from "./api/auth.ts";
 import * as depotsApi from "./api/depots.ts";
@@ -16,7 +17,6 @@ import { type ApiName, assertAccess } from "./auth/permissions.ts";
 import { createTicketAuth } from "./auth/ticket.ts";
 import { createTokenAuth } from "./auth/token.ts";
 import { createUserAuth } from "./auth/user.ts";
-import type { ServiceInfo } from "@agent-web-portal/casfa-protocol";
 // Re-export types
 import type {
   AgentTokenInfo,

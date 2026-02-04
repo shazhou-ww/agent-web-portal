@@ -14,7 +14,7 @@ import type { OwnershipDb } from "../db/ownership.ts";
 import type { RefCountDb } from "../db/refcount.ts";
 import type { UsageDb } from "../db/usage.ts";
 import { checkTicketWriteQuota } from "../middleware/ticket-auth.ts";
-import type { Env, TreeNodeInfo, TreeResponse } from "../types.ts";
+import type { Env } from "../types.ts";
 import { extractTokenId } from "../util/token-id.ts";
 
 export type ChunksController = {

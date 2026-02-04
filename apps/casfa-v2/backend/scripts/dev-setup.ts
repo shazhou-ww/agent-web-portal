@@ -41,7 +41,7 @@ async function waitForDynamoDB(): Promise<boolean> {
     try {
       await client.send(new ListTablesCommand({}));
       return true;
-    } catch (err) {
+    } catch (_err) {
       if (i < MAX_RETRIES - 1) {
         console.log(`Waiting for DynamoDB at ${DYNAMODB_ENDPOINT}... (${i + 1}/${MAX_RETRIES})`);
         await Bun.sleep(RETRY_DELAY_MS);

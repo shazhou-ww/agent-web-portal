@@ -57,7 +57,6 @@ const createStorage = () => {
       return createFsStorage({ basePath: storageFsPath, prefix: config.storage.prefix });
     case "memory":
       return createMemoryStorage();
-    case "s3":
     default:
       return createS3Storage({ bucket: config.storage.bucket, prefix: config.storage.prefix });
   }
@@ -126,7 +125,6 @@ const getStorageDescription = () => {
       return `file system (${storageFsPath})`;
     case "memory":
       return "in-memory";
-    case "s3":
     default:
       return `S3 (${config.storage.bucket})`;
   }

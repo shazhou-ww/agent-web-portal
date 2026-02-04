@@ -4,13 +4,13 @@
 
 // Re-export all types from casfa-protocol
 export type {
-  // Auth
-  AwpAuthComplete,
-  AwpAuthInit,
-  CreateAgentToken,
+  // Auth (Client)
+  ClientComplete,
+  ClientInit,
   // Depot
   CreateDepot,
   CreateTicket,
+  CreateToken,
   DepotCommit,
   // Node
   DictNodeMetadata,
@@ -37,6 +37,15 @@ export type {
   UserRole,
   WritableConfig,
 } from "@agent-web-portal/casfa-protocol";
+
+// Legacy type aliases for backward compatibility
+import type { ClientComplete, ClientInit, CreateToken } from "@agent-web-portal/casfa-protocol";
+/** @deprecated Use ClientInit instead */
+export type AwpAuthInit = ClientInit;
+/** @deprecated Use ClientComplete instead */
+export type AwpAuthComplete = ClientComplete;
+/** @deprecated Use CreateToken instead */
+export type CreateAgentToken = CreateToken;
 
 // =============================================================================
 // OAuth Response Types

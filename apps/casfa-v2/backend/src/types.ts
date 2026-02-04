@@ -65,14 +65,14 @@ export type CommitConfig = {
 export type Ticket = BaseToken & {
   type: "ticket";
   realm: string;
-  issuerId: string;
   /**
-   * Fingerprint of the issuer for permission verification.
-   * - AWP Client: base64(xxh64('pubkey:${pubkey}'))
-   * - Agent Token: base64(xxh64('token:${token}'))
-   * - User Token: undefined (created by user directly)
+   * ID of the issuer who created this ticket.
+   * Format: {type}:{id}
+   * - User: `user:{userId}`
+   * - Agent Token: `token:{blake3s(token)}`
+   * - Client (P256): `client:{blake3s(pubkey)}`
    */
-  issuerFingerprint?: string;
+  issuerId: string;
   /** Human-readable task description */
   purpose?: string;
   /** Input node keys (readable scope) */
@@ -122,13 +122,14 @@ export type AuthContext = {
    */
   identityType: IdentityType;
   /**
-   * Unique fingerprint for the caller identity (for logging/auditing).
-   * - User: base64(xxh64('user:${userId}'))
-   * - Agent Token: base64(xxh64('token:${tokenId}'))
-   * - AWP Client: base64(xxh64('pubkey:${pubkey}'))
-   * - Ticket: base64(xxh64('ticket:${ticketId}'))
+   * Issuer ID for the caller identity.
+   * Format: {type}:{id}
+   * - User: `user:{userId}`
+   * - Agent Token: `token:{blake3s(token)}`
+   * - Client (P256): `client:{blake3s(pubkey)}`
+   * - Ticket: `ticket:{ticketId}`
    */
-  fingerprint: string;
+  issuerId: string;
   /**
    * Whether this is an agent-level identity (Agent Token or AWP Client).
    * Agent identities can only revoke tickets they issued.
@@ -187,9 +188,45 @@ export type Depot = {
 };
 
 // ============================================================================
-// AWP Types
+// Client Types
 // ============================================================================
 
+/**
+ * Pending client authorization awaiting user approval
+ */
+export type ClientPendingAuth = {
+  /** Blake3s hash of pubkey - the resource identifier */
+  clientId: string;
+  /** Client public key */
+  pubkey: string;
+  /** Human-readable client name */
+  clientName: string;
+  /** 4-character display code for user verification */
+  displayCode: string;
+  createdAt: number;
+  expiresAt: number;
+};
+
+/**
+ * Registered client public key
+ */
+export type ClientPubkey = {
+  /** Blake3s hash of pubkey - the resource identifier */
+  clientId: string;
+  /** Client public key */
+  pubkey: string;
+  /** User who authorized this client */
+  userId: string;
+  /** Human-readable client name */
+  clientName: string;
+  createdAt: number;
+  expiresAt?: number;
+};
+
+/**
+ * @deprecated Use ClientPendingAuth instead
+ * Legacy AWP pending auth type - uses verificationCode instead of displayCode
+ */
 export type AwpPendingAuth = {
   pubkey: string;
   clientName: string;
@@ -198,6 +235,10 @@ export type AwpPendingAuth = {
   expiresAt: number;
 };
 
+/**
+ * @deprecated Use ClientPubkey instead
+ * Legacy AWP pubkey type - does not have clientId
+ */
 export type AwpPubkey = {
   pubkey: string;
   userId: string;

@@ -25,7 +25,12 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
-import { createAllTables, deleteAllTables, listTables, createClient } from "./create-local-tables.ts";
+import {
+  createAllTables,
+  createClient,
+  deleteAllTables,
+  listTables,
+} from "./create-local-tables.ts";
 
 // ============================================================================
 // Configuration
@@ -62,10 +67,14 @@ function isDockerRunning(): boolean {
 }
 
 function isContainerRunning(): boolean {
-  const result = spawnSync("docker", ["ps", "--filter", `name=${CONTAINER_NAME}`, "--format", "{{.Names}}"], {
-    encoding: "utf-8",
-    shell: true,
-  });
+  const result = spawnSync(
+    "docker",
+    ["ps", "--filter", `name=${CONTAINER_NAME}`, "--format", "{{.Names}}"],
+    {
+      encoding: "utf-8",
+      shell: true,
+    }
+  );
   return result.stdout?.trim() === CONTAINER_NAME;
 }
 
@@ -116,7 +125,7 @@ async function checkDynamoDBConnection(): Promise<boolean> {
   try {
     await listTables(dbClient);
     return true;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -209,7 +218,9 @@ async function main(): Promise<void> {
       // Start the container
       if (!startContainer()) {
         console.error(`\nError: Failed to start ${CONTAINER_NAME} container!`);
-        console.error("Make sure Docker is running and docker-compose.yml is configured correctly.");
+        console.error(
+          "Make sure Docker is running and docker-compose.yml is configured correctly."
+        );
         process.exit(1);
       }
       containerStartedByUs = true;
@@ -249,7 +260,6 @@ async function main(): Promise<void> {
       console.log(`Tests failed with exit code: ${exitCode}`);
     }
     console.log("=".repeat(60));
-
   } finally {
     // Always stop and remove container if we started it (unless --keep-container)
     if (containerStartedByUs && !shouldKeepContainer) {

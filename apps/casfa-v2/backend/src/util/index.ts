@@ -3,13 +3,13 @@
  */
 
 export {
-  fingerprintFromPubkey,
-  fingerprintFromTicket,
-  fingerprintFromToken,
-  fingerprintFromUser,
-  fingerprintWithType,
-  type IdentityType,
-} from "./fingerprint.ts";
+  blake3sBase32,
+  computeClientId,
+  computeTokenId,
+  extractIdHash,
+  isValidClientId,
+  isValidTokenId,
+} from "./client-id.ts";
 export { binaryResponse, corsResponse, errorResponse, jsonResponse } from "./response.ts";
 export { err, flatMap, map, ok, type Result, unwrap, unwrapOr } from "./result.ts";
 export {

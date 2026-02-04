@@ -8,7 +8,7 @@ import type { Context } from "hono";
 import type { ServerConfig } from "../config.ts";
 import type { TokensDb } from "../db/tokens.ts";
 import type { Env, Ticket } from "../types.ts";
-import { extractTokenId, generateTicketId, toTokenPk } from "../util/token-id.ts";
+import { extractTokenId } from "../util/token-id.ts";
 
 // ============================================================================
 // Types
@@ -83,20 +83,14 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const realmId = c.req.param("realmId");
       const body = await c.req.json();
 
-      // Build issuer ID based on auth type
-      const issuerId = auth.isAgent
-        ? `token:${extractTokenId(auth.token.pk)}`
-        : `user:${auth.userId}`;
-
-      // Only store issuerFingerprint for agent-level issuers
-      const issuerFingerprint = auth.isAgent ? auth.fingerprint : undefined;
+      // Use the caller's issuerId directly
+      const issuerId = auth.issuerId;
 
       const ticket = await tokensDb.createTicket(realmId, issuerId, {
         scope: body.input,
         purpose: body.purpose,
         commit: body.writable,
         expiresIn: body.expiresIn,
-        issuerFingerprint,
       });
 
       const ticketId = extractTokenId(ticket.pk);
@@ -230,10 +224,10 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
         return c.json({ error: "conflict", message: "Ticket already revoked" }, 409);
       }
 
-      // Permission check: only issuer can revoke
-      const agentFingerprint = auth.isAgent ? auth.fingerprint : undefined;
+      // Permission check: only issuer can revoke (for agents, use issuerId)
+      const agentIssuerId = auth.isAgent ? auth.issuerId : undefined;
       try {
-        await tokensDb.revokeTicket(realmId, ticketId, agentFingerprint);
+        await tokensDb.revokeTicket(realmId, ticketId, agentIssuerId);
       } catch (error: unknown) {
         const err = error as Error;
         if (err.message.includes("Access denied")) {

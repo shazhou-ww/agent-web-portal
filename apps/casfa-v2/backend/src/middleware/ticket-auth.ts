@@ -7,7 +7,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { TokensDb } from "../db/tokens.ts";
 import type { AuthContext, Env, Ticket } from "../types.ts";
-import { fingerprintFromTicket } from "../util/fingerprint.ts";
 
 export type TicketAuthDeps = {
   tokensDb: TokensDb;
@@ -32,7 +31,8 @@ export const createTicketAuthMiddleware = (deps: TicketAuthDeps): MiddlewareHand
       return c.json({ error: "Invalid or expired ticket" }, 401);
     }
 
-    const fingerprint = await fingerprintFromTicket(ticketId);
+    // Build issuerId in ticket format
+    const issuerId = `ticket:${ticketId}`;
 
     // Build auth context from ticket
     const auth: AuthContext = {
@@ -44,7 +44,7 @@ export const createTicketAuthMiddleware = (deps: TicketAuthDeps): MiddlewareHand
       canIssueTicket: false,
       allowedScope: ticket.scope,
       identityType: "ticket",
-      fingerprint,
+      issuerId,
       isAgent: false, // Tickets are not agents, they have even more restricted permissions
     };
 

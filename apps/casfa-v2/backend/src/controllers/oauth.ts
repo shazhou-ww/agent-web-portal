@@ -26,9 +26,9 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
   return {
     getConfig: (c) =>
       c.json({
-        cognitoUserPoolId: cognitoConfig.userPoolId,
-        cognitoClientId: cognitoConfig.clientId,
-        cognitoHostedUiUrl: cognitoConfig.hostedUiUrl,
+        userPoolId: cognitoConfig.userPoolId,
+        clientId: cognitoConfig.clientId,
+        authDomain: cognitoConfig.hostedUiUrl,
       }),
 
     login: async (c) => {

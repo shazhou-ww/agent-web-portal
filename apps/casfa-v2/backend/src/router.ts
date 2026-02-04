@@ -18,13 +18,12 @@ import type { RealmController } from "./controllers/realm.ts";
 import type { TicketsController } from "./controllers/tickets.ts";
 import type { McpController } from "./mcp/handler.ts";
 import {
-  AwpAuthCompleteSchema,
-  AwpAuthInitSchema,
+  ClientCompleteSchema,
+  ClientInitSchema,
   DepotCommitSchema as CommitDepotSchema,
-  CreateAgentTokenSchema,
   CreateDepotSchema,
   CreateTicketSchema,
-  ListTicketsQuerySchema,
+  CreateTokenSchema,
   LoginSchema,
   PrepareNodesSchema,
   RefreshSchema,
@@ -101,28 +100,28 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.get("/api/oauth/me", deps.authMiddleware, deps.oauth.me);
 
   // ============================================================================
-  // Auth Routes - Clients
+  // Auth Routes - Clients (P256 public key authentication)
   // ============================================================================
 
-  app.post("/api/auth/clients/init", zValidator("json", AwpAuthInitSchema), deps.authClients.init);
-  app.get("/api/auth/clients/status", deps.authClients.status);
+  app.post("/api/auth/clients/init", zValidator("json", ClientInitSchema), deps.authClients.init);
+  app.get("/api/auth/clients/:clientId", deps.authClients.get);
   app.post(
     "/api/auth/clients/complete",
     deps.authMiddleware,
-    zValidator("json", AwpAuthCompleteSchema),
+    zValidator("json", ClientCompleteSchema),
     deps.authClients.complete
   );
   app.get("/api/auth/clients", deps.authMiddleware, deps.authClients.list);
-  app.delete("/api/auth/clients/:pubkey", deps.authMiddleware, deps.authClients.revoke);
+  app.delete("/api/auth/clients/:clientId", deps.authMiddleware, deps.authClients.revoke);
 
   // ============================================================================
-  // Auth Routes - Tokens
+  // Auth Routes - Tokens (API access tokens)
   // ============================================================================
 
   app.post(
     "/api/auth/tokens",
     deps.authMiddleware,
-    zValidator("json", CreateAgentTokenSchema),
+    zValidator("json", CreateTokenSchema),
     deps.authTokens.create
   );
   app.get("/api/auth/tokens", deps.authMiddleware, deps.authTokens.list);

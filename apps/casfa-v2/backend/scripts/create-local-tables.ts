@@ -67,7 +67,10 @@ const portArg = parsePortArg();
 const endpoint = getEndpoint(portArg);
 const client = createClient(endpoint);
 
-async function createTable(dbClient: DynamoDBClient, input: CreateTableCommandInput): Promise<void> {
+async function createTable(
+  dbClient: DynamoDBClient,
+  input: CreateTableCommandInput
+): Promise<void> {
   const name = input.TableName!;
   try {
     await dbClient.send(new CreateTableCommand(input));

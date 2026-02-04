@@ -11,12 +11,12 @@
 
 export type {
   // Auth types
-  AwpAuthComplete,
-  AwpAuthInit,
-  CreateAgentToken,
+  ClientComplete,
+  ClientInit,
   // Depot types
   CreateDepot,
   CreateTicket,
+  CreateToken,
   DepotCommit,
   // Node types
   DictNodeMetadata,
@@ -44,17 +44,17 @@ export type {
   WritableConfig,
 } from "@agent-web-portal/casfa-protocol";
 export {
-  // Auth schemas
-  AwpAuthCompleteSchema,
-  AwpAuthInitSchema,
   // ID regex patterns
   CLIENT_ID_REGEX,
+  // Auth schemas
+  ClientCompleteSchema,
   // ID schemas
   ClientIdSchema,
-  CreateAgentTokenSchema,
+  ClientInitSchema,
   // Depot schemas
   CreateDepotSchema,
   CreateTicketSchema,
+  CreateTokenSchema,
   DEFAULT_MAX_HISTORY,
   DEPOT_ID_REGEX,
   DepotCommitSchema,
