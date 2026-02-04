@@ -13,7 +13,6 @@ import { loadConfig } from "./config.ts";
 import {
   createAwpPendingDb,
   createAwpPubkeysDb,
-  createCommitsDb,
   createDepotsDb,
   createOwnershipDb,
   createRefCountDb,
@@ -34,7 +33,6 @@ const config = loadConfig();
 const db = {
   tokensDb: createTokensDb({ tableName: config.db.tokensTable }),
   ownershipDb: createOwnershipDb({ tableName: config.db.casRealmTable }),
-  commitsDb: createCommitsDb({ tableName: config.db.casRealmTable }),
   depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
   refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
   usageDb: createUsageDb({ tableName: config.db.usageTable }),
