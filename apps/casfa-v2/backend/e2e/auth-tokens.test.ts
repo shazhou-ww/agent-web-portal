@@ -67,7 +67,6 @@ describe("Agent Token Management", () => {
     it("should reject missing name", async () => {
       const userId = `user-${uniqueId()}`;
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
 
       // Use raw fetch to test missing name
       const response = await fetch(`${ctx.baseUrl}/api/auth/tokens`, {
@@ -191,9 +190,7 @@ describe("Agent Token Management", () => {
       if (listResult.ok) {
         const listData = listResult.data as any;
         const items = listData.items ?? listData.tokens;
-        const revokedToken = items.find(
-          (t: any) => (t.id ?? t.tokenId) === tokenId
-        );
+        const revokedToken = items.find((t: any) => (t.id ?? t.tokenId) === tokenId);
         expect(revokedToken).toBeUndefined();
       }
     });

@@ -10,14 +10,15 @@ import {
   type CasNode,
   concatBytes,
   makeDict as coreMakeDict,
-  createMemoryStorage,
-  createWebCryptoHash,
   decodeNode,
   type HashProvider,
   type StorageProvider,
   writeFile,
 } from "@agent-web-portal/cas-core";
+import { createMemoryStorageWithInspection } from "@agent-web-portal/cas-storage-memory";
 import { hashToNodeKey } from "@agent-web-portal/casfa-protocol";
+
+import { createBlake3HashProvider } from "./hash.ts";
 
 import type {
   CasBlobRef,
@@ -45,7 +46,7 @@ export class CasfaEndpoint {
     this.url = config.url.replace(/\/$/, "");
     this.auth = config.auth;
     this.cache = config.cache;
-    this.hash = config.hash ?? createWebCryptoHash();
+    this.hash = config.hash ?? createBlake3HashProvider();
     this._info = config.info;
   }
 
@@ -255,7 +256,7 @@ export class CasfaEndpoint {
     const info = await this.getInfo();
 
     // Use cas-core to build the B-Tree locally
-    const tempStorage = createMemoryStorage();
+    const tempStorage = createMemoryStorageWithInspection();
     const ctx: CasContext = {
       storage: tempStorage,
       hash: this.hash,
@@ -283,7 +284,7 @@ export class CasfaEndpoint {
     const info = await this.getInfo();
 
     // Build temporary storage with child nodes
-    const tempStorage = createMemoryStorage();
+    const tempStorage = createMemoryStorageWithInspection();
 
     for (const entry of entries) {
       const nodeData = await this.getRaw(entry.key);

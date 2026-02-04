@@ -3,13 +3,26 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { blake3 } from "@noble/hashes/blake3";
 import { FILEINFO_SIZE, HASH_SIZE, HEADER_SIZE, MAGIC } from "../src/constants.ts";
 import { encodeDictNode, encodeFileNode, encodeSuccessorNode } from "../src/node.ts";
-import { createMemoryStorage, createWebCryptoHash } from "../src/providers.ts";
+import type { HashProvider, StorageProvider } from "../src/types.ts";
 import { validateNode, validateNodeStructure } from "../src/validation.ts";
 import { hashToKey } from "../src/utils.ts";
 
-const hashProvider = createWebCryptoHash();
+const hashProvider: HashProvider = {
+  hash: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+};
+
+const createMemoryStorage = (): StorageProvider & { size: () => number } => {
+  const store = new Map<string, Uint8Array>();
+  return {
+    put: async (key, data) => { store.set(key, new Uint8Array(data)); },
+    get: async (key) => store.get(key) ?? null,
+    has: async (key) => store.has(key),
+    size: () => store.size,
+  };
+};
 
 describe("Validation", () => {
   describe("validateNodeStructure", () => {

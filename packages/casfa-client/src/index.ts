@@ -10,22 +10,17 @@
  */
 
 // Re-export useful types from cas-core
-export type {
-  CasNode,
-  HashProvider,
-  MemoryStorage,
-  NodeKind,
-  StorageProvider,
-} from "@agent-web-portal/cas-core";
+export type { CasNode, HashProvider, NodeKind, StorageProvider } from "@agent-web-portal/cas-core";
 // Re-export useful utilities from cas-core
-export { createMemoryStorage, createWebCryptoHash, decodeNode } from "@agent-web-portal/cas-core";
+export { decodeNode } from "@agent-web-portal/cas-core";
 // Re-export node key utilities from casfa-protocol
 export { hashToNodeKey, nodeKeyToHash } from "@agent-web-portal/casfa-protocol";
-
 // Client (full user features)
 export { CasfaClient } from "./client.ts";
 // Endpoint
 export { CasfaEndpoint } from "./endpoint.ts";
+// Hash provider
+export { createBlake3HashProvider } from "./hash.ts";
 // Session (base authentication layer)
 export { CasfaSession } from "./session.ts";
 

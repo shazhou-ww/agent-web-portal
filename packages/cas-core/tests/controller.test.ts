@@ -2,6 +2,7 @@
  * Controller tests (functional API) - v2.1 format
  */
 import { describe, expect, it, beforeEach } from "bun:test";
+import { blake3 } from "@noble/hashes/blake3";
 import {
   writeFile,
   readFile,
@@ -13,8 +14,36 @@ import {
   has,
   type CasContext,
 } from "../src/controller.ts";
-import { createMemoryStorage, createWebCryptoHash, type MemoryStorage } from "../src/providers.ts";
+import type { HashProvider, StorageProvider } from "../src/types.ts";
 import { computeUsableSpace } from "../src/topology.ts";
+
+const createHashProvider = (): HashProvider => ({
+  hash: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+});
+
+type MemoryStorage = StorageProvider & {
+  size: () => number;
+  clear: () => void;
+  keys: () => string[];
+  totalBytes: () => number;
+};
+
+const createMemoryStorage = (): MemoryStorage => {
+  const store = new Map<string, Uint8Array>();
+  return {
+    put: async (key, data) => { store.set(key, new Uint8Array(data)); },
+    get: async (key) => store.get(key) ?? null,
+    has: async (key) => store.has(key),
+    size: () => store.size,
+    clear: () => store.clear(),
+    keys: () => Array.from(store.keys()),
+    totalBytes: () => {
+      let total = 0;
+      for (const data of store.values()) total += data.length;
+      return total;
+    },
+  };
+};
 
 describe("Controller", () => {
   let storage: MemoryStorage;
@@ -24,7 +53,7 @@ describe("Controller", () => {
     storage = createMemoryStorage();
     ctx = {
       storage,
-      hash: createWebCryptoHash(),
+      hash: createHashProvider(),
     };
   });
 
@@ -60,7 +89,7 @@ describe("Controller", () => {
     it("should split file larger than node limit", async () => {
       const smallCtx: CasContext = {
         storage,
-        hash: createWebCryptoHash(),
+        hash: createHashProvider(),
         nodeLimit: 1024, // 1KB limit
       };
 
@@ -80,7 +109,7 @@ describe("Controller", () => {
     it("should create multi-level tree for very large files", async () => {
       const tinyCtx: CasContext = {
         storage,
-        hash: createWebCryptoHash(),
+        hash: createHashProvider(),
         nodeLimit: 128, // Very small limit
       };
 
@@ -111,7 +140,7 @@ describe("Controller", () => {
     it("should read back large file correctly", async () => {
       const smallCtx: CasContext = {
         storage,
-        hash: createWebCryptoHash(),
+        hash: createHashProvider(),
         nodeLimit: 256,
       };
 
@@ -291,7 +320,7 @@ describe("Controller", () => {
     it("should stream large multi-node file", async () => {
       const smallCtx: CasContext = {
         storage,
-        hash: createWebCryptoHash(),
+        hash: createHashProvider(),
         nodeLimit: 256,
       };
 

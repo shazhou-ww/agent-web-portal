@@ -10,8 +10,7 @@
  * Only accepts user token (OAuth Bearer) authentication.
  */
 
-import { createWebCryptoHash } from "@agent-web-portal/cas-core";
-
+import { createBlake3HashProvider } from "./hash.ts";
 import { CasfaSession } from "./session.ts";
 import type {
   AgentTokenInfo,
@@ -38,7 +37,7 @@ export class CasfaClient extends CasfaSession {
       baseUrl: config.baseUrl,
       auth: { type: "user", token: config.token },
       cache: config.cache,
-      hash: config.hash ?? createWebCryptoHash(),
+      hash: config.hash ?? createBlake3HashProvider(),
     });
   }
 

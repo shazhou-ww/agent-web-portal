@@ -6,8 +6,6 @@ import type {
   ByteStream,
   CasEndpointInfo,
   CasFileHandle,
-  CasNode,
-  CasRawNode,
   PathResolver,
   RawResponse,
   TreeNodeInfo,

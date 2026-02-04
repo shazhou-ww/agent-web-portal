@@ -11,13 +11,10 @@
  * - Ticket management (create, list, revoke)
  */
 
-import {
-  createWebCryptoHash,
-  type HashProvider,
-  type StorageProvider,
-} from "@agent-web-portal/cas-core";
+import type { HashProvider, StorageProvider } from "@agent-web-portal/cas-core";
 
 import { CasfaEndpoint } from "./endpoint.ts";
+import { createBlake3HashProvider } from "./hash.ts";
 import type {
   CasfaSessionConfig,
   CreateDepotOptions,
@@ -45,7 +42,7 @@ export class CasfaSession {
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
     this.auth = config.auth;
     this.cache = config.cache;
-    this.hash = config.hash ?? createWebCryptoHash();
+    this.hash = config.hash ?? createBlake3HashProvider();
   }
 
   // ============================================================================
@@ -79,7 +76,7 @@ export class CasfaSession {
       url,
       auth: { type: "ticket", id: ticketId },
       cache,
-      hash: hash ?? createWebCryptoHash(),
+      hash: hash ?? createBlake3HashProvider(),
       info,
     });
   }

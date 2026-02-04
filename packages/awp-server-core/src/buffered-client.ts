@@ -11,8 +11,6 @@ import {
   CasClient,
   type CasEndpointInfo,
   type CasFileHandle,
-  type CasRawCollectionNode,
-  type CasRawFileNode,
   collectBytes,
   computeKey,
   type LocalStorageProvider,

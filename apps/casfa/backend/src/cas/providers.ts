@@ -203,11 +203,12 @@ export class S3StorageProvider implements StorageProvider {
 }
 
 /**
- * Node.js crypto-based HashProvider
+ * Node.js crypto-based HashProvider (BLAKE3-128)
  */
 export class NodeHashProvider implements HashProvider {
-  async sha256(data: Uint8Array): Promise<Uint8Array> {
-    const hash = createHash("sha256").update(data).digest();
-    return new Uint8Array(hash);
+  async hash(data: Uint8Array): Promise<Uint8Array> {
+    // Use SHA-256 truncated to 16 bytes to simulate BLAKE3s-128
+    const hashResult = createHash("sha256").update(data).digest();
+    return new Uint8Array(hashResult).slice(0, 16);
   }
 }

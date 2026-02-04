@@ -113,14 +113,6 @@ export {
   type WriteResult,
 } from "./controller.ts";
 
-// Providers - Functional API
-export {
-  // Functional factories
-  createMemoryStorage,
-  createWebCryptoHash,
-  type MemoryStorage,
-} from "./providers.ts";
-
 // Validation
 export {
   validateNode,

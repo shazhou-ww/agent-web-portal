@@ -2,13 +2,13 @@
  * Tests for CasfaEndpoint
  */
 
-import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { createMemoryStorage, type MemoryStorage } from "@agent-web-portal/cas-core";
+import { describe, expect, it, mock } from "bun:test";
+import { createMemoryStorageWithInspection as createMemoryStorage } from "@agent-web-portal/cas-storage-memory";
 import { CasfaEndpoint } from "../src/endpoint";
 import type { EndpointInfo } from "../src/types";
 
 // Mock fetch for testing
-const mockFetch = mock(() => Promise.resolve(new Response()));
+const _mockFetch = mock(() => Promise.resolve(new Response()));
 
 describe("CasfaEndpoint", () => {
   const testEndpointUrl = "https://api.example.com/cas/tkt_test123";
@@ -26,7 +26,7 @@ describe("CasfaEndpoint", () => {
 
     it("should strip trailing slash from URL", () => {
       const endpoint = new CasfaEndpoint({
-        url: testEndpointUrl + "/",
+        url: `${testEndpointUrl}/`,
         auth: testAuth,
       });
 

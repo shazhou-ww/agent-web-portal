@@ -19,7 +19,9 @@
     "check": "tsc --noEmit && biome check ."
   },
   "dependencies": {
-    "@agent-web-portal/cas-core": "workspace:*"
+    "@agent-web-portal/cas-core": "workspace:*",
+    "@agent-web-portal/cas-storage-memory": "workspace:*",
+    "@noble/hashes": "^1.7.1"
   },
   "devDependencies": {
     "@types/bun": "latest",

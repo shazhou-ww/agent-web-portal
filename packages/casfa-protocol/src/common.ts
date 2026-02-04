@@ -30,12 +30,12 @@ for (let i = 0; i < CROCKFORD_ALPHABET.length; i++) {
   CROCKFORD_DECODE[CROCKFORD_ALPHABET[i]!.toLowerCase()] = i;
 }
 // Handle confusable characters: I/i/L/l -> 1, O/o -> 0
-CROCKFORD_DECODE["I"] = 1;
-CROCKFORD_DECODE["i"] = 1;
-CROCKFORD_DECODE["L"] = 1;
-CROCKFORD_DECODE["l"] = 1;
-CROCKFORD_DECODE["O"] = 0;
-CROCKFORD_DECODE["o"] = 0;
+CROCKFORD_DECODE.I = 1;
+CROCKFORD_DECODE.i = 1;
+CROCKFORD_DECODE.L = 1;
+CROCKFORD_DECODE.l = 1;
+CROCKFORD_DECODE.O = 0;
+CROCKFORD_DECODE.o = 0;
 
 /**
  * Encode bytes to Crockford Base32 string
@@ -143,7 +143,7 @@ export function nodeKeyToHex(nodeKey: string): string {
  * Well-known empty dict node key (API format)
  * Corresponds to cas-core's EMPTY_DICT_KEY (hex format)
  */
-export const EMPTY_DICT_NODE_KEY = hexToNodeKey("8b49b82afb41373146a970681bbe55a1");
+export const EMPTY_DICT_NODE_KEY = hexToNodeKey("0000b2da2b8398251c05e6a73a6f1918");
 
 /**
  * User ID format: user:{base32(uuid)}
