@@ -238,7 +238,9 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
     if (!token || token.type !== "agent" || (token as AgentToken).userId !== userId) {
       throw new Error("Token not found or access denied");
     }
-    await client.send(new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId), sk: "TOKEN" } }));
+    await client.send(
+      new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId), sk: "TOKEN" } })
+    );
   };
 
   const listAgentTokensByUser = async (userId: string): Promise<AgentToken[]> => {
@@ -260,7 +262,9 @@ export const createTokensDb = (config: TokensDbConfig): TokensDb => {
   };
 
   const deleteToken = async (tokenId: string): Promise<void> => {
-    await client.send(new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId), sk: "TOKEN" } }));
+    await client.send(
+      new DeleteCommand({ TableName: tableName, Key: { pk: toTokenPk(tokenId), sk: "TOKEN" } })
+    );
   };
 
   const revokeTicket = async (

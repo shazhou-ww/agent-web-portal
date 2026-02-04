@@ -6,7 +6,7 @@
 
 import { handler } from "./src/handler.ts";
 
-const PORT = Number.parseInt(process.env.PORT ?? "3600", 10);
+const PORT = Number.parseInt(process.env.PORT_IMAGE_WORKSHOP_API ?? process.env.PORT ?? "8802", 10);
 
 console.log(`[Image Workshop] Starting local development server on port ${PORT}...`);
 

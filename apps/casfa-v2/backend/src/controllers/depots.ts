@@ -8,7 +8,12 @@
 import { EMPTY_DICT_KEY } from "@agent-web-portal/cas-core";
 import type { StorageProvider } from "@agent-web-portal/cas-storage-core";
 import type { Context } from "hono";
-import { DEFAULT_MAX_HISTORY, type DepotsDb, MAIN_DEPOT_TITLE, SYSTEM_MAX_HISTORY } from "../db/depots.ts";
+import {
+  DEFAULT_MAX_HISTORY,
+  type DepotsDb,
+  MAIN_DEPOT_TITLE,
+  SYSTEM_MAX_HISTORY,
+} from "../db/depots.ts";
 import type { Env } from "../types.ts";
 
 // ============================================================================

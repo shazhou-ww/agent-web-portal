@@ -62,10 +62,7 @@ export const createDbInstances = (config: AppConfig): DbInstances => ({
 /**
  * Create auth service based on configuration
  */
-export const createAuthServiceFromConfig = (
-  db: DbInstances,
-  config: AppConfig
-): AuthService => {
+export const createAuthServiceFromConfig = (db: DbInstances, config: AppConfig): AuthService => {
   return createAuthService({
     tokensDb: db.tokensDb,
     userRolesDb: db.userRolesDb,

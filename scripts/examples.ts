@@ -42,8 +42,8 @@ const stackDir = join(rootDir, "apps/example-stack");
 const webuiDir = join(rootDir, "apps/example-webui");
 
 // Get ports from environment
-const EXAMPLES_API_PORT = process.env.EXAMPLES_API_PORT || "3400";
-const EXAMPLES_WEBUI_PORT = process.env.EXAMPLES_WEBUI_PORT || "5173";
+const EXAMPLES_API_PORT = process.env.PORT_EXAMPLE_STACK_API || "8803";
+const EXAMPLES_WEBUI_PORT = process.env.PORT_EXAMPLE_WEBUI || "8905";
 
 function run(
   cwd: string,

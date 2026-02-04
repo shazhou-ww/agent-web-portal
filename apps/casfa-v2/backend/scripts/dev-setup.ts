@@ -11,8 +11,8 @@
  *   bun run dev:setup
  */
 
-import { existsSync, copyFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { copyFileSync, existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { createAllTables, listTables } from "./create-local-tables.ts";
@@ -20,7 +20,7 @@ import { createAllTables, listTables } from "./create-local-tables.ts";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "../..");
 
-const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8000";
+const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8700";
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 1000;
 

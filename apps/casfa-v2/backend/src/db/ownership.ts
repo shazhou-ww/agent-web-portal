@@ -114,9 +114,7 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
           ":prefix": "OWN#",
         },
         Limit: options.limit ?? 100,
-        ExclusiveStartKey: options.startKey
-          ? { realm, key: `OWN#${options.startKey}` }
-          : undefined,
+        ExclusiveStartKey: options.startKey ? { realm, key: `OWN#${options.startKey}` } : undefined,
       })
     );
 

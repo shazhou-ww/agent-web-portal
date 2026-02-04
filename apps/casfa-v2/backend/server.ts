@@ -4,7 +4,7 @@
  * This server uses environment variables to select implementations:
  *
  * Database:
- * - DYNAMODB_ENDPOINT: DynamoDB endpoint (default: AWS, set to http://localhost:8000 for local)
+ * - DYNAMODB_ENDPOINT: DynamoDB endpoint (default: AWS, set to http://localhost:8700 for local)
  *
  * Storage (STORAGE_TYPE):
  * - "s3": S3 storage (requires CAS_BUCKET)
@@ -28,7 +28,7 @@ import { loadConfig } from "./src/config.ts";
 // Configuration
 // ============================================================================
 
-const port = Number.parseInt(process.env.CAS_API_PORT ?? process.env.PORT ?? "3560", 10);
+const port = Number.parseInt(process.env.PORT_CASFA_V2_API ?? process.env.PORT ?? "8801", 10);
 
 // Storage configuration
 const storageType = process.env.STORAGE_TYPE ?? (process.env.CAS_BUCKET ? "s3" : "memory");

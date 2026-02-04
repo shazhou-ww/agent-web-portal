@@ -291,11 +291,14 @@ describe("Depot Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const response = await authFetch(`/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Update" }),
-      });
+      const response = await authFetch(
+        `/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "Update" }),
+        }
+      );
 
       expect(response.status).toBe(404);
     });
@@ -357,13 +360,16 @@ describe("Depot Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const response = await authFetch(`/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000/commit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          root: "node:0000000000000000000000000000000000000000000000000000000000000001",
-        }),
-      });
+      const response = await authFetch(
+        `/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000/commit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            root: "node:0000000000000000000000000000000000000000000000000000000000000001",
+          }),
+        }
+      );
 
       expect(response.status).toBe(404);
     });
@@ -403,9 +409,12 @@ describe("Depot Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const response = await authFetch(`/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000`, {
-        method: "DELETE",
-      });
+      const response = await authFetch(
+        `/api/realm/${realm}/depots/depot:NONEXISTENT0000000000000`,
+        {
+          method: "DELETE",
+        }
+      );
 
       expect(response.status).toBe(404);
     });
@@ -439,7 +448,11 @@ describe("Depot Management", () => {
       const { ticketId } = (await createResponse.json()) as { ticketId: string };
 
       // Try to access depots with ticket
-      const response = await ctx.helpers.ticketRequest(ticketId, "GET", `/api/realm/${realm}/depots`);
+      const response = await ctx.helpers.ticketRequest(
+        ticketId,
+        "GET",
+        `/api/realm/${realm}/depots`
+      );
 
       expect(response.status).toBe(403);
     });

@@ -9,7 +9,7 @@
  *   bun run backend/scripts/create-local-tables.ts
  *
  * Env:
- *   DYNAMODB_ENDPOINT  - default http://localhost:8000
+ *   DYNAMODB_ENDPOINT  - default http://localhost:8700
  *   TOKENS_TABLE       - default cas-tokens
  *   CAS_REALM_TABLE    - default cas-realm
  *   CAS_REFCOUNT_TABLE - default cas-refcount
@@ -24,7 +24,7 @@ import {
   ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
 
-const endpoint = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8000";
+const endpoint = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8700";
 const tokensTable = process.env.TOKENS_TABLE ?? "cas-tokens";
 const realmTable = process.env.CAS_REALM_TABLE ?? "cas-realm";
 const refCountTable = process.env.CAS_REFCOUNT_TABLE ?? "cas-refcount";

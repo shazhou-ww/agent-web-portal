@@ -254,7 +254,11 @@ describe("Agent Token Management", () => {
       const { token: agentToken } = (await createResponse.json()) as { token: string };
 
       // Use Agent Token to access realm
-      const response = await ctx.helpers.agentRequest(agentToken, "GET", `/api/realm/${realm}/usage`);
+      const response = await ctx.helpers.agentRequest(
+        agentToken,
+        "GET",
+        `/api/realm/${realm}/usage`
+      );
 
       expect(response.status).toBe(200);
     });

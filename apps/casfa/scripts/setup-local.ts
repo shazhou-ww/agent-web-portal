@@ -14,10 +14,14 @@
 import { spawnSync } from "node:child_process";
 
 const DYNAMODB_CONTAINER = "dynamodb-local";
-const DYNAMODB_PORT = Number(process.env.DYNAMODB_PORT) || 9000;
+const DYNAMODB_PORT = Number(process.env.DYNAMODB_PORT) || 8700;
 const DYNAMODB_ENDPOINT = `http://localhost:${DYNAMODB_PORT}`;
 
-function run(cmd: string, args: string[], options?: { silent?: boolean }): { success: boolean; stdout: string } {
+function run(
+  cmd: string,
+  args: string[],
+  options?: { silent?: boolean }
+): { success: boolean; stdout: string } {
   const result = spawnSync(cmd, args, {
     shell: true,
     encoding: "utf-8",
@@ -68,7 +72,14 @@ async function main(): Promise<void> {
   console.log("✓ Docker is running");
 
   // Check if container already exists
-  const containerCheck = runSilent("docker", ["ps", "-a", "--filter", `name=${DYNAMODB_CONTAINER}`, "--format", "{{.Status}}"]);
+  const containerCheck = runSilent("docker", [
+    "ps",
+    "-a",
+    "--filter",
+    `name=${DYNAMODB_CONTAINER}`,
+    "--format",
+    "{{.Status}}",
+  ]);
   const containerStatus = containerCheck.stdout.trim();
 
   if (containerStatus) {
@@ -88,10 +99,13 @@ async function main(): Promise<void> {
     // Container doesn't exist, create it
     console.log("Creating DynamoDB Local container...");
     const createResult = run("docker", [
-      "run", "-d",
-      "--name", DYNAMODB_CONTAINER,
-      "-p", `${DYNAMODB_PORT}:8000`,
-      "amazon/dynamodb-local"
+      "run",
+      "-d",
+      "--name",
+      DYNAMODB_CONTAINER,
+      "-p",
+      `${DYNAMODB_PORT}:8000`,
+      "amazon/dynamodb-local",
     ]);
     if (!createResult.success) {
       console.error("❌ Failed to create DynamoDB Local container");

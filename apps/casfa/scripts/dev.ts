@@ -49,8 +49,8 @@ loadEnvFile(REPO_ROOT);
 loadEnvFile(ROOT_DIR);
 
 // Port configuration from environment
-const PORT_WEBUI = process.env.PORT_CASFA_WEBUI || "5550";
-const PORT_API = process.env.PORT_CASFA_API || "3550";
+const PORT_WEBUI = process.env.PORT_CASFA_WEBUI || "8900";
+const PORT_API = process.env.PORT_CASFA_API || "8800";
 
 // Resolve CAS_STORAGE_DIR: if relative path, resolve relative to the .env file that defined it
 function resolveCasStorageDir(): string {

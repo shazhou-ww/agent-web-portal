@@ -3,11 +3,11 @@ import { defineConfig } from "vite";
 
 // API URL configuration:
 //   1. --url <endpoint> flag takes highest priority
-//   2. IMAGE_WORKSHOP_API_PORT env var sets the port
-//   3. Falls back to port 3600
+//   2. PORT_IMAGE_WORKSHOP_API env var sets the port
+//   3. Falls back to port 8802
 const args = process.argv.slice(2);
 const urlIndex = args.indexOf("--url");
-const defaultPort = process.env.IMAGE_WORKSHOP_API_PORT ?? "3600";
+const defaultPort = process.env.PORT_IMAGE_WORKSHOP_API ?? "8802";
 let apiUrl = `http://localhost:${defaultPort}`;
 
 if (urlIndex !== -1 && args[urlIndex + 1]) {

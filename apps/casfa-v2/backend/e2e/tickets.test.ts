@@ -251,7 +251,9 @@ describe("Ticket Management", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
       const authFetch = createAuthFetcher(ctx.baseUrl, token);
 
-      const response = await authFetch(`/api/realm/${realm}/tickets/ticket:NONEXISTENT0000000000000`);
+      const response = await authFetch(
+        `/api/realm/${realm}/tickets/ticket:NONEXISTENT0000000000000`
+      );
 
       expect(response.status).toBe(404);
     });

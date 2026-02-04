@@ -17,7 +17,7 @@
  *   bun run backend/scripts/integration-test.ts --skip-tables  # Skip table creation (tables already exist)
  *
  * Environment variables (defaults for testing):
- *   DYNAMODB_ENDPOINT=http://localhost:8000
+ *   DYNAMODB_ENDPOINT=http://localhost:8700
  *   STORAGE_TYPE=memory
  *   MOCK_JWT_SECRET=test-secret-key-for-e2e
  */
@@ -30,7 +30,7 @@ import { createAllTables, deleteAllTables, listTables } from "./create-local-tab
 // Configuration
 // ============================================================================
 
-const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8000";
+const DYNAMODB_ENDPOINT = process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8700";
 const STORAGE_TYPE = process.env.STORAGE_TYPE ?? "memory";
 const STORAGE_FS_PATH = process.env.STORAGE_FS_PATH ?? "./test-storage";
 const MOCK_JWT_SECRET = process.env.MOCK_JWT_SECRET ?? "test-secret-key-for-e2e";

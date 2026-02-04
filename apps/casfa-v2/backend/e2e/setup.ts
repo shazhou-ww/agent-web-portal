@@ -4,11 +4,11 @@
  * Shared setup and utilities for e2e tests.
  *
  * Requirements:
- * - DynamoDB Local running at DYNAMODB_ENDPOINT (default: http://localhost:8000)
+ * - DynamoDB Local running at DYNAMODB_ENDPOINT (default: http://localhost:8700)
  * - Test tables created in DynamoDB Local
  *
  * Environment variables (set automatically by this module if not already set):
- * - DYNAMODB_ENDPOINT: http://localhost:8000
+ * - DYNAMODB_ENDPOINT: http://localhost:8700
  * - STORAGE_TYPE: memory
  * - MOCK_JWT_SECRET: test-secret-key-for-e2e
  */
@@ -51,7 +51,7 @@ export const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(
 
 /** Default test configuration */
 const TEST_CONFIG = {
-  DYNAMODB_ENDPOINT: "http://localhost:8000",
+  DYNAMODB_ENDPOINT: "http://localhost:8700",
   STORAGE_TYPE: "memory" as const,
   STORAGE_FS_PATH: "./test-storage",
   MOCK_JWT_SECRET: "test-secret-key-for-e2e",
@@ -182,9 +182,19 @@ export type TestHelpers = {
     }
   ) => Promise<TicketResult>;
   /** Make a request with Ticket authentication */
-  ticketRequest: (ticketId: string, method: string, path: string, body?: unknown) => Promise<Response>;
+  ticketRequest: (
+    ticketId: string,
+    method: string,
+    path: string,
+    body?: unknown
+  ) => Promise<Response>;
   /** Make a request with Agent Token authentication */
-  agentRequest: (agentToken: string, method: string, path: string, body?: unknown) => Promise<Response>;
+  agentRequest: (
+    agentToken: string,
+    method: string,
+    path: string,
+    body?: unknown
+  ) => Promise<Response>;
 };
 
 // ============================================================================

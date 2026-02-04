@@ -2,8 +2,8 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // Port configuration from environment variables
-const webUIPort = parseInt(process.env.PORT_CASFA_WEBUI ?? "5550", 10);
-const apiPort = process.env.PORT_CASFA_API ?? "3550";
+const webUIPort = parseInt(process.env.PORT_CASFA_WEBUI ?? "8900", 10);
+const apiPort = process.env.PORT_CASFA_API ?? "8800";
 
 // API URL configuration:
 //   1. --url <endpoint> flag takes highest priority

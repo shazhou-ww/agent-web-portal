@@ -22,7 +22,10 @@ import { handler } from "./src/handler";
 // Configuration
 // ============================================================================
 
-const PORT = Number.parseInt(process.env.PORT ?? "3500", 10);
+const PORT = Number.parseInt(
+  process.env.PORT_EXAMPLE_AGENT_SERVICE_API ?? process.env.PORT ?? "8804",
+  10
+);
 
 // Check required environment variables
 function checkEnv() {

@@ -7,8 +7,8 @@ export { type AwpPubkeysDb, createAwpPubkeysDb } from "./awp-pubkeys.ts";
 export { createDocClient, createDynamoClient, resetClient } from "./client.ts";
 export {
   createDepotsDb,
-  type DepotsDb,
   DEFAULT_MAX_HISTORY,
+  type DepotsDb,
   MAIN_DEPOT_TITLE,
   SYSTEM_MAX_HISTORY,
 } from "./depots.ts";

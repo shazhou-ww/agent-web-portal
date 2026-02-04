@@ -259,7 +259,10 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
 
       // Only User Token can delete (not Agent Token)
       if (auth.isAgent) {
-        return c.json({ error: "forbidden", message: "Agent Token cannot delete, only revoke" }, 403);
+        return c.json(
+          { error: "forbidden", message: "Agent Token cannot delete, only revoke" },
+          403
+        );
       }
 
       const ticket = await tokensDb.getTicket(ticketId);

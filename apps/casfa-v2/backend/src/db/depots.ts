@@ -6,7 +6,13 @@
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 import type { Depot } from "../types.ts";
 import { generateDepotId } from "../util/token-id.ts";
 import { createDocClient } from "./client.ts";
@@ -248,7 +254,9 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
           ":prefix": "DEPOT#",
         },
         Limit: limit,
-        ExclusiveStartKey: options.startKey ? { realm, key: toDepotKey(options.startKey) } : undefined,
+        ExclusiveStartKey: options.startKey
+          ? { realm, key: toDepotKey(options.startKey) }
+          : undefined,
       })
     );
 

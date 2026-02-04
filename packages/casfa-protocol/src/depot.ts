@@ -28,7 +28,13 @@ export const CreateDepotSchema = z.object({
   /** Depot title (max 128 characters) */
   title: z.string().max(MAX_TITLE_LENGTH).optional(),
   /** Maximum history stack length, default 20, max 100 */
-  maxHistory: z.number().int().min(1).max(MAX_HISTORY_LIMIT).optional().default(DEFAULT_MAX_HISTORY),
+  maxHistory: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_HISTORY_LIMIT)
+    .optional()
+    .default(DEFAULT_MAX_HISTORY),
 });
 
 export type CreateDepot = z.infer<typeof CreateDepotSchema>;

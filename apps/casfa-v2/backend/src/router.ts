@@ -19,10 +19,10 @@ import type { McpController } from "./mcp/handler.ts";
 import {
   AwpAuthCompleteSchema,
   AwpAuthInitSchema,
+  DepotCommitSchema as CommitDepotSchema,
   CreateAgentTokenSchema,
   CreateDepotSchema,
   CreateTicketSchema,
-  DepotCommitSchema as CommitDepotSchema,
   ListTicketsQuerySchema,
   LoginSchema,
   PrepareNodesSchema,

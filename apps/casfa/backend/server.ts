@@ -2324,7 +2324,7 @@ async function handleCas(req: Request, requestedRealm: string, subPath: string):
 // Server
 // ============================================================================
 
-const PORT = parseInt(process.env.CAS_API_PORT ?? process.env.PORT ?? "3550", 10);
+const PORT = parseInt(process.env.PORT_CASFA_API ?? process.env.PORT ?? "8800", 10);
 
 if (!COGNITO_USER_POOL_ID) {
   console.error("ERROR: COGNITO_USER_POOL_ID environment variable is required");

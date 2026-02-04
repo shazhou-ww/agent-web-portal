@@ -69,7 +69,7 @@ import {
 // Configuration
 // =============================================================================
 
-const PORT = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3400;
+const PORT = Number.parseInt(process.env.PORT_EXAMPLE_STACK_API ?? process.env.PORT ?? "8803", 10);
 
 // Check if S3 storage is configured (LocalStack or real S3)
 const USE_S3_STORAGE = isS3BlobStorageConfigured() && !!process.env.S3_ENDPOINT;
