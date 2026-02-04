@@ -50,3 +50,6 @@ temp-*.bin
 
 # Local CAS blob storage (casfa dev)
 .local-cas-storage/
+
+# Docker local data (DynamoDB Local, etc.)
+.docker/

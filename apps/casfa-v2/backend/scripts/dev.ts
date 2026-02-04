@@ -19,7 +19,8 @@
  *   dev   - Connect to real AWS services (Cognito + S3), for integration testing
  */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import * as readline from "node:readline";
 import { Command } from "commander";
 import { createAllTables, listTables, createClient } from "./create-local-tables.ts";
 
@@ -73,6 +74,40 @@ const DB_PORTS: Record<DbType, string | undefined> = {
 // Helpers
 // ============================================================================
 
+/**
+ * Prompt user for yes/no confirmation
+ */
+async function promptYesNo(question: string): Promise<boolean> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(`${question} (y/n): `, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
+    });
+  });
+}
+
+/**
+ * Start a DynamoDB container using docker compose
+ */
+function startDynamoDBContainer(containerName: string): boolean {
+  console.log(`\nStarting ${containerName} container...`);
+
+  const repoRoot = process.cwd().replace(/[/\\]apps[/\\]casfa-v2$/, "");
+  const result = spawnSync("docker", ["compose", "up", "-d", containerName], {
+    cwd: repoRoot,
+    encoding: "utf-8",
+    shell: true,
+    stdio: "inherit",
+  });
+
+  return result.status === 0;
+}
+
 async function checkDynamoDBConnection(endpoint: string): Promise<boolean> {
   try {
     const client = createClient(endpoint);
@@ -85,30 +120,14 @@ async function checkDynamoDBConnection(endpoint: string): Promise<boolean> {
 
 async function waitForDynamoDB(endpoint: string, maxAttempts = 10, delayMs = 1000): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
-    console.log(`Checking DynamoDB connection at ${endpoint}... (attempt ${i + 1}/${maxAttempts})`);
+    console.log(`  Attempt ${i + 1}/${maxAttempts}...`);
     if (await checkDynamoDBConnection(endpoint)) {
-      console.log("DynamoDB is ready!\n");
+      console.log("DynamoDB is ready!");
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   return false;
-}
-
-async function ensureTablesExist(endpoint: string): Promise<void> {
-  const client = createClient(endpoint);
-  const existingTables = await listTables(client);
-
-  // Check if all required tables exist
-  const requiredTables = ["cas-tokens", "cas-realm", "cas-refcount", "cas-usage"];
-  const missingTables = requiredTables.filter((t) => !existingTables.includes(t));
-
-  if (missingTables.length > 0) {
-    console.log(`Creating missing tables: ${missingTables.join(", ")}`);
-    await createAllTables(client);
-  } else {
-    console.log("All tables already exist.");
-  }
 }
 
 function buildEnvVars(config: DevConfig): Record<string, string> {
@@ -172,7 +191,10 @@ program
   .option("--preset <name>", "Use preset configuration: e2e, local, dev")
   .option("--port <number>", "Server port", "8801")
   .option("--skip-tables", "Skip table creation/verification", false)
+  .option("-y, --yes", "Auto-answer yes to all prompts (non-interactive)", false)
   .action(async (options) => {
+    const autoYes = options.yes;
+
     // Apply preset if specified
     let config: DevConfig = {
       db: options.db as DbType,
@@ -206,18 +228,61 @@ program
     // If using local DynamoDB, ensure it's running and tables exist
     if (config.db !== "aws" && !config.skipTableCreation) {
       const endpoint = DB_PORTS[config.db]!;
+      const containerName = config.db === "memory" ? "dynamodb-test" : "dynamodb";
 
       console.log(`Checking DynamoDB at ${endpoint}...`);
-      const isReady = await waitForDynamoDB(endpoint, 5, 1000);
+      let isReady = await waitForDynamoDB(endpoint, 3, 1000);
 
+      // If DynamoDB is not running, prompt to start it
       if (!isReady) {
-        const containerName = config.db === "memory" ? "dynamodb-test" : "dynamodb";
-        console.error(`\nError: DynamoDB is not running at ${endpoint}`);
-        console.error(`Please start it with: docker compose up -d ${containerName}`);
-        process.exit(1);
+        console.log(`\nDynamoDB is not running at ${endpoint}`);
+        const shouldStart = autoYes || await promptYesNo(`Do you want to start the ${containerName} container?`);
+
+        if (!shouldStart) {
+          console.log("\nExiting. Please start DynamoDB manually:");
+          console.log(`  docker compose up -d ${containerName}`);
+          process.exit(1);
+        }
+
+        // Start the container
+        if (!startDynamoDBContainer(containerName)) {
+          console.error(`\nFailed to start ${containerName} container.`);
+          console.error("Make sure Docker is running.");
+          process.exit(1);
+        }
+
+        // Wait for DynamoDB to be ready after starting
+        console.log("\nWaiting for DynamoDB to be ready...");
+        isReady = await waitForDynamoDB(endpoint, 10, 1000);
+
+        if (!isReady) {
+          console.error("\nDynamoDB failed to start properly.");
+          process.exit(1);
+        }
       }
 
-      await ensureTablesExist(endpoint);
+      // Check if tables exist
+      const client = createClient(endpoint);
+      const existingTables = await listTables(client);
+      const requiredTables = ["cas-tokens", "cas-realm", "cas-refcount", "cas-usage"];
+      const missingTables = requiredTables.filter((t) => !existingTables.includes(t));
+
+      if (missingTables.length > 0) {
+        console.log(`\nMissing tables: ${missingTables.join(", ")}`);
+        const shouldCreate = autoYes || await promptYesNo("Do you want to create the missing tables?");
+
+        if (!shouldCreate) {
+          console.log("\nExiting. Please create tables manually:");
+          console.log("  bun run db:create");
+          process.exit(1);
+        }
+
+        console.log("\nCreating tables...");
+        await createAllTables(client);
+        console.log("Tables created successfully!");
+      } else {
+        console.log("All tables exist.");
+      }
       console.log();
     }
 

@@ -17,9 +17,11 @@ services:
     image: amazon/dynamodb-local:latest
     ports:
       - "8700:8000"
-    command: [ "-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data" ]
+    command: [ "-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data" ]
     volumes:
-      - dynamodb-data:/data
+      - ./.docker/dynamodb:/home/dynamodblocal/data
+    user: root
+    working_dir: /home/dynamodblocal
 
   # Test DynamoDB - in-memory (fast, isolated, no persistence)
   dynamodb-test:
@@ -27,6 +29,3 @@ services:
     ports:
       - "8701:8000"
     command: [ "-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory" ]
-
-volumes:
-  dynamodb-data:
