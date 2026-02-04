@@ -57,7 +57,7 @@ export const createFetch = (config: FetchConfig) => {
     if (!skipAuth) {
       const authHeader = await auth.getAuthHeader();
       if (authHeader) {
-        requestHeaders["Authorization"] = authHeader;
+        requestHeaders.Authorization = authHeader;
       }
 
       // Add custom headers for P256 auth
@@ -143,7 +143,7 @@ export const createFetch = (config: FetchConfig) => {
     // Add auth headers
     const authHeader = await auth.getAuthHeader();
     if (authHeader) {
-      requestHeaders["Authorization"] = authHeader;
+      requestHeaders.Authorization = authHeader;
     }
 
     const customHeaders = await auth.getCustomHeaders?.();
@@ -187,7 +187,7 @@ export const createFetch = (config: FetchConfig) => {
     // Add auth headers
     const authHeader = await auth.getAuthHeader();
     if (authHeader) {
-      requestHeaders["Authorization"] = authHeader;
+      requestHeaders.Authorization = authHeader;
     }
 
     const customHeaders = await auth.getCustomHeaders?.();

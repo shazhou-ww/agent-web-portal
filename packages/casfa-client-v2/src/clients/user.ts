@@ -6,6 +6,7 @@
  * like client management, token management, and admin functions.
  */
 
+import { hashToNodeKey } from "@agent-web-portal/casfa-protocol";
 import type {
   AgentTokenInfo,
   AwpClientInfo,
@@ -65,12 +66,6 @@ export type UserClientConfig = ClientConfig & {
 // =============================================================================
 // Helpers
 // =============================================================================
-
-const bytesToHex = (bytes: Uint8Array): string => {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-};
 
 /**
  * Create node operations for a given fetcher.
@@ -162,11 +157,9 @@ const createNodeOps = (
       headers["X-CAS-Blake3"] = params.blake3Hash;
     }
 
-    const result = await fetcher.uploadBinary(
-      `/api/realm/${realmId}/nodes/${key}`,
-      params.data,
-      { headers }
-    );
+    const result = await fetcher.uploadBinary(`/api/realm/${realmId}/nodes/${key}`, params.data, {
+      headers,
+    });
 
     if (result.ok && storage) {
       await storage.put(key, params.data);
@@ -176,18 +169,20 @@ const createNodeOps = (
   },
 
   upload: async (realmId: string, data: Uint8Array): Promise<FetchResult<{ key: string }>> => {
-    if (!hash) {
+    if (!hash?.blake3) {
       return {
         ok: false,
         error: {
           code: "VALIDATION_ERROR",
-          message: "HashProvider required for upload",
+          message: "HashProvider with blake3 required for upload",
         },
       };
     }
 
-    const hashBytes = await hash.sha256(data);
-    const key = bytesToHex(hashBytes);
+    // Compute BLAKE3 128-bit hash (16 bytes)
+    const fullHash = await hash.blake3(data);
+    const hash128 = fullHash.slice(0, 16);
+    const key = hashToNodeKey(hash128);
 
     if (storage) {
       const exists = await storage.has(key);
@@ -196,11 +191,7 @@ const createNodeOps = (
       }
     }
 
-    const result = await fetcher.uploadBinary(
-      `/api/realm/${realmId}/nodes/${key}`,
-      data,
-      {}
-    );
+    const result = await fetcher.uploadBinary(`/api/realm/${realmId}/nodes/${key}`, data, {});
 
     if (result.ok && storage) {
       await storage.put(key, data);
@@ -214,10 +205,7 @@ const createNodeOps = (
 // Realm View (convenience wrapper)
 // =============================================================================
 
-const createRealmView = (
-  client: CasfaUserClient,
-  realmId: string
-): CasfaUserRealmView => ({
+const createRealmView = (client: CasfaUserClient, realmId: string): CasfaUserRealmView => ({
   realmId,
   client,
 

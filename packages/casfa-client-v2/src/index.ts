@@ -9,34 +9,32 @@
 // =============================================================================
 
 export {
-  // Main entry point
-  createCasfaClient,
-  // Individual client factories
-  createTicketClient,
-  createDelegateClient,
-  createUserClient,
-  // Types
-  type ClientConfig,
-  type CasfaBaseClient,
-  type CasfaAnonymousClient,
-  type CasfaTicketClient,
-  type CasfaDelegateClient,
-  type CasfaDelegateRealmView,
-  type CasfaUserClient,
-  type CasfaUserRealmView,
-  type TicketClientConfig,
-  type DelegateClientConfig,
-  type UserClientConfig,
   // API parameter types
   type BuildAuthUrlParams,
   type CallMcpParams,
   type CallToolParams,
+  type CasfaAnonymousClient,
+  type CasfaBaseClient,
+  type CasfaDelegateClient,
+  type CasfaDelegateRealmView,
+  type CasfaTicketClient,
+  type CasfaUserClient,
+  type CasfaUserRealmView,
+  // Types
+  type ClientConfig,
   type CommitDepotParams,
   type CommitTicketParams,
   type CompleteClientParams,
   type CreateAgentTokenParams,
   type CreateDepotParams,
   type CreateTicketParams,
+  // Main entry point
+  createCasfaClient,
+  createDelegateClient,
+  // Individual client factories
+  createTicketClient,
+  createUserClient,
+  type DelegateClientConfig,
   type ExchangeCodeParams,
   type GetDepotParams,
   type InitClientParams,
@@ -52,8 +50,10 @@ export {
   type RefreshParams,
   type RevokeAgentTokenParams,
   type RevokeClientParams,
+  type TicketClientConfig,
   type UpdateDepotParams,
   type UpdateUserRoleParams,
+  type UserClientConfig,
 } from "./clients/index.ts";
 
 // =============================================================================
@@ -61,10 +61,10 @@ export {
 // =============================================================================
 
 export {
-  /** @deprecated Use createCasfaClient from clients/ instead */
-  createCasfaClient as createLegacyCasfaClient,
   type CasfaClient as LegacyCasfaClient,
   type CasfaClientConfig as LegacyCasfaClientConfig,
+  /** @deprecated Use createCasfaClient from clients/ instead */
+  createCasfaClient as createLegacyCasfaClient,
 } from "./client.ts";
 
 // =============================================================================

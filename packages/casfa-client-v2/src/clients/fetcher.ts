@@ -55,7 +55,7 @@ export const createStatelessFetcher = (config: StatelessFetcherConfig) => {
     if (getAuthHeader) {
       const authHeader = await getAuthHeader();
       if (authHeader) {
-        requestHeaders["Authorization"] = authHeader;
+        requestHeaders.Authorization = authHeader;
       }
     }
 
@@ -130,7 +130,7 @@ export const createStatelessFetcher = (config: StatelessFetcherConfig) => {
     if (getAuthHeader) {
       const authHeader = await getAuthHeader();
       if (authHeader) {
-        requestHeaders["Authorization"] = authHeader;
+        requestHeaders.Authorization = authHeader;
       }
     }
 
@@ -176,7 +176,7 @@ export const createStatelessFetcher = (config: StatelessFetcherConfig) => {
     if (getAuthHeader) {
       const authHeader = await getAuthHeader();
       if (authHeader) {
-        requestHeaders["Authorization"] = authHeader;
+        requestHeaders.Authorization = authHeader;
       }
     }
 

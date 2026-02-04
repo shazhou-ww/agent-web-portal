@@ -5,6 +5,7 @@
  * The ticket is bound to a specific realm at creation time.
  */
 
+import { hashToNodeKey } from "@agent-web-portal/casfa-protocol";
 import type {
   DepotDetail,
   DepotInfo,
@@ -34,15 +35,6 @@ import type {
 export type TicketClientConfig = ClientConfig & {
   ticketId: string;
   realmId: string;
-};
-
-/**
- * Convert bytes to hex string.
- */
-const bytesToHex = (bytes: Uint8Array): string => {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 };
 
 /**
@@ -132,11 +124,9 @@ const createNodeOps = (
       headers["X-CAS-Blake3"] = params.blake3Hash;
     }
 
-    const result = await fetcher.uploadBinary(
-      `/api/realm/${realmId}/nodes/${key}`,
-      params.data,
-      { headers }
-    );
+    const result = await fetcher.uploadBinary(`/api/realm/${realmId}/nodes/${key}`, params.data, {
+      headers,
+    });
 
     if (result.ok && storage) {
       await storage.put(key, params.data);
@@ -146,18 +136,20 @@ const createNodeOps = (
   },
 
   upload: async (data: Uint8Array): Promise<FetchResult<{ key: string }>> => {
-    if (!hash) {
+    if (!hash?.blake3) {
       return {
         ok: false,
         error: {
           code: "VALIDATION_ERROR",
-          message: "HashProvider required for upload",
+          message: "HashProvider with blake3 required for upload",
         },
       };
     }
 
-    const hashBytes = await hash.sha256(data);
-    const key = bytesToHex(hashBytes);
+    // Compute BLAKE3 128-bit hash (16 bytes)
+    const fullHash = await hash.blake3(data);
+    const hash128 = fullHash.slice(0, 16);
+    const key = hashToNodeKey(hash128);
 
     // Check if already exists
     if (storage) {
@@ -168,11 +160,9 @@ const createNodeOps = (
     }
 
     const headers: Record<string, string> = {};
-    const result = await fetcher.uploadBinary(
-      `/api/realm/${realmId}/nodes/${key}`,
-      data,
-      { headers }
-    );
+    const result = await fetcher.uploadBinary(`/api/realm/${realmId}/nodes/${key}`, data, {
+      headers,
+    });
 
     if (result.ok && storage) {
       await storage.put(key, data);

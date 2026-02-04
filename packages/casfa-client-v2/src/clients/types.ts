@@ -330,10 +330,7 @@ export type CasfaDelegateClient = CasfaBaseClient & {
 
   /** Ticket management */
   tickets: {
-    create: (
-      realmId: string,
-      params?: CreateTicketParams
-    ) => Promise<FetchResult<TicketInfo>>;
+    create: (realmId: string, params?: CreateTicketParams) => Promise<FetchResult<TicketInfo>>;
     list: (
       realmId: string,
       params?: ListTicketsParams
@@ -364,10 +361,7 @@ export type CasfaDelegateClient = CasfaBaseClient & {
       depotId: string,
       params: CommitDepotParams
     ) => Promise<FetchResult<DepotInfo>>;
-    delete: (
-      realmId: string,
-      depotId: string
-    ) => Promise<FetchResult<{ success: boolean }>>;
+    delete: (realmId: string, depotId: string) => Promise<FetchResult<{ success: boolean }>>;
   };
 
   /** Node operations */
@@ -469,7 +463,10 @@ export type CasfaUserClient = CasfaBaseClient & {
   /** Admin operations (may fail with 403 if not admin) */
   admin: {
     listUsers: (params?: ListUsersParams) => Promise<FetchResult<PaginatedResponse<UserListItem>>>;
-    updateUserRole: (userId: string, params: UpdateUserRoleParams) => Promise<FetchResult<UserListItem>>;
+    updateUserRole: (
+      userId: string,
+      params: UpdateUserRoleParams
+    ) => Promise<FetchResult<UserListItem>>;
   };
 
   /** Realm info */

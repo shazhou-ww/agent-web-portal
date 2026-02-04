@@ -2,6 +2,7 @@
  * Node API functions with local caching support.
  */
 
+import { hashToNodeKey } from "@agent-web-portal/casfa-protocol";
 import type { NodeMetadata, PrepareNodesResult } from "../types/api.ts";
 import type { HashProvider, StorageProvider } from "../types/providers.ts";
 import type { Fetcher, FetchResult } from "../utils/fetch.ts";
@@ -14,15 +15,6 @@ export type NodeApiContext = {
   realmId: string;
   storage?: StorageProvider;
   hash?: HashProvider;
-};
-
-/**
- * Convert bytes to hex string.
- */
-const bytesToHex = (bytes: Uint8Array): string => {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 };
 
 /**
@@ -171,6 +163,7 @@ export const putNode = async (
 
 /**
  * Upload node with automatic hash computation.
+ * Uses BLAKE3 128-bit hash as the node key.
  */
 export type UploadNodeParams = {
   data: Uint8Array;
@@ -180,18 +173,23 @@ export const uploadNode = async (
   ctx: NodeApiContext,
   params: UploadNodeParams
 ): Promise<FetchResult<{ key: string }>> => {
-  if (!ctx.hash) {
+  if (!ctx.hash?.blake3) {
     return {
       ok: false,
       error: {
         code: "VALIDATION_ERROR",
-        message: "HashProvider required for uploadNode",
+        message: "HashProvider with blake3 required for uploadNode",
       },
     };
   }
 
-  const hashBytes = await ctx.hash.sha256(params.data);
-  const key = bytesToHex(hashBytes);
+  // Compute BLAKE3 128-bit hash (16 bytes)
+  const fullHash = await ctx.hash.blake3(params.data);
+  // Truncate to 128 bits (16 bytes) - same as server-side
+  const hash128 = fullHash.slice(0, 16);
+
+  // Convert to node key format: node:{base32}
+  const key = hashToNodeKey(hash128);
 
   // Check if already exists
   if (ctx.storage) {
