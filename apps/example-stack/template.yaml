@@ -15,6 +15,11 @@ Parameters:
     Type: String
     Description: S3 bucket name for skills storage
     Default: ""
+  
+  VpcStackName:
+    Type: String
+    Description: Name of the stack that exports VPC resources (e.g., image-workshop). Leave empty to run without VPC.
+    Default: "image-workshop"
 
 Resources:
   # ==========================================================================
@@ -117,6 +122,18 @@ Resources:
       CodeUri: dist/
       Handler: handler.handler
       Description: AWP Examples SST - Multi-portal MCP endpoint with React UI
+      # VPC configuration for fixed outbound IP (shared NAT Gateway)
+      VpcConfig: !If
+        - HasVpcStack
+        - SubnetIds:
+            - !ImportValue
+              Fn::Sub: "${VpcStackName}-PrivateSubnetA"
+            - !ImportValue
+              Fn::Sub: "${VpcStackName}-PrivateSubnetB"
+          SecurityGroupIds:
+            - !ImportValue
+              Fn::Sub: "${VpcStackName}-LambdaSecurityGroup"
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           AUTH_TABLE: !Ref AuthTable
@@ -317,6 +334,7 @@ Resources:
 
 Conditions:
   CreateSkillsBucket: !Equals [!Ref SkillsBucket, ""]
+  HasVpcStack: !Not [!Equals [!Ref VpcStackName, ""]]
 
 # ==========================================================================
 # Outputs
@@ -379,3 +397,9 @@ Outputs:
   UiBucketName:
     Description: S3 Bucket for UI static files
     Value: !Ref UiS3Bucket
+
+  NatGatewayPublicIp:
+    Condition: HasVpcStack
+    Description: Fixed outbound IP address (from VPC stack)
+    Value: !ImportValue
+      Fn::Sub: "${VpcStackName}-NatGatewayPublicIp"

@@ -459,6 +459,13 @@ Resources:
       FunctionName: !Sub "${AWS::StackName}-handler"
       CodeUri: backend/dist/
       Handler: handler.handler
+      # VPC configuration for fixed outbound IP via NAT Gateway
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnetA
+          - !Ref PrivateSubnetB
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
       Environment:
         Variables:
           TOKENS_TABLE: !Ref TokensTable
@@ -542,6 +549,156 @@ Resources:
         - "multipart/form-data"
         - "*/*"
 
+  # ============================================================================
+  # VPC Networking (for fixed outbound IP via NAT Gateway)
+  # ============================================================================
+  
+  # VPC with /16 CIDR block
+  LambdaVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  # Internet Gateway for outbound traffic from public subnet
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-igw"
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref LambdaVpc
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public subnet (hosts NAT Gateway)
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LambdaVpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public-subnet"
+
+  # Private subnets (hosts Lambda) - two AZs for reliability
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LambdaVpc
+      CidrBlock: 10.0.128.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-subnet-a"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref LambdaVpc
+      CidrBlock: 10.0.129.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-subnet-b"
+
+  # Elastic IP for NAT Gateway (this is the fixed outbound IP)
+  NatGatewayEip:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-nat-eip"
+
+  # NAT Gateway in public subnet
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEip.AllocationId
+      SubnetId: !Ref PublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-nat"
+
+  # Route table for public subnet (routes to Internet Gateway)
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref LambdaVpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public-rt"
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # Route table for private subnets (routes to NAT Gateway)
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref LambdaVpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-rt"
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Security group for Lambda (allows all outbound HTTPS)
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${AWS::StackName}-lambda-sg"
+      GroupDescription: Security group for Lambda function - allows outbound HTTPS
+      VpcId: !Ref LambdaVpc
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS outbound to external APIs
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-lambda-sg"
+
 Conditions:
   HasCognitoDomain: !Not [!Equals [!Ref CognitoDomain, ""]]
   HasGoogleIdP: !And [!Not [!Equals [!Ref GoogleClientId, ""]], !Not [!Equals [!Ref GoogleClientSecret, ""]]]
@@ -613,3 +770,34 @@ Outputs:
   CloudFrontUrl:
     Description: CloudFront Distribution URL
     Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+
+  # VPC Networking Outputs (Exported for cross-stack reference)
+  NatGatewayPublicIp:
+    Description: Fixed outbound IP address for Lambda (NAT Gateway EIP) - share with Stability AI for allowlisting
+    Value: !Ref NatGatewayEip
+    Export:
+      Name: !Sub "${AWS::StackName}-NatGatewayPublicIp"
+
+  VpcId:
+    Description: VPC ID for Lambda networking
+    Value: !Ref LambdaVpc
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcId"
+
+  PrivateSubnetAId:
+    Description: Private Subnet A ID for Lambda VPC config
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetA"
+
+  PrivateSubnetBId:
+    Description: Private Subnet B ID for Lambda VPC config
+    Value: !Ref PrivateSubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetB"
+
+  LambdaSecurityGroupId:
+    Description: Security Group ID for Lambda egress
+    Value: !Ref LambdaSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaSecurityGroup"

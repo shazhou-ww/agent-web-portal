@@ -9,6 +9,7 @@ import { createServerHandler } from "@agent-web-portal/awp-server-lambda";
 import { createAuthRoutes } from "./router.ts";
 import { imageWorkshopSkills } from "./skills.ts";
 import { fluxTools } from "./tools/flux/index.ts";
+import { stabilityTools } from "./tools/stability/index.ts";
 import { vectorizerTools } from "./tools/vectorizer/index.ts";
 import { loadConfig } from "./types.ts";
 
@@ -29,6 +30,7 @@ export const handler = createServerHandler({
     agentToken: process.env.CAS_AGENT_TOKEN ?? "",
   })
   .registerTools(fluxTools)
+  .registerTools(stabilityTools)
   .registerTools(vectorizerTools)
   .registerSkills(imageWorkshopSkills)
   .withSkillBaseUrl(skillBaseUrl)

@@ -216,6 +216,77 @@ vectorize(imageKey, output_format="eps")
 - SVG output is best for web, EPS/PDF for professional printing
 `;
 
+const stabilityImageEditingContent = `---
+name: Stability AI Image Editing
+description: Professional image editing using Stability AI - inpainting, outpainting, background removal, and more
+version: 1.0.0
+allowed-tools:
+  - txt2img
+  - inpaint
+  - erase
+  - outpaint
+  - remove_bg
+  - search_replace
+  - search_recolor
+  - sketch
+  - structure
+  - style
+  - transfer
+---
+
+# Stability AI Image Editing
+
+Professional-grade image editing capabilities powered by Stability AI's Stable Diffusion models.
+
+## Overview
+
+This skill provides comprehensive image editing tools for:
+- Text-to-image generation
+- Inpainting and outpainting
+- Background removal
+- Object replacement and recoloring
+- Style transfer and artistic effects
+
+## Available Tools
+
+### Generation
+- **txt2img**: Generate images from text prompts using Stable Diffusion XL
+
+### Editing
+- **inpaint**: Fill masked regions with AI-generated content
+- **erase**: Remove objects from images seamlessly
+- **outpaint**: Extend images beyond their boundaries
+- **remove_bg**: Remove image backgrounds automatically
+
+### Transformation
+- **search_replace**: Find and replace objects in images
+- **search_recolor**: Change colors of specific objects
+- **sketch**: Generate images from rough sketches
+- **structure**: Control generation with structural guides
+- **style**: Apply artistic styles to images
+- **transfer**: Transfer style from one image to another
+
+## Important: Language Requirements
+
+**⚠️ All prompts MUST be in English!**
+
+The Stability AI APIs only support English prompts. If the user provides a prompt in another language, you MUST translate it to detailed English descriptions before calling any tool.
+
+## Tool Selection Guide
+
+| Task | Recommended Tool |
+|------|------------------|
+| Create new image from text | txt2img |
+| Remove unwanted objects | erase |
+| Replace specific objects | search_replace |
+| Change object colors | search_recolor |
+| Remove background | remove_bg |
+| Extend image boundaries | outpaint |
+| Fill specific regions | inpaint |
+| Convert sketch to image | sketch |
+| Apply artistic style | style, transfer |
+`;
+
 /**
  * All image workshop skills
  */
@@ -225,4 +296,5 @@ export const imageWorkshopSkills: DefinedSkill[] = [
   parseSkill("image-stylization", imageStylizationContent),
   parseSkill("content-replace", contentReplaceContent),
   parseSkill("image-vectorization", imageVectorizationContent),
+  parseSkill("stability-image-editing", stabilityImageEditingContent),
 ];
